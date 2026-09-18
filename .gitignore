@@ -1,0 +1,37 @@
+# Pixi
+.pixi
+
+# Moon
+.moon/cache
+.moon/docker
+
+# Node
+node_modules
+.npm
+*.tsbuildinfo
+
+# Next.js
+src/dashboard/.next
+src/dashboard/out
+
+# Python
+.venv
+__pycache__
+*.py[cod]
+*$py.class
+*.egg-info
+.pytest_cache
+.ruff_cache
+dist
+build
+
+# Env / OS
+.env
+.env.local
+.DS_Store
+.idea
+.vscode
+
+# Experiment logs
+data/
+*.mp4

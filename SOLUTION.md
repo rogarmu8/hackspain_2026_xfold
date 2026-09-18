@@ -221,23 +221,21 @@ A 2–3 mm gap under the centre panel, or a slightly raised board on feet (the r
 
 ## 6. Software architecture
 
+Monorepo (moon + npm workspaces). Commands: see [README.md](README.md).
+
 ```
-xfold/
-  models/           # MJCF: scene, shirt, press, folder, peel, box
-  robots/           # Menagerie overlays / attached UR5e
-  xfold/
-    scene.py        # MjSpec assembly
-    shirt.py        # flexcomp factory (size variants)
-    control/
-      fsm.py        # states: PICK, PLACE, PRESS, DROP, FOLD, PACK, RESET
-      ik.py         # mink wrapper
-      machines.py   # press / folder / floor setpoints
-    perceive.py     # vertices → grasp, flatness, in-box
-    metrics.py      # logged every cycle
-  scripts/
-    demo.py         # viewer loop
-    eval.py         # N randomized trials, no viewer
-  data/             # csv logs for the slide
+src/sim/                  # Python cell
+  models/                 # MJCF: start with cell.xml stub
+  src/xfold/
+    fsm.py                # PICK → PLACE → PRESS → DROP → FOLD → PACK
+    telemetry.py          # JSON snapshot shared with the dashboard
+    mock_cycle.py         # no-physics walk of the FSM
+    scene.py              # MjSpec assembly (next)
+    shirt.py              # flexcomp factory (next)
+    control/              # mink IK + machine setpoints (next)
+src/dashboard/            # Next.js monitor
+packages/protocol/        # Telemetry types both sides must keep in sync
+.moon/                    # moon workspace + toolchain
 ```
 
 **Control style:** hybrid.
@@ -352,16 +350,21 @@ Nuclear fallback (still a valid THEKER demo): **no arm**. Scripted suction mocap
 
 ## 12. Dependencies (MVP)
 
+Root: Pixi (`pixi.toml`) pins Python 3.12 + Node 22. Moon runs tasks. Node workspaces + `@moonrepo/cli`.
+
+Sim (`src/sim` extra `mujoco`):
+
 ```text
 python >= 3.11
+numpy
 mujoco
 mujoco-menagerie
 mink
-numpy
-matplotlib   # plots for the slide
 ```
 
-No ROS, no CUDA, no Isaac. Viewer: `mujoco.viewer.launch_passive`. On macOS mink examples sometimes need `mjpython`; try normal `python` first.
+Dashboard: Next.js 16. Protocol package is TypeScript-only.
+
+No ROS, no CUDA, no Isaac. Viewer later: `mujoco.viewer.launch_passive`. On macOS mink examples sometimes need `mjpython`; try normal `python` first.
 
 ---
 

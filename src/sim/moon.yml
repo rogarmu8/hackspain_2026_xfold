@@ -1,0 +1,15 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+id: sim
+language: python
+layer: application
+stack: backend
+
+tasks:
+  mock:
+    script: |
+      eval "$(pixi shell-hook)"
+      python -m xfold.mock_cycle
+    options:
+      cache: false
+      runFromWorkspaceRoot: true

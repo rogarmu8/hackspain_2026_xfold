@@ -1,0 +1,47 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+id: dashboard
+language: typescript
+layer: application
+stack: frontend
+
+dependsOn:
+  - protocol
+
+tasks:
+  dev:
+    script: |
+      eval "$(pixi shell-hook)"
+      cd src/dashboard
+      npx next dev
+    preset: server
+    options:
+      persistent: true
+      cache: false
+      runFromWorkspaceRoot: true
+  build:
+    script: |
+      eval "$(pixi shell-hook)"
+      cd src/dashboard
+      npx next build
+    deps:
+      - ^:build
+    options:
+      runFromWorkspaceRoot: true
+  start:
+    script: |
+      eval "$(pixi shell-hook)"
+      cd src/dashboard
+      npx next start
+    preset: server
+    options:
+      persistent: true
+      cache: false
+      runFromWorkspaceRoot: true
+  lint:
+    script: |
+      eval "$(pixi shell-hook)"
+      cd src/dashboard
+      npx eslint .
+    options:
+      runFromWorkspaceRoot: true

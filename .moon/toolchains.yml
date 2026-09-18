@@ -1,0 +1,8 @@
+$schema: "https://moonrepo.dev/schemas/toolchain.json"
+
+# Use the Node/npm already on PATH. Pin versions here later if CI needs them.
+javascript:
+  packageManager: npm
+
+node: {}
+npm: {}

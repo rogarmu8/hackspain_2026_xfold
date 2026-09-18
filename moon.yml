@@ -1,0 +1,18 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+id: xfold
+language: bash
+layer: tool
+
+tasks:
+  setup:
+    script: pixi install && eval "$(pixi shell-hook)" && npm install
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+  install-mujoco:
+    command: pixi
+    args: [install, -e, mujoco]
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
