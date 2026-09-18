@@ -1,10 +1,10 @@
 export const CELL_STATES = [
   "PICK",
-  "PLACE",
+  "SPREAD",
   "PRESS",
-  "DROP",
   "FOLD",
-  "PACK",
+  "CHUTE",
+  "BAG",
   "RESET",
 ] as const;
 
@@ -16,7 +16,7 @@ export type Telemetry = {
   state: CellState;
   cycle: number;
   flatness: number | null;
-  shirt_in_box: boolean;
+  shirt_in_bag: boolean;
 };
 
 export const SAMPLE_TELEMETRY: Telemetry = {
@@ -24,5 +24,5 @@ export const SAMPLE_TELEMETRY: Telemetry = {
   state: "PICK",
   cycle: 1,
   flatness: null,
-  shirt_in_box: false,
+  shirt_in_bag: false,
 };

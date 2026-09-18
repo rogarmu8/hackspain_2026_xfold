@@ -14,13 +14,13 @@ def run_mock_cycle(cycle: int = 1) -> list[Telemetry]:
     frames: list[Telemetry] = []
     t = 0.0
     for state in CYCLE:
-        flatness = 0.002 if state in {CellState.DROP, CellState.FOLD, CellState.PACK} else None
+        flatness = 0.002 if state in {CellState.FOLD, CellState.CHUTE, CellState.BAG} else None
         frame = Telemetry.snapshot(
             t=t,
             state=state,
             cycle=cycle,
             flatness=flatness,
-            shirt_in_box=state is CellState.PACK,
+            shirt_in_bag=state is CellState.BAG,
         )
         frames.append(frame)
         print(json.dumps(frame.to_dict()), flush=True)

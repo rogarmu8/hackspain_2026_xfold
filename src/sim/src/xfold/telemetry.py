@@ -11,7 +11,7 @@ class Telemetry:
     state: str
     cycle: int
     flatness: float | None
-    shirt_in_box: bool
+    shirt_in_bag: bool
 
     @classmethod
     def snapshot(
@@ -21,14 +21,14 @@ class Telemetry:
         state: CellState,
         cycle: int,
         flatness: float | None = None,
-        shirt_in_box: bool = False,
+        shirt_in_bag: bool = False,
     ) -> Telemetry:
         return cls(
             t=round(t, 3),
             state=state.value,
             cycle=cycle,
             flatness=flatness,
-            shirt_in_box=shirt_in_box,
+            shirt_in_bag=shirt_in_bag,
         )
 
     def to_dict(self) -> dict:

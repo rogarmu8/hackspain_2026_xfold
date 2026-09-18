@@ -55,7 +55,7 @@ def main() -> None:
     model = mujoco.MjModel.from_xml_path(MODEL_PATH.as_posix())
     data = mujoco.MjData(model)
     print(f"XFOLD cell  {MODEL_PATH}", flush=True)
-    print("A blue slab (stand-in shirt) falls onto the press. Close the window to quit.", flush=True)
+    print("A blue slab (stand-in shirt) falls onto the press bed above the chute. Close the window to quit.", flush=True)
 
     with mujoco.viewer.launch_passive(model, data) as viewer:
         while viewer.is_running():

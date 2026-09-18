@@ -104,6 +104,6 @@ THEKER will be at their table for the whole hackathon to validate ideas, sanity-
 
 ## Our take for this hackathon
 
-We automate **pressing and folding shirts** — a deformable, high-variability task that fulfilment lines still load by hand.
+We automate **pressing, Japanese / ninja-folding, and bagging shirts** with two OpenArm hands — a deformable task fulfilment lines still load by hand.
 
-See [SOLUTION.md](SOLUTION.md) for the four-station cell, the MuJoCo approach, and the open-source inventory.
+See [SOLUTION.md](SOLUTION.md) for the four-station cell, OpenArm, MuJoCo, and the open-source inventory.

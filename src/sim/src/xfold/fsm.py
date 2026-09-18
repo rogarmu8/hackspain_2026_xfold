@@ -3,11 +3,11 @@ from enum import StrEnum
 
 class CellState(StrEnum):
     PICK = "PICK"
-    PLACE = "PLACE"
+    SPREAD = "SPREAD"
     PRESS = "PRESS"
-    DROP = "DROP"
     FOLD = "FOLD"
-    PACK = "PACK"
+    CHUTE = "CHUTE"
+    BAG = "BAG"
     RESET = "RESET"
 
 
@@ -16,9 +16,9 @@ CELL_STATES = tuple(CellState)
 # One unattended cycle, matching SOLUTION.md.
 CYCLE = (
     CellState.PICK,
-    CellState.PLACE,
+    CellState.SPREAD,
     CellState.PRESS,
-    CellState.DROP,
     CellState.FOLD,
-    CellState.PACK,
+    CellState.CHUTE,
+    CellState.BAG,
 )

@@ -11,8 +11,8 @@ export default function Home() {
       <div className="space-y-3">
         <h1 className="text-5xl font-semibold tracking-tight">XFOLD</h1>
         <p className="max-w-lg text-lg text-zinc-400">
-          Monitor for the shirt press and fold cell. The sim is not wired up
-          yet — this page shows a static sample from{" "}
+          Monitor for the shirt press, ninja fold, and bag cell. The sim is
+          not wired up yet — this page shows a static sample from{" "}
           <code className="font-mono text-zinc-200">@xfold/protocol</code>.
         </p>
       </div>
@@ -30,9 +30,9 @@ export default function Home() {
           <dd className="mt-1 font-mono text-xl">{snapshot.flatness ?? "—"}</dd>
         </div>
         <div>
-          <dt className="text-xs text-zinc-500 uppercase">In box</dt>
+          <dt className="text-xs text-zinc-500 uppercase">In bag</dt>
           <dd className="mt-1 font-mono text-xl">
-            {snapshot.shirt_in_box ? "yes" : "no"}
+            {snapshot.shirt_in_bag ? "yes" : "no"}
           </dd>
         </div>
       </dl>
