@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { DashboardProvider } from "@/lib/dashboard-context";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,18 +14,19 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "XFOLD monitor",
-  description: "Live view of the shirt press and fold cell",
+  title: "XFOLD · Centro de control",
+  description:
+    "Monitor de la celda OpenArm: prensa, pliegue ninja y tolva a bolsa",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="en"
+      lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100">
-        {children}
+      <body className="min-h-full flex flex-col bg-canvas text-ink">
+        <DashboardProvider>{children}</DashboardProvider>
       </body>
     </html>
   );

@@ -10,7 +10,8 @@ tasks:
     script: |
       . ./scripts/pixi-path.sh
       eval "$(pixi shell-hook)"
-      python -m xfold.mock_cycle
+      # -P skips cwd on sys.path so the root stub xfold/ does not shadow src/sim
+      python -P -m xfold.mock_cycle
     options:
       cache: false
       runFromWorkspaceRoot: true
@@ -18,9 +19,9 @@ tasks:
     script: |
       . ./scripts/pixi-path.sh
       if [ "$(uname -s)" = Darwin ]; then
-        pixi run --environment mujoco mjpython -m xfold.view
+        pixi run --environment mujoco mjpython -P -m xfold.view
       else
-        pixi run --environment mujoco python -m xfold.view
+        pixi run --environment mujoco python -P -m xfold.view
       fi
     options:
       cache: false

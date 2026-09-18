@@ -1,0 +1,6 @@
+# Python >= 3.11
+mujoco>=3.2.0
+mujoco-menagerie
+mink
+numpy
+matplotlib
