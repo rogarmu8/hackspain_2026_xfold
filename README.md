@@ -96,17 +96,24 @@ Always from the repo root.
 | What | Command |
 |------|---------|
 | Dashboard at [localhost:3000](http://localhost:3000) | `moon run dashboard:dev` |
+| **Bridge** (journal + REST/SSE on :8765) | `moon run sim:bridge` |
 | **MuJoCo window (the actual scene)** | `moon run sim:view` |
-| Mock cell cycle (JSON lines) | `moon run sim:mock` |
+| Mock cell cycle (JSON lines to stdout) | `moon run sim:mock` |
 | Dashboard lint | `moon run dashboard:lint` |
 | Production dashboard build | `moon run dashboard:build` |
 | List projects / tasks | `moon query projects` · `moon query tasks` |
 
 On macOS, `sim:view` runs under `mjpython` (Cocoa main thread). Elsewhere it uses `python -m xfold.view`.
 
+**Live monitor:** start `sim:bridge`, then `dashboard:dev`. The UI probes `http://127.0.0.1:8765` (override with `NEXT_PUBLIC_XFOLD_BRIDGE_URL`). If the bridge is down, the dashboard keeps honest **fixtures**.
+
+- **Binding contract (teammates & agents):** [docs/INTEGRATION_CONTRACT.md](docs/INTEGRATION_CONTRACT.md)
+- Transport detail: [docs/BRIDGE.md](docs/BRIDGE.md) · OpenAPI: http://127.0.0.1:8765/docs
+
 ### What runs today
 
-- **Mock:** `PICK → SPREAD → PRESS → FOLD → CHUTE → BAG` — one JSON telemetry line per state (`shirt_in_bag`, same shape as `@xfold/protocol`).
+- **Bridge:** append-only run journal; mock FSM drives `PICK → … → BAG`; REST commands + SSE events for the control room.
+- **Mock CLI:** same cycle printed as JSON lines to stdout (`shirt_in_bag`, same shape as `@xfold/protocol`) — offline / piping.
 - **Viewer:** rigid stub in `src/sim/models/cell.xml` — bin, press bed + platen, chute, bag, and a blue shirt proxy that falls onto the press. No cloth mesh and no OpenArm yet.
 
 Build order for cloth + dual-arm: [SOLUTION.md §9](SOLUTION.md#9-build-order-hackathon).
@@ -114,8 +121,9 @@ Build order for cloth + dual-arm: [SOLUTION.md §9](SOLUTION.md#9-build-order-ha
 ## Who works where
 
 - **Sim / control** — `src/sim/src/xfold` and `src/sim/models`
+- **Bridge (sim↔UI)** — `src/sim/src/xfold/bridge` + [docs/BRIDGE.md](docs/BRIDGE.md)
 - **Monitor UI** — `src/dashboard/src`
-- **Contract** — `packages/protocol/src/index.ts` (keep the Python dataclass in sync)
+- **Contract** — `packages/protocol/src/index.ts` (keep the Python bridge schema in sync)
 
 **Cycle the cell must complete unattended:**
 

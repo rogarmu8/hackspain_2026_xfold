@@ -11,12 +11,11 @@ import { useDashboard } from "@/lib/dashboard-context";
 import type { FixtureScenario } from "@/lib/adapter";
 import { formatSeconds, stageLabel } from "@/lib/format";
 import Link from "next/link";
-import { PlusIcon } from "lucide-react";
-import { Button } from "./ui/button";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./ui/sheet";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { lifecycleLabel } from "@/lib/format";
+import { NewExperimentDialog } from "@/components/NewExperimentDialog";
 
 const SCENARIOS: { id: FixtureScenario; label: string }[] = [
   { id: "active", label: "Activo" },
@@ -27,8 +26,15 @@ const SCENARIOS: { id: FixtureScenario; label: string }[] = [
 ];
 
 export function ControlRoom() {
-  const { snapshot, scenario, pendingCommand, setScenario, requestCommand } =
-    useDashboard();
+  const {
+    snapshot,
+    scenario,
+    pendingCommand,
+    setScenario,
+    requestCommand,
+    source,
+    bridgeUrl,
+  } = useDashboard();
   const [selectedStage, setSelectedStage] = useState<CellState | null>(null);
   const stageTrigger = useRef<HTMLElement | null>(null);
 
@@ -53,7 +59,7 @@ export function ControlRoom() {
             provenance={snapshot.provenance}
             lastUpdatedIso={snapshot.lastUpdatedIso}
           />
-          <Button asChild><Link href="/experimentos/nuevo"><PlusIcon data-icon="inline-start" />Nuevo experimento</Link></Button>
+          <NewExperimentDialog />
         </>
       }
     >
@@ -116,8 +122,12 @@ export function ControlRoom() {
         </div>
       </div>
 
-      {snapshot.provenance === "fixture" || snapshot.provenance === "stale" ? (
-        <details className="mt-8 border-t border-divider pt-4"><summary className="cursor-pointer text-sm text-muted-foreground">Escenarios de demostración</summary>
+      {source === "live" ? (
+        <p className="mt-8 border-t border-divider pt-4 font-mono text-xs text-muted-foreground">
+          Fuente live · bridge {bridgeUrl} · journal + REST/SSE
+        </p>
+      ) : snapshot.provenance === "fixture" || snapshot.provenance === "stale" ? (
+        <details className="mt-8 border-t border-divider pt-4"><summary className="cursor-pointer text-sm text-muted-foreground">Escenarios de demostración (fixtures · bridge offline)</summary>
           <ToggleGroup type="single" value={scenario} onValueChange={(value) => { if (value) setScenario(value as FixtureScenario); }} variant="outline" className="mt-3 flex-wrap" aria-label="Escenario de demostración">
             {SCENARIOS.map(item => <ToggleGroupItem key={item.id} value={item.id}>{item.label}</ToggleGroupItem>)}
           </ToggleGroup>

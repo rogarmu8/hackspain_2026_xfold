@@ -15,6 +15,16 @@ tasks:
     options:
       cache: false
       runFromWorkspaceRoot: true
+  bridge:
+    script: |
+      . ./scripts/pixi-path.sh
+      eval "$(pixi shell-hook)"
+      python -P -m xfold.bridge
+    preset: server
+    options:
+      cache: false
+      persistent: true
+      runFromWorkspaceRoot: true
   view:
     script: |
       . ./scripts/pixi-path.sh

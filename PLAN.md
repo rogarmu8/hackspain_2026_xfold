@@ -25,6 +25,7 @@ Con 4 personas: fusionar **A+C** o **A+E**. Con 5: A solo el primer bloque y lue
 | Peel tip frame | D | frame MJCF + mink `FrameTask` tip; `suction(on: bool)` |
 | Flatness / grasp | E | `perceive.grasp_point()`, `perceive.flatness()`, `perceive.in_box()` |
 | FSM states | E | `PICK → PLACE → PRESS → DROP → FOLD → PACK → RESET` |
+| **Sim↔UI bus** | E (+UI) | **Contrato:** [`docs/INTEGRATION_CONTRACT.md`](docs/INTEGRATION_CONTRACT.md) — journal + REST/SSE; driver solo `runtime.emit_*` |
 
 Si cambia un nombre de joint/body/actuator: **PR + mención en TRACKING**, no silencio en Discord.
 
@@ -40,9 +41,9 @@ Si cambia un nombre de joint/body/actuator: **PR + mención en TRACKING**, no si
 
 1. Abrir **este** repo como root (no la home).
 2. Empezar en **Plan Mode** solo si tocas arquitectura; si no, Agent directo en tu track.
-3. Pegar en el chat: `Lee AGENTS.md + SOLUTION.md §9 y trabaja solo en <tu track>`.
+3. Pegar en el chat: `Lee AGENTS.md + SOLUTION.md §9 y trabaja solo en <tu track>`. Si tocas sim↔UI: `Lee docs/INTEGRATION_CONTRACT.md y no inventes otro bus`.
 4. Compartir avances con **shared transcript** o link de Cloud Agent cuando alguien se atasque.
-5. No inventar stack nuevo (Isaac, ROS, RL) sin acuerdo del equipo.
+5. No inventar stack nuevo (Isaac, ROS, RL, WebSocket/gRPC al browser) sin acuerdo del equipo + `TRACKING.md`.
 
 ## Ritmo de 3 días
 

@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Button } from "./ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "./ui/table";
 import { lifecycleLabel } from "@/lib/format";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
+import { NewExperimentDialog } from "@/components/NewExperimentDialog";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useDashboard } from "@/lib/dashboard-context";
 import { formatCount, formatIso, formatPercent } from "@/lib/format";
@@ -34,7 +34,7 @@ export function ExperimentsView() {
             provenance={snapshot.provenance}
             lastUpdatedIso={snapshot.lastUpdatedIso}
           />
-          <Button asChild variant="default"><Link href="/experimentos/nuevo">+ Nuevo experimento</Link></Button>
+          <NewExperimentDialog />
         </>
       }
     >
@@ -77,7 +77,7 @@ export function ExperimentsView() {
             experimentos; este listado usa el adaptador de ejemplo cuando está
             activo.
           </p>
-          <Button asChild variant="default"><Link href="/experimentos/nuevo">Nuevo experimento</Link></Button>
+          <NewExperimentDialog />
         </div>
       ) : (
         <div className="overflow-x-auto border border-divider bg-surface">
