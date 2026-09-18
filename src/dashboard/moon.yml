@@ -11,6 +11,7 @@ dependsOn:
 tasks:
   dev:
     script: |
+      . ./scripts/pixi-path.sh
       eval "$(pixi shell-hook)"
       cd src/dashboard
       npx next dev
@@ -21,6 +22,7 @@ tasks:
       runFromWorkspaceRoot: true
   build:
     script: |
+      . ./scripts/pixi-path.sh
       eval "$(pixi shell-hook)"
       cd src/dashboard
       npx next build
@@ -30,6 +32,7 @@ tasks:
       runFromWorkspaceRoot: true
   start:
     script: |
+      . ./scripts/pixi-path.sh
       eval "$(pixi shell-hook)"
       cd src/dashboard
       npx next start
@@ -40,6 +43,7 @@ tasks:
       runFromWorkspaceRoot: true
   lint:
     script: |
+      . ./scripts/pixi-path.sh
       eval "$(pixi shell-hook)"
       cd src/dashboard
       npx eslint .

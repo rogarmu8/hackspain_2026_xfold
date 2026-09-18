@@ -10,6 +10,7 @@ mujoco = ["mujoco>=3.2", "mujoco-menagerie", "mink"]
 
 [project.scripts]
 xfold-mock = "xfold.mock_cycle:main"
+xfold-view = "xfold.view:main"
 
 [build-system]
 requires = ["setuptools>=68"]

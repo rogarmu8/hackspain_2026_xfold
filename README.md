@@ -18,7 +18,7 @@ SOLUTION.md        Technical plan
 
 ## Install tools (once per machine)
 
-Install the two binaries, then **open a new terminal** (or `source ~/.zshrc`) so they are on `PATH`. After that, only moon.
+Install the two binaries. Moon runs in a non-interactive shell, so it will **not** see PATH changes from `~/.zshrc`. It looks for Pixi in `~/.pixi/bin` and Homebrew on its own. After installing, you can keep using moon immediately.
 
 ### macOS / Linux
 
@@ -76,7 +76,8 @@ Always from the repo root.
 | What | Command |
 |------|---------|
 | Dashboard at [localhost:3000](http://localhost:3000) | `moon run dashboard:dev` |
-| Mock cell cycle (JSON lines) | `moon run sim:mock` |
+| **MuJoCo window (the actual scene)** | `moon run sim:view` |
+| Mock cell cycle (JSON lines only) | `moon run sim:mock` |
 | Dashboard lint | `moon run dashboard:lint` |
 | Production dashboard build | `moon run dashboard:build` |
 | List projects / tasks | `moon query projects` · `moon query tasks` |
