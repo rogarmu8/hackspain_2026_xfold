@@ -1,5 +1,6 @@
-import { NewExperimentForm } from "@/components/NewExperimentForm";
+import { redirect } from "next/navigation";
 
+/** La creación de experimentos es un Dialog en Control / Experimentos. */
 export default function NewExperimentPage() {
-  return <NewExperimentForm />;
+  redirect("/experimentos");
 }

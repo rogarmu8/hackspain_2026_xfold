@@ -1,17 +1,20 @@
+import type { BridgeCapabilities } from "@xfold/protocol";
 import type { SimulatorCapabilities } from "./types";
 
 /**
- * Honest capabilities for the current monorepo.
- * The sim only exposes SAMPLE_TELEMETRY / mock JSON lines — no command bus,
- * no run store, no viewport stream.
+ * Honest offline defaults when the bridge is unreachable.
+ * Live capabilities come from GET /capabilities on the bridge.
  */
-export const LIVE_CAPABILITIES: SimulatorCapabilities = {
+export const OFFLINE_CAPABILITIES: SimulatorCapabilities = {
   liveTelemetry: false,
   viewportStream: false,
   startRun: false,
   startBatch: false,
   commands: {},
 };
+
+/** @deprecated use OFFLINE_CAPABILITIES — name kept for fixture adapter imports */
+export const LIVE_CAPABILITIES = OFFLINE_CAPABILITIES;
 
 /** Fixture adapter may demo command UX locally; still not a real sim API. */
 export const FIXTURE_CAPABILITIES: SimulatorCapabilities = {
@@ -28,3 +31,15 @@ export const FIXTURE_CAPABILITIES: SimulatorCapabilities = {
     cancel_batch: true,
   },
 };
+
+export function fromBridgeCapabilities(
+  caps: BridgeCapabilities,
+): SimulatorCapabilities {
+  return {
+    liveTelemetry: caps.liveTelemetry,
+    viewportStream: caps.viewportStream,
+    startRun: caps.startRun,
+    startBatch: caps.startBatch,
+    commands: { ...caps.commands },
+  };
+}

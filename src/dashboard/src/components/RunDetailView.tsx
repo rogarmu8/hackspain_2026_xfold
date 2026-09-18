@@ -5,6 +5,7 @@ import { Button } from "./ui/button";
 import { lifecycleLabel } from "@/lib/format";
 import { useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { NewExperimentDialog } from "@/components/NewExperimentDialog";
 import { StageStepper } from "@/components/StageStepper";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useDashboard } from "@/lib/dashboard-context";
@@ -62,7 +63,14 @@ export function RunDetailView({ runId }: { runId: string }) {
           >
             {lifecycleLabel(run.lifecycle)}
           </StatusBadge>
-          <Button asChild variant="default"><Link href="/experimentos/nuevo">Repetir configuración</Link></Button>
+          <NewExperimentDialog
+            defaults={{
+              mode: "individual",
+              name: run.name ?? undefined,
+              seed: run.seed,
+            }}
+            trigger={<Button type="button">Repetir configuración</Button>}
+          />
         </>
       }
     >

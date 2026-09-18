@@ -3,7 +3,7 @@ name = "xfold-sim"
 version = "0.1.0"
 description = "MuJoCo shirt press + fold cell"
 requires-python = ">=3.11"
-dependencies = ["numpy>=2.0"]
+dependencies = ["numpy>=2.0", "fastapi>=0.115", "uvicorn[standard]>=0.32", "pydantic>=2.0"]
 
 [project.optional-dependencies]
 mujoco = ["mujoco>=3.2", "mujoco-menagerie", "mink"]
@@ -11,6 +11,7 @@ mujoco = ["mujoco>=3.2", "mujoco-menagerie", "mink"]
 [project.scripts]
 xfold-mock = "xfold.mock_cycle:main"
 xfold-view = "xfold.view:main"
+xfold-bridge = "xfold.bridge.app:main"
 
 [build-system]
 requires = ["setuptools>=68"]

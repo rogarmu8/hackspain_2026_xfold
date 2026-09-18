@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   useTransition,
@@ -14,6 +15,7 @@ import {
   type FixtureScenario,
   type PendingCommand,
 } from "@/lib/adapter";
+import { BridgeClient, bridgeBaseUrl, probeBridge } from "@/lib/bridge-client";
 import type {
   BatchSummary,
   CommandKind,
@@ -24,7 +26,11 @@ import type {
   RunSummary,
 } from "@/lib/types";
 
+export type DataSource = "fixture" | "live";
+
 type DashboardContextValue = {
+  source: DataSource;
+  bridgeUrl: string;
   snapshot: ControlSnapshot;
   scenario: FixtureScenario;
   pendingCommand: PendingCommand | null;
@@ -34,7 +40,10 @@ type DashboardContextValue = {
   requestCommand: (kind: CommandKind, scopeLabel: string) => void;
   launch: (
     request: LaunchRequest,
-  ) => { ok: true; id: string } | { ok: false; reason: string };
+  ) =>
+    | { ok: true; id: string }
+    | { ok: false; reason: string }
+    | Promise<{ ok: true; id: string } | { ok: false; reason: string }>;
   getRun: (id: string) => RunDetail | null;
   getBatch: (id: string) => BatchSummary | null;
   refresh: () => void;
@@ -43,93 +52,180 @@ type DashboardContextValue = {
 const DashboardContext = createContext<DashboardContextValue | null>(null);
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
-  const adapter = useMemo(() => getAdapter(), []);
+  const fixture = useMemo(() => getAdapter(), []);
+  const [source, setSource] = useState<DataSource>("fixture");
+  const [bridge, setBridge] = useState<BridgeClient | null>(null);
   const [, startTransition] = useTransition();
   const [version, setVersion] = useState(0);
   const [scenario, setScenarioState] = useState<FixtureScenario>(
-    () => adapter.scenario,
+    () => fixture.scenario,
   );
   const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(
     null,
   );
 
+  const bump = useCallback(() => {
+    startTransition(() => setVersion((v) => v + 1));
+  }, [startTransition]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let client: BridgeClient | null = null;
+
+    async function connect() {
+      const url = bridgeBaseUrl();
+      const ok = await probeBridge(url);
+      if (cancelled) return;
+      if (!ok) {
+        setSource("fixture");
+        setBridge(null);
+        bump();
+        return;
+      }
+      client = new BridgeClient(url);
+      const started = await client.start();
+      if (cancelled) {
+        client.stop();
+        return;
+      }
+      if (!started) {
+        setSource("fixture");
+        setBridge(null);
+        bump();
+        return;
+      }
+      setBridge(client);
+      setSource("live");
+      client.subscribe(() => {
+        setPendingCommand(
+          client!.pendingCommandId && client!.pendingKind
+            ? {
+                kind: client!.pendingKind,
+                scopeLabel: client!.pendingKind,
+                requestedAtIso: new Date().toISOString(),
+              }
+            : null,
+        );
+        bump();
+      });
+      bump();
+    }
+
+    void connect();
+    return () => {
+      cancelled = true;
+      client?.stop();
+    };
+  }, [bump]);
+
   const refresh = useCallback(() => {
+    if (source === "live" && bridge) {
+      void bridge.refreshSnapshot().then(bump);
+      return;
+    }
     startTransition(() => {
-      setPendingCommand(adapter.pendingCommand);
-      setScenarioState(adapter.scenario);
+      setPendingCommand(fixture.pendingCommand);
+      setScenarioState(fixture.scenario);
       setVersion((v) => v + 1);
     });
-  }, [adapter, startTransition]);
+  }, [source, bridge, fixture, bump, startTransition]);
 
   const snapshot = useMemo(() => {
     void version;
-    return adapter.getControlSnapshot();
-  }, [adapter, version]);
+    if (source === "live" && bridge) return bridge.getControlSnapshot();
+    return fixture.getControlSnapshot();
+  }, [source, bridge, fixture, version]);
 
   const experiments = useMemo(() => {
     void version;
-    return adapter.listExperiments();
-  }, [adapter, version]);
+    if (source === "live" && bridge) return bridge.listExperiments();
+    return fixture.listExperiments();
+  }, [source, bridge, fixture, version]);
 
   const history = useMemo(() => {
     void version;
-    return adapter.listHistory();
-  }, [adapter, version]);
+    if (source === "live" && bridge) return bridge.listHistory();
+    return fixture.listHistory();
+  }, [source, bridge, fixture, version]);
 
   const setScenario = useCallback(
     (next: FixtureScenario) => {
-      adapter.setScenario(next);
+      if (source === "live") return; // fixture knobs disabled while live
+      fixture.setScenario(next);
       setScenarioState(next);
       setPendingCommand(null);
       setVersion((v) => v + 1);
     },
-    [adapter],
+    [fixture, source],
   );
 
   const requestCommand = useCallback(
     (kind: CommandKind, scopeLabel: string) => {
-      const pending = adapter.requestCommand(kind, scopeLabel);
+      if (source === "live" && bridge) {
+        const runId = bridge.getControlSnapshot().activeRun?.id ?? null;
+        const batchId = bridge.getControlSnapshot().activeBatch?.id ?? null;
+        setPendingCommand({
+          kind,
+          scopeLabel,
+          requestedAtIso: new Date().toISOString(),
+        });
+        void bridge.requestCommand(kind, runId, batchId).then(() => {
+          setPendingCommand(null);
+          bump();
+        });
+        return;
+      }
+      const pending = fixture.requestCommand(kind, scopeLabel);
       setPendingCommand(pending);
       setVersion((v) => v + 1);
       if (!pending) return;
-      // Fixture-only demo confirmation — not a real simulator bus.
       window.setTimeout(() => {
-        adapter.confirmPendingCommand();
+        fixture.confirmPendingCommand();
         setPendingCommand(null);
         setVersion((v) => v + 1);
       }, 700);
     },
-    [adapter],
+    [source, bridge, fixture, bump],
   );
 
   const launch = useCallback(
     (request: LaunchRequest) => {
-      const result = adapter.launch(request);
-      setScenarioState(adapter.scenario);
+      if (source === "live" && bridge) {
+        return bridge.launch(request).then((result) => {
+          bump();
+          return result;
+        });
+      }
+      const result = fixture.launch(request);
+      setScenarioState(fixture.scenario);
       setVersion((v) => v + 1);
       return result;
     },
-    [adapter],
+    [source, bridge, fixture, bump],
   );
 
   const getRun = useCallback(
     (id: string) => {
       void version;
-      return adapter.getRun(id);
+      if (source === "live" && bridge) return bridge.getRun(id);
+      return fixture.getRun(id);
     },
-    [adapter, version],
+    [source, bridge, fixture, version],
   );
 
   const getBatch = useCallback(
     (id: string) => {
       void version;
-      return adapter.getBatch(id);
+      if (source === "live" && bridge) return bridge.getBatch(id);
+      return fixture.getBatch(id);
     },
-    [adapter, version],
+    [source, bridge, fixture, version],
   );
 
   const value = useMemo(
     () => ({
+      source,
+      bridgeUrl: bridgeBaseUrl(),
       snapshot,
       scenario,
       pendingCommand,
@@ -143,6 +239,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       refresh,
     }),
     [
+      source,
       snapshot,
       scenario,
       pendingCommand,

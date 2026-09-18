@@ -47,8 +47,10 @@ export function ConnectionBadge({
   if (connection === "connected") {
     return (
       <StatusBadge tone="active" icon={<Dot className="bg-active" />}>
-        Simulador conectado
-        <span className="font-normal">· OpenArm v2</span>
+        {provenance === "live" ? "Bridge conectado" : "Simulador conectado"}
+        <span className="font-normal">
+          {provenance === "live" ? "· journal live" : "· OpenArm v2"}
+        </span>
       </StatusBadge>
     );
   }

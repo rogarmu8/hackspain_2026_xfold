@@ -38,4 +38,5 @@ Leyenda: ⬜ todo · 🟡 en curso · ✅ hecho · ⛔ bloqueado
 
 | Cuándo | Decisión | Quién |
 |--------|----------|-------|
+| 2026-09-19 | Bus sim↔UI = **journal + REST/SSE** (no WS/gRPC al browser). Contrato vinculante: `docs/INTEGRATION_CONTRACT.md`. Detalle: `docs/BRIDGE.md`. | equipo |
 | | | |
