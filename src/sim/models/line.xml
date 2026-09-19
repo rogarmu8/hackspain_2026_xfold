@@ -117,6 +117,34 @@
     <camera name="bagger_cam" pos="0.75 -1.10 1.45" mode="targetbody" target="bagger_center"/>
 
     <!--
+      QC station, just downstream of the press (the press frame sits around
+      x = -1.0, so nothing of it hangs over this spot). The belt stops the
+      pressed shirt here, the flash fires and `qc_cam` takes the product shot
+      straight down. 1.0 m above the belt at fovy 52 covers ~0.98 m, so the
+      0.91 m sleeve span fills the frame with a margin.
+      xyaxes points the camera's -z at the belt, collar up: right = -y, up = +x.
+
+      Nothing of the rig may sit in that frustum. The frustum's half-width is
+      0.577 at the belt and shrinks to ~0.06 just under the camera, so the
+      gantry runs ABOVE the camera eye (z > 1.562) and the two flash heads
+      hang off to the sides at |y| = 0.42, where the cone is only 0.14 wide.
+    -->
+    <camera name="qc_cam" pos="-0.20 0 1.562" xyaxes="0 -1 0 1 0 0" fovy="52"/>
+    <light name="qc_flash_l" pos="-0.20 0.42 1.30" dir="0 -0.47 -0.88" diffuse="0 0 0" specular="0 0 0" cutoff="70" exponent="2"/>
+    <light name="qc_flash_r" pos="-0.20 -0.42 1.30" dir="0 0.47 -0.88" diffuse="0 0 0" specular="0 0 0" cutoff="70" exponent="2"/>
+    <body name="qc_rig" pos="-0.20 0 0">
+      <geom name="qc_post" class="deco" type="cylinder" size="0.022 0.55" pos="0 0.66 1.05" material="steel"/>
+      <geom name="qc_arm" class="deco" type="box" size="0.018 0.58 0.018" pos="0 0.08 1.62" material="steel"/>
+      <geom name="qc_head" class="deco" type="box" size="0.05 0.05 0.035" pos="0 0 1.60" material="steel"/>
+      <geom name="qc_drop_l" class="deco" type="cylinder" size="0.012 0.14" pos="0 0.42 1.46" material="steel"/>
+      <geom name="qc_drop_r" class="deco" type="cylinder" size="0.012 0.14" pos="0 -0.42 1.46" material="steel"/>
+      <geom name="qc_lamp_l" class="deco" type="box" size="0.05 0.035 0.022" pos="0 0.42 1.31" material="steel"/>
+      <geom name="qc_lamp_r" class="deco" type="box" size="0.05 0.035 0.022" pos="0 -0.42 1.31" material="steel"/>
+      <geom name="qc_bulb_l" class="deco" type="box" size="0.044 0.029 0.005" pos="0 0.42 1.286" rgba="0.5 0.5 0.55 1"/>
+      <geom name="qc_bulb_r" class="deco" type="box" size="0.044 0.029 0.005" pos="0 -0.42 1.286" rgba="0.5 0.5 0.55 1"/>
+    </body>
+
+    <!--
       Infeed belt, x = -2.00 .. 0.30, 0.97 m wide so the sleeves (0.91 m)
       lie flat on it. Only the top face touches cloth; the belt's motion is
       applied to the cloth in xfold.line. Slats are visual and slide along

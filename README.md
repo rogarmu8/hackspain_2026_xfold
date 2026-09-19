@@ -129,6 +129,27 @@ The bridge takes the same inputs from the environment, since swapping SKU means
 recompiling the model: `XFOLD_GARMENT=tee_damaged XFOLD_SKEWED=1 moon run
 sim:bridge`. Each run's first console line says which input it got.
 
+### Product shot → try-on
+
+Just past the press the belt stops the garment, the line's lights dip and a
+flash fires: `qc_cam` takes a square top-down product shot. It lands in
+`data/photos/{run}.jpg`, the bridge serves it at `GET /runs/{id}/photo`, and the
+run view shows it under **Foto de producto** — the hole in a `_damaged` tee or
+the stain on a `_notgood` one is plainly visible.
+
+**Generar look con modelo** sends that shot to [fal.ai](https://fal.ai) and
+shows the garment on a model beside it. The call runs server-side so the key
+never reaches the browser:
+
+```bash
+cp src/dashboard/.env.example src/dashboard/.env.local
+# put your fal.ai key in FAL_KEY, then restart the dashboard
+```
+
+Without `FAL_KEY` the rest of the dashboard is unaffected — the button just
+reports that the key is missing. `FAL_MODEL` (default
+`fal-ai/nano-banana/edit`), `FAL_PROMPT` and `FAL_BASE_URL` override the call.
+
 **Live monitor:** `moon run pack` starts bridge + dashboard together. The UI probes `http://127.0.0.1:8765` (override with `NEXT_PUBLIC_XFOLD_BRIDGE_URL`). If the bridge is down, the dashboard keeps honest **fixtures**.
 
 - **Binding contract (teammates & agents):** [docs/INTEGRATION_CONTRACT.md](docs/INTEGRATION_CONTRACT.md)

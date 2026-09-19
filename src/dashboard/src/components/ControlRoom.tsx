@@ -5,6 +5,7 @@ import type { CellState } from "@xfold/protocol";
 import { AppShell } from "@/components/AppShell";
 import { BatchContextPanel } from "@/components/BatchContextPanel";
 import { ConsolePanel } from "@/components/ConsolePanel";
+import { ProductShotPanel } from "@/components/ProductShotPanel";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
 import { RunSummaryPanel } from "@/components/RunSummaryPanel";
 import { SimulationViewport } from "@/components/SimulationViewport";
@@ -269,6 +270,7 @@ export function ControlRoom({ runId }: { runId: string }) {
               />
             )}
           </div>
+          {run?.hasPhoto ? <ProductShotPanel key={run.id} run={run} /> : null}
           <ConsolePanel
             lines={consoleRows}
             running={run?.lifecycle === "running"}
