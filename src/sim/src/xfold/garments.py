@@ -55,6 +55,17 @@ for _key, _label, _mesh, _tex, _style in _PRISTINE:
         )
 GARMENT_KEYS = tuple(CATALOG)
 
+# Operator-facing axes (CLI picker + dashboard launch). SKU keys in CATALOG
+# are the cartesian product of these plus stain 1–3.
+CLOTH_TYPE_KEYS = tuple(k for k, *_ in _PRISTINE)
+CLOTH_CONDITION_KEYS = ("good", "damaged", "notgood", "skewed")
+CLOTH_CONDITION_LABELS = {
+    "good": "clean, square on the belt",
+    "damaged": "hole / torn hem",
+    "notgood": "stain (random 1–3)",
+    "skewed": "any heading on the belt (arms square it)",
+}
+
 
 def base_garment(name: str) -> Garment:
     """Clean SKU behind a torn / stained twin."""
@@ -100,6 +111,83 @@ def format_catalog() -> str:
     for i, item in enumerate(CATALOG.values(), start=1):
         lines.append(f"{i:>2}  {item.key:<22} {item.label}")
     return "\n".join(lines)
+
+
+def public_catalog() -> dict[str, list[dict[str, str]]]:
+    """Wire shape for GET /capabilities (dashboard launch form)."""
+    return {
+        "clothTypes": [{"key": k, "label": lab} for k, lab, *_ in _PRISTINE],
+        "clothConditions": [
+            {"key": k, "label": CLOTH_CONDITION_LABELS[k]} for k in CLOTH_CONDITION_KEYS
+        ],
+    }
+
+
+def compose_pick(cloth: str, condition: str, rng) -> GarmentPick:
+    """Map a cloth type + condition onto a catalogue SKU (and pose flag)."""
+    import random as _random
+
+    base = base_garment(cloth).key
+    if base not in CLOTH_TYPE_KEYS:
+        raise ValueError(f"unknown cloth type {cloth!r}")
+    cond = (condition or "good").strip().lower()
+    if cond not in CLOTH_CONDITION_KEYS:
+        raise ValueError(
+            f"unknown condition {condition!r}; choose one of: {', '.join(CLOTH_CONDITION_KEYS)}"
+        )
+    if cond == "damaged":
+        return GarmentPick(f"{base}_damaged", skewed=False)
+    if cond == "notgood":
+        n = rng.randint(1, 3) if hasattr(rng, "randint") else _random.Random().randint(1, 3)
+        return GarmentPick(f"{base}_notgood{n}", skewed=False)
+    if cond == "skewed":
+        return GarmentPick(base, skewed=True)
+    return GarmentPick(base, skewed=False)
+
+
+def _mix_choice(mix: str, values: list[str], universe: tuple[str, ...], rng) -> str:
+    allowed = set(universe)
+    cleaned = [v for v in values if v in allowed]
+    if values and not cleaned:
+        raise ValueError(
+            f"unknown value {values!r}; choose from: {', '.join(universe)}"
+        )
+    if mix == "same":
+        pool = cleaned or list(universe)
+        return pool[0]
+    pool = cleaned or list(universe)
+    return pool[rng.randrange(len(pool))]
+
+
+def resolve_launch(
+    *,
+    cloth_mix: str = "same",
+    cloth_types: list[str] | None = None,
+    condition_mix: str = "same",
+    conditions: list[str] | None = None,
+    seed: int = 0,
+    index: int = 0,
+) -> tuple[GarmentPick, str, str]:
+    """Pick one SKU for a run (or batch member). Returns pick, cloth type, condition."""
+    import random
+
+    cloth_mix = cloth_mix if cloth_mix in {"same", "random", "list"} else "same"
+    condition_mix = (
+        condition_mix if condition_mix in {"same", "random", "list"} else "same"
+    )
+    types = list(cloth_types or [])
+    conds = list(conditions or [])
+    cloth_seed = int(seed) & 0xFFFFFFFF
+    cond_seed = (int(seed) * 17 + 1) & 0xFFFFFFFF
+    if cloth_mix != "same":
+        cloth_seed = (cloth_seed + index + 1) & 0xFFFFFFFF
+    if condition_mix != "same":
+        cond_seed = (cond_seed + index + 1) & 0xFFFFFFFF
+    cloth_rng = random.Random(cloth_seed)
+    cond_rng = random.Random(cond_seed)
+    cloth = _mix_choice(cloth_mix, types, CLOTH_TYPE_KEYS, cloth_rng)
+    cond = _mix_choice(condition_mix, conds, CLOTH_CONDITION_KEYS, cond_rng)
+    return compose_pick(cloth, cond, cond_rng), cloth, cond
 
 
 @dataclass(frozen=True)

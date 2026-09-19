@@ -58,6 +58,11 @@ CellState = Literal["PICK", "SPREAD", "PRESS", "FOLD", "CHUTE", "BAG", "RESET"]
 BRIDGE_VERSION = "0.1.0"
 
 
+class CatalogOption(BaseModel):
+    key: str
+    label: str
+
+
 class BridgeCapabilities(BaseModel):
     liveTelemetry: bool = True
     viewportStream: bool = False
@@ -74,6 +79,8 @@ class BridgeCapabilities(BaseModel):
             "cancel_batch": True,
         }
     )
+    clothTypes: list[CatalogOption] = Field(default_factory=list)
+    clothConditions: list[CatalogOption] = Field(default_factory=list)
 
 
 class CommandRequest(BaseModel):
@@ -87,6 +94,8 @@ class LaunchRunRequest(BaseModel):
     name: str = ""
     seed: int = 0
     scenario: str = "mock"
+    clothType: str = "tee"
+    clothCondition: str = "good"
 
 
 class LaunchBatchRequest(BaseModel):
@@ -95,6 +104,10 @@ class LaunchBatchRequest(BaseModel):
     baseSeed: int = 0
     seedStrategy: Literal["sequential"] = "sequential"
     scenario: str = "mock"
+    clothMix: Literal["same", "random", "list"] = "same"
+    clothTypes: list[str] = Field(default_factory=lambda: ["tee"])
+    conditionMix: Literal["same", "random", "list"] = "same"
+    conditions: list[str] = Field(default_factory=lambda: ["good"])
 
 
 class HealthResponse(BaseModel):

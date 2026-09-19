@@ -49,10 +49,12 @@ dashboard shows it. The dip is not decoration: the overview lighting blows a
 white garment to flat white from 1 m up, taking the print and any stain with
 it. The image is a file, never a journal event — same rule as the viewport.
 
-The line's input garment is fixed when the scene compiles, because a different
-SKU is a different mesh: `XFOLD_GARMENT` (or `[garment] type` in
-`models/shirt.toml`) chooses it, and `XFOLD_SKEWED=1` drops it off square.
-`LineDriver` logs which input a cycle got as its first console line.
+The line's input garment is chosen at **launch**, not only at process start.
+`POST /runs` and `POST /batches` carry cloth type + condition; `LineDriver`
+calls `select_garment` and rebuilds the shared `SimSession` when the SKU mesh
+or texture changes. Pose-only `skewed` does not rebuild. `GET /capabilities`
+lists `clothTypes` and `clothConditions` for the dashboard form. `XFOLD_GARMENT`
+and `[garment] type` in `shirt.toml` remain the compile-time default.
 ## Why this shape (and not WS / gRPC)
 
 | Need | Choice |
@@ -91,7 +93,7 @@ keeps using local **fixtures** (honest `provenance: "fixture"`).
 curl -s http://127.0.0.1:8765/health
 curl -s -X POST http://127.0.0.1:8765/runs \
   -H 'content-type: application/json' \
-  -d '{"name":"demo","seed":1,"scenario":"mock"}'
+  -d '{"name":"demo","seed":1,"scenario":"mock","clothType":"tee","clothCondition":"good"}'
 curl -sN 'http://127.0.0.1:8765/events/stream?after_seq=0'
 ```
 
