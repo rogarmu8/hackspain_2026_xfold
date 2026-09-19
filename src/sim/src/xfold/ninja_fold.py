@@ -33,7 +33,9 @@ RELEASE = 0.4
 FOLD_ANGLE = np.pi
 # Extra clearance at mid-flip so the panel does not scrape the sheet.
 CLEAR = 0.03
-LAYER = THICKNESS
+# Vertical pitch between stacked thirds. Matches ClothLayers' 2×thickness
+# gap so the second sleeve lands *on* the first instead of through it.
+PITCH = 2.0 * THICKNESS
 FOLD_ITERS = 80
 # After the claws let go the packet still holds crease spring. Bleed
 # that velocity so the shirt does not crawl around on its own.
@@ -75,18 +77,19 @@ class _Phase:
     hinge: str  # "left" | "right" | "hem"
     sign: float
     amount: float
+    layers: int = 1
     fade: bool = False
 
 
 # Two claws on the moving panel, hinge on the crease they flip over.
 _PHASES = (
-    _Phase("left third → centre", FLIP, ("left_panel_mid", "left_panel_hem"), "left", 1.0, 1.0),
-    _Phase("pause", HOLD, ("left_panel_mid", "left_panel_hem"), "left", 1.0, 1.0),
-    _Phase("right third → centre", FLIP, ("right_panel_mid", "right_panel_hem"), "right", -1.0, 1.0),
-    _Phase("pause", HOLD, ("right_panel_mid", "right_panel_hem"), "right", -1.0, 1.0),
-    _Phase("hem → collar", HEM, ("hem_centre", "hem_second"), "hem", 1.0, 1.0),
-    _Phase("settle", HOLD, ("hem_centre", "hem_second"), "hem", 1.0, 1.0),
-    _Phase("release", RELEASE, ("hem_centre", "hem_second"), "hem", 1.0, 1.0, fade=True),
+    _Phase("left third → centre", FLIP, ("left_panel_mid", "left_panel_hem"), "left", 1.0, 1.0, 1),
+    _Phase("pause", HOLD, ("left_panel_mid", "left_panel_hem"), "left", 1.0, 1.0, 1),
+    _Phase("right third → centre", FLIP, ("right_panel_mid", "right_panel_hem"), "right", -1.0, 1.0, 2),
+    _Phase("pause", HOLD, ("right_panel_mid", "right_panel_hem"), "right", -1.0, 1.0, 2),
+    _Phase("hem → collar", HEM, ("hem_centre", "hem_second"), "hem", 1.0, 1.0, 3),
+    _Phase("settle", HOLD, ("hem_centre", "hem_second"), "hem", 1.0, 1.0, 3),
+    _Phase("release", RELEASE, ("hem_centre", "hem_second"), "hem", 1.0, 1.0, 3, fade=True),
 )
 
 
@@ -201,15 +204,16 @@ class NinjaFoldDemo:
             amount = u * phase.amount if phase.amount and not phase.fade else phase.amount
 
         claw_idx = [self._ids[name] for name in phase.claws]
-        targets = self._claw_targets(claw_idx, phase.hinge, phase.sign, amount)
+        targets = self._claw_targets(claw_idx, phase.hinge, phase.sign, amount, phase.layers)
         d_amount = (amount - self._amount) / dt if dt > 1e-9 else 0.0
         self._amount = amount
         if phase.fade:
             self._claws.release()
             self.hands = []
-            self._drive_panel(phase.hinge, phase.sign, 1.0, 0.0)
+            self._drive_panel(phase.hinge, phase.sign, 1.0, 0.0, phase.layers)
         else:
-            self._drive_panel(phase.hinge, phase.sign, amount, d_amount)
+            self._drive_panel(phase.hinge, phase.sign, amount, d_amount, phase.layers)
+            self._hold_stationary(phase.hinge)
             mujoco.mj_forward(self._model, self._data)
             bodies = [int(self._vert_body[i]) for i in claw_idx]
             self._claws.attach_pair(bodies, targets)
@@ -232,8 +236,34 @@ class NinjaFoldDemo:
                 flush=True,
             )
 
+    def _lift(self, folded: np.ndarray, amount: float, layers: int, th: float) -> np.ndarray:
+        """Arc over the packet. Add a stack offset — do not clamp, so a
+        double layer (first sleeve sitting on the second) stays a stack
+        when it flips."""
+        arc = CLEAR + 0.6 * PITCH * max(int(layers) - 1, 0)
+        folded = folded.copy()
+        folded[:, 2] += arc * np.sin(abs(th))
+        folded[:, 2] += PITCH * float(layers) * amount
+        folded[:, 2] = np.maximum(folded[:, 2], self._z0)
+        return folded
+
+    def _moving_mask(self, hinge: str) -> np.ndarray:
+        """Verts currently on the moving side of the crease.
+
+        After the left fold the first sleeve lies on the right third.
+        Masking in the *current* pose (not rest) picks that overlay up
+        with the second sleeve instead of driving through it.
+        """
+        assert self._p_phase is not None
+        p = self._p_phase
+        if hinge == "hem":
+            return p[:, 1] < self._hinges["hem"] - 0.008
+        if hinge == "left":
+            return p[:, 0] < self._hinges["left"] - 0.008
+        return p[:, 0] > self._hinges["right"] + 0.008
+
     def _claw_targets(
-        self, claw_idx: list[int], hinge: str, sign: float, amount: float
+        self, claw_idx: list[int], hinge: str, sign: float, amount: float, layers: int
     ) -> list[np.ndarray]:
         assert self._p_phase is not None
         pts = self._p_phase[np.asarray(claw_idx)].copy()
@@ -243,37 +273,32 @@ class NinjaFoldDemo:
             folded = _rotate_x(pts, self._hinges["hem"], z, abs(th))
         else:
             folded = _rotate_y(pts, self._hinges[hinge], z, th)
-        folded[:, 2] += CLEAR * np.sin(abs(th))
-        folded[:, 2] = np.maximum(folded[:, 2], z + LAYER * amount)
+        folded = self._lift(folded, amount, layers, th)
         return [folded[i] for i in range(len(claw_idx))]
 
-    def _drive_panel(self, hinge: str, sign: float, amount: float, d_amount: float) -> None:
+    def _drive_panel(
+        self, hinge: str, sign: float, amount: float, d_amount: float, layers: int
+    ) -> None:
         """Snap the moving half of the sheet onto the hinge isometry."""
-        assert self._p0 is not None and self._p_phase is not None
-        rest = self._p0
+        assert self._p_phase is not None
         p = self._p_phase
         z = self._z0
         th = amount * sign * FOLD_ANGLE
         omega = d_amount * sign * FOLD_ANGLE
         if hinge == "hem":
             folded = _rotate_x(p, self._hinges["hem"], z, abs(th))
-            mask = rest[:, 1] < self._rest_hinges["hem"] - 0.008
             omega_abs = abs(omega)
         elif hinge == "left":
             folded = _rotate_y(p, self._hinges["left"], z, th)
-            mask = rest[:, 0] < self._rest_hinges["left"] - 0.008
             omega_abs = omega
         else:
             folded = _rotate_y(p, self._hinges["right"], z, th)
-            mask = rest[:, 0] > self._rest_hinges["right"] + 0.008
             omega_abs = omega
-        folded[:, 2] += CLEAR * np.sin(abs(th))
-        folded[:, 2] = np.maximum(folded[:, 2], z + LAYER * amount)
-        ids = np.flatnonzero(mask)
+        folded = self._lift(folded, amount, layers, th)
+        ids = np.flatnonzero(self._moving_mask(hinge))
         if ids.size == 0:
             return
         dest = folded[ids]
-        # Tangent velocity of the hinge so mj_step does not drop the panel.
         if hinge == "hem":
             rx = dest[:, 1] - self._hinges["hem"]
             rz = dest[:, 2] - z
@@ -287,6 +312,15 @@ class NinjaFoldDemo:
             vel[:, 0] = omega_abs * rz
             vel[:, 2] = -omega_abs * rx
         pin_bodies(self._model, self._data, self._vert_body[ids], dest, vel)
+
+    def _hold_stationary(self, hinge: str) -> None:
+        """Pin everything not flipping so the packet cannot fall through."""
+        assert self._p_phase is not None
+        ids = np.flatnonzero(~self._moving_mask(hinge))
+        if ids.size == 0:
+            return
+        dest = self._p_phase[ids]
+        pin_bodies(self._model, self._data, self._vert_body[ids], dest, np.zeros_like(dest))
 
 
 def button_body_id(model) -> int:

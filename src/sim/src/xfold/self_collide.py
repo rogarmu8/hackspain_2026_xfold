@@ -25,16 +25,19 @@ import numpy as np
 THICKNESS = 0.010
 # Rest-pose pairs closer than this × edge length are the mesh, not two layers.
 REST_EXCLUDE = 1.55
-ITERATIONS = 3
-FRICTION = 0.25
+ITERATIONS = 6
+FRICTION = 0.35
 
 
 class ClothLayers:
     """Project folded layers apart after each mj_step."""
 
     def __init__(self, model, data, thickness: float = THICKNESS):
+        import mujoco
+
         self._model = model
         self._data = data
+        mujoco.mj_forward(model, data)
         bodies = np.asarray(model.flex_vertbodyid, dtype=np.int64)
         self._qadr = np.array(
             [int(model.jnt_qposadr[int(model.body_jntadr[b])]) for b in bodies],
@@ -87,11 +90,28 @@ class ClothLayers:
                 break
             ii, jj, dist = ii[keep], jj[keep], dist[keep]
             n_hit = int(ii.size)
-            nrm = (pos[ii] - pos[jj]) / dist[:, None]
-            push = (0.5 * (self._sep - dist))[:, None] * nrm
+            # Always stack in world Z and keep the current order (higher stays
+            # up). Rest-pose "right above left" is wrong after only the first
+            # fold: that sleeve is sitting *on* the still-flat other sleeve.
+            zi = pos[ii, 2]
+            zj = pos[jj, 2]
+            nrm = np.zeros((n_hit, 3), dtype=np.float64)
+            nrm[:, 2] = np.where(zi >= zj, 1.0, -1.0)
+            gap = (self._sep - dist)[:, None]
+            push_i = 0.5 * gap * nrm
+            push_j = -0.5 * gap * nrm
+            # The sheet on the floor cannot go down; lift the upper layer fully.
+            lo_i = (zi < zj) & (zi <= self._floor + 1e-4)
+            lo_j = (zj < zi) & (zj <= self._floor + 1e-4)
+            if np.any(lo_i):
+                push_i[lo_i] = 0.0
+                push_j[lo_i] = -gap[lo_i] * nrm[lo_i]
+            if np.any(lo_j):
+                push_j[lo_j] = 0.0
+                push_i[lo_j] = gap[lo_j] * nrm[lo_j]
             corr = np.zeros_like(pos)
-            np.add.at(corr, ii, push)
-            np.add.at(corr, jj, -push)
+            np.add.at(corr, ii, push_i)
+            np.add.at(corr, jj, push_j)
             pos += corr
             if vel is None:
                 vel = self._read_vel()

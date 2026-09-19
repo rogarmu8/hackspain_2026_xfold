@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from xfold.claws import add_claw_bodies
+from xfold.generate_shirt_mesh import LEFT_CREASE_X, RIGHT_CREASE_X
 
 MODELS_DIR = Path(__file__).resolve().parents[2] / "models"
 DEFAULT_CONFIG = MODELS_DIR / "shirt.toml"
@@ -135,7 +136,7 @@ def apply_shirt_config(spec, cfg: ShirtConfig | None = None):
     _add_vertex_spheres(spec, cfg)
     add_claw_bodies(spec)
     nvert = max(len(bodies), 1)
-    spec.nconmax = max(int(spec.nconmax or 0), nvert + 512)
+    spec.nconmax = max(int(spec.nconmax or 0), 2 * nvert + 512)
 
 
 def _ensure_edge_equality(spec, flex_name: str) -> None:
@@ -156,15 +157,16 @@ def _ensure_edge_equality(spec, flex_name: str) -> None:
 
 
 def _add_vertex_spheres(spec, cfg: ShirtConfig) -> int:
-    """One collision sphere per flex vertex — each is its own floor pair.
+    """One collision sphere per flex vertex.
 
-    Spheres use contype=2 / conaffinity=1 so they hit the world (floor,
-    press, arms) and *not* each other. After a ninja fold the thirds
-    stack; sphere-sphere contacts were pumping random motion into a
-    shirt that no claw was touching.
+    Same-panel spheres do not hit each other (that jittered the packet).
+    Different thirds *do*: left ↔ right ↔ body, plus the floor. That is
+    the sleeve-on-sleeve contact the ninja fold needs when a claw lets go.
     """
     import mujoco
 
+    # Floor is bit 1. Left / right / centre are 2 / 4 / 8.
+    floor = 1
     added = 0
     for body in spec.bodies:
         name = str(getattr(body, "name", "") or "")
@@ -173,16 +175,21 @@ def _add_vertex_spheres(spec, cfg: ShirtConfig) -> int:
         geoms = list(getattr(body, "geoms", []))
         if any(int(getattr(g, "type", -1)) == int(mujoco.mjtGeom.mjGEOM_SPHERE) for g in geoms):
             continue
+        x = float(np.asarray(body.pos)[0])
+        if x < LEFT_CREASE_X + 0.008:
+            contype, others = 2, 4 | 8
+        elif x > RIGHT_CREASE_X - 0.008:
+            contype, others = 4, 2 | 8
+        else:
+            contype, others = 8, 2 | 4
         geom = body.add_geom()
         geom.type = mujoco.mjtGeom.mjGEOM_SPHERE
         geom.size = np.array([cfg.radius, 0.0, 0.0], dtype=np.float64)
-        # World is contype=1, conaffinity=1. (2&1)|(1&1) hits the floor;
-        # (2&1)|(2&1) does not hit another shirt sphere.
-        geom.contype = 2
-        geom.conaffinity = 1
+        geom.contype = contype
+        geom.conaffinity = floor | others
         geom.condim = 3
         geom.friction = np.array([cfg.friction, 0.005, 0.0001], dtype=np.float64)
-        geom.solref = np.array([0.008, 1.0], dtype=np.float64)
+        geom.solref = np.array([0.01, 1.0], dtype=np.float64)
         geom.density = 0.0
         geom.mass = 0.0
         geom.group = 3
