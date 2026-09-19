@@ -1,0 +1,74 @@
+<!--
+  Loading cell: infeed crate and press rig. The UR5e, its two-finger hand,
+  and the wrist camera that checks placement are attached at runtime by
+  xfold.scene, because the robot models ship with Menagerie.
+
+  The elliptic friction cone and impratio of 10 come from Menagerie's own
+  gripper scenes: a pinch grasp slips under the default pyramidal cone.
+-->
+<mujoco model="xfold-press-cell">
+  <compiler angle="radian" autolimits="true"/>
+  <!-- Shirt.xml is included before the joint default: cloth vertices must
+       not inherit armature/damping, which read as slow-motion drag. CG is
+       ~2x faster than Newton on this equality-heavy flex. -->
+  <include file="shirt.xml"/>
+  <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast"
+          solver="CG" cone="elliptic" impratio="10"/>
+
+  <visual>
+    <headlight diffuse="0.55 0.55 0.55" ambient="0.25 0.22 0.2"/>
+    <rgba haze="0.15 0.15 0.16 1"/>
+    <global offwidth="1280" offheight="960"/>
+  </visual>
+
+  <default>
+    <geom condim="3" friction="0.8 0.02 0.001"/>
+    <position ctrllimited="true" dampratio="1.5"/>
+  </default>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.16 0.16 0.18" rgb2="0.22 0.22 0.24" width="256" height="256"/>
+    <material name="floor" texture="grid" texrepeat="6 6" reflectance="0.05"/>
+    <material name="crate" rgba="0.42 0.33 0.24 1"/>
+  </asset>
+
+  <include file="press_rig.xml"/>
+
+  <worldbody>
+    <light name="key" pos="0.2 -0.6 1.8" dir="0 0.3 -1" diffuse="0.8 0.75 0.7"/>
+    <light name="fill" pos="-0.4 0.5 1.4" dir="0.2 -0.2 -1" diffuse="0.4 0.45 0.5"/>
+    <light name="bed_light" pos="0.45 0 1.15" dir="-0.5 0 -1" diffuse="0.35 0.35 0.38"/>
+    <geom name="floor" type="plane" size="2.0 1.6 0.05" material="floor"/>
+
+    <camera name="cell_cam" pos="-1.05 -2.00 1.65" mode="targetbody" target="press_bed"/>
+    <camera name="overview" pos="-1.05 -2.00 1.65" mode="targetbody" target="press_bed"/>
+    <camera name="press_cam" pos="-1.15 -1.40 1.25" mode="targetbody" target="press_bed"/>
+
+    <!--
+      Top-down: crate of shirts on the left, press on the right, arm in front
+      of the crate. The press is yawed in xfold.scene so its dump edge faces
+      the arm (world -y) and the C-frame opens toward the crate.
+    -->
+    <body name="infeed_bin" pos="-0.76 0.02 0">
+      <geom name="bin_floor" type="box" size="0.238 0.318 0.012" pos="0 0 0.448" material="crate"/>
+      <!-- Low lip toward the press so a pinched shirt can be drawn out. -->
+      <geom name="bin_wall_xp" type="box" size="0.018 0.318 0.016" pos="0.238 0 0.476" material="crate"/>
+      <geom name="bin_wall_xn" type="box" size="0.018 0.318 0.045" pos="-0.238 0 0.505" material="crate"/>
+      <geom name="bin_wall_yp" type="box" size="0.220 0.018 0.045" pos="0 0.318 0.505" material="crate"/>
+      <geom name="bin_wall_yn" type="box" size="0.220 0.018 0.045" pos="0 -0.318 0.505" material="crate"/>
+      <geom name="bin_leg_a" type="box" size="0.03 0.03 0.224" pos="0.20 0.28 0.224" material="crate"/>
+      <geom name="bin_leg_b" type="box" size="0.03 0.03 0.224" pos="-0.20 0.28 0.224" material="crate"/>
+      <geom name="bin_leg_c" type="box" size="0.03 0.03 0.224" pos="0.20 -0.28 0.224" material="crate"/>
+      <geom name="bin_leg_d" type="box" size="0.03 0.03 0.224" pos="-0.20 -0.28 0.224" material="crate"/>
+      <site name="bin_center" pos="0 0 0.47" size="0.01"/>
+    </body>
+
+    <!--
+      Pedestal in front of the crate, not in front of the press.
+    -->
+    <body name="arm_mount" pos="-0.52 -0.48 0.62">
+      <geom name="arm_column" type="cylinder" size="0.07 0.31" pos="0 0 -0.31" material="steel"/>
+      <geom name="arm_base_plate" type="cylinder" size="0.13 0.012" pos="0 0 -0.608" material="steel"/>
+    </body>
+  </worldbody>
+</mujoco>

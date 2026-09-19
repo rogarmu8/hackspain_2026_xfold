@@ -33,25 +33,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from xfold.bridge.viewport import ViewportHub, encode_frame
-from xfold.fsm import CellState
 
 if TYPE_CHECKING:
     from xfold.bridge.runtime import Runtime
 
-# AGENT: cloth/arm — change this path if your demo scene lives elsewhere; note TRACKING.md
+# Fallback stub if the loading cell fails to compile. Prefer press_cell via scene.build.
 MODEL_PATH = Path(__file__).resolve().parents[3] / "models" / "cell.xml"
-
-# AGENT: cloth — temporary proxy poses for the blue box shirt_proxy.
-# Remove once flexcomp / real shirt is the visual source of truth.
-_STAGE_POSE: dict[str, tuple[float, float, float]] = {
-    CellState.PICK.value: (-0.55, 0.0, 0.28),
-    CellState.SPREAD.value: (0.15, 0.0, 0.12),
-    CellState.PRESS.value: (0.15, 0.0, 0.10),
-    CellState.FOLD.value: (0.15, 0.0, 0.11),
-    CellState.CHUTE.value: (0.72, 0.0, 0.22),
-    CellState.BAG.value: (1.05, 0.0, 0.12),
-    CellState.RESET.value: (-0.55, 0.0, 0.35),
-}
 
 
 class MujocoViewportProducer:
@@ -93,8 +80,8 @@ class MujocoViewportProducer:
             target=self._loop, name="xfold-viewport-mujoco", daemon=True
         )
         self._thread.start()
-        # Wait briefly for first successful init
-        for _ in range(50):
+        # scene.build() compiles Menagerie + cloth; give it a few seconds.
+        for _ in range(200):
             if self._ok or self._stop.is_set():
                 break
             time.sleep(0.05)
@@ -108,13 +95,14 @@ class MujocoViewportProducer:
     def _loop(self) -> None:
         import mujoco
 
+        camera = "overview"
         try:
-            model = mujoco.MjModel.from_xml_path(MODEL_PATH.as_posix())
-            # Ensure offscreen buffer fits our resolution.
+            from xfold.shirt import load_mujoco_plugins
+
+            load_mujoco_plugins()
+            model, data, camera = self._compile_scene(mujoco)
             model.vis.global_.offwidth = max(model.vis.global_.offwidth, self.width)
             model.vis.global_.offheight = max(model.vis.global_.offheight, self.height)
-            data = mujoco.MjData(model)
-            mujoco.mj_forward(model, data)
             renderer = mujoco.Renderer(model, height=self.height, width=self.width)
             self.hub.set_source("mujoco")
             self._ok = True
@@ -125,29 +113,17 @@ class MujocoViewportProducer:
             return
 
         interval = 1.0 / max(self.fps, 1.0)
-        shirt_jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "shirt_free")
-        qadr = int(model.jnt_qposadr[shirt_jid]) if shirt_jid >= 0 else None
-
         try:
             while not self._stop.is_set():
                 t0 = time.monotonic()
                 run = self.runtime.driver_active_run()
-                state = (run.currentState if run else None) or CellState.PICK.value
-                xyz = _STAGE_POSE.get(state, _STAGE_POSE[CellState.PICK.value])
-                if qadr is not None:
-                    data.qpos[qadr : qadr + 3] = xyz
-                    data.qpos[qadr + 3 : qadr + 7] = (1, 0, 0, 0)
-                    data.qvel[:] = 0
-                mujoco.mj_forward(model, data)
                 if run and run.lifecycle == "running" and not run.paused:
                     for _ in range(3):
                         mujoco.mj_step(model, data)
-                    if qadr is not None:
-                        data.qpos[qadr : qadr + 3] = xyz
-                        data.qpos[qadr + 3 : qadr + 7] = (1, 0, 0, 0)
-                        mujoco.mj_forward(model, data)
+                else:
+                    mujoco.mj_forward(model, data)
 
-                renderer.update_scene(data, camera="overview")
+                renderer.update_scene(data, camera=camera)
                 rgb = renderer.render()
                 payload, mime = encode_frame(np.asarray(rgb))
                 self.hub.publish(payload, mime=mime)
@@ -161,3 +137,26 @@ class MujocoViewportProducer:
                 pass
             self._ok = False
             self.hub.set_source("none")
+
+    def _compile_scene(self, mujoco):
+        """Prefer the loading cell (flex T + press); fall back to cell.xml."""
+        try:
+            from xfold.scene import build, spawn_shirt_in_bin
+
+            cell = build()
+            data = mujoco.MjData(cell.model)
+            spawn_shirt_in_bin(cell, data, np.random.default_rng(7))
+            mujoco.mj_forward(cell.model, data)
+            camera = "overview"
+            try:
+                cell.model.camera(camera)
+            except KeyError:
+                camera = "cell_cam"
+            print("[viewport] rendering press_cell (flex shirt + UR5e)", flush=True)
+            return cell.model, data, camera
+        except Exception as exc:
+            print(f"[viewport] press_cell compile failed ({exc}); using cell.xml", flush=True)
+            model = mujoco.MjModel.from_xml_path(MODEL_PATH.as_posix())
+            data = mujoco.MjData(model)
+            mujoco.mj_forward(model, data)
+            return model, data, "overview"

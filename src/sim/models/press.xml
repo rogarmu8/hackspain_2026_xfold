@@ -1,0 +1,33 @@
+<!--
+  Press-only scene: the rig plus one cloth shirt dropped onto the bed.
+  Used by `moon run sim:press` to tune the press cycle and vapour on its own.
+-->
+<mujoco model="xfold-press">
+  <compiler angle="radian" autolimits="true"/>
+  <include file="shirt.xml"/>
+  <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast" solver="CG"/>
+
+  <visual>
+    <headlight diffuse="0.55 0.55 0.55" ambient="0.25 0.22 0.2"/>
+    <rgba haze="0.15 0.15 0.16 1"/>
+  </visual>
+
+  <default>
+    <geom condim="3" friction="0.8 0.02 0.001"/>
+    <position ctrllimited="true" dampratio="1.5"/>
+  </default>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.16 0.16 0.18" rgb2="0.22 0.22 0.24" width="256" height="256"/>
+    <material name="floor" texture="grid" texrepeat="6 6" reflectance="0.05"/>
+  </asset>
+
+  <include file="press_rig.xml"/>
+
+  <worldbody>
+    <light name="key" pos="0.2 -0.6 1.8" dir="0 0.3 -1" diffuse="0.8 0.75 0.7"/>
+    <light name="fill" pos="-0.4 0.5 1.4" dir="0.2 -0.2 -1" diffuse="0.4 0.45 0.5"/>
+    <geom name="floor" type="plane" size="1.6 1.2 0.05" material="floor"/>
+    <camera name="press_cam" pos="-0.15 -1.85 1.38" xyaxes="1 0 0 0 0.48 0.88"/>
+  </worldbody>
+</mujoco>

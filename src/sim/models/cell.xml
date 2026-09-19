@@ -1,22 +1,23 @@
 <!--
-  AGENT NOTE (shared plant stub) — docs/INTEGRATION_CONTRACT.md §4b
-  - Arm track: add robot bodies/includes here or in a sibling MJCF; keep camera "overview".
-  - Cloth track: shirt_proxy + shirt_free are PLACEHOLDERS (blue box). Prefer adding
-    flexcomp beside them; remove proxy when cloth is demo-stable. Note TRACKING.md.
-  - Viewport MJPEG (bridge) loads THIS file via viewport_mujoco.MODEL_PATH and requires
-    <camera name="overview"/>. Do not rename that camera without updating the producer.
-  - Prefer additive edits; avoid rewriting frames another track already depends on.
+  Shared plant stub — docs/INTEGRATION_CONTRACT.md §4b
+  - Viewport MJPEG loads this file (or press_cell via scene.build) and requires
+    <camera name="overview"/>. Do not rename that camera.
+  - The flex T lives in shirt.xml. The loading cell with the UR5e is press_cell.xml.
 -->
 <mujoco model="xfold-cell-stub">
-  <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast"/>
+  <!-- CG, not Newton: the cloth is equality-heavy and CG runs it ~2x faster
+       at the same accuracy. 500 Hz physics per SOLUTION.md §6. -->
+  <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast" solver="CG"/>
   <visual>
     <global offwidth="960" offheight="540"/>
-    <headlight diffuse="0.6 0.6 0.6" ambient="0.2 0.2 0.2"/>
+    <headlight diffuse="0.45 0.45 0.45" ambient="0.3 0.3 0.32" specular="0.1 0.1 0.1"/>
   </visual>
+
+  <include file="shirt.xml"/>
+
   <worldbody>
     <light pos="0 0 2.2" dir="0 0 -1"/>
     <geom name="floor" type="plane" size="1.8 1.2 0.05" rgba="0.18 0.18 0.2 1"/>
-    <!-- REQUIRED name for bridge viewport MJPEG — do not rename without updating viewport_mujoco.py -->
     <camera name="overview" pos="-1.4 -1.4 1.1" xyaxes="0.7 -0.7 0 0.35 0.35 0.87"/>
 
     <body name="bin" pos="-0.55 0 0.12">
@@ -27,17 +28,13 @@
       <geom type="box" size="0.01 0.18 0.12" pos="-0.21 0 0.12" rgba="0.32 0.24 0.18 1"/>
     </body>
 
-    <!-- PLACEHOLDER shirt — cloth track replaces with flexcomp when ready -->
-    <body name="shirt_proxy" pos="0.15 0 0.9">
-      <freejoint name="shirt_free"/>
-      <geom type="box" size="0.12 0.16 0.008" density="250" rgba="0.15 0.35 0.75 1"/>
-    </body>
-
     <body name="press_bed" pos="0.15 0 0.08">
-      <geom type="box" size="0.28 0.32 0.015" rgba="0.55 0.55 0.58 1"/>
+      <!-- Sized for the T plus sleeves. Sticky while folding (ninja). -->
+      <geom type="box" size="0.48 0.40 0.015" rgba="0.55 0.55 0.58 1"
+            friction="1.2 0.05 0.0001" solref="0.005 1.2" solimp="0.99 0.999 0.0002"/>
     </body>
-    <body name="press_platen" pos="0.15 0 0.38">
-      <geom type="box" size="0.28 0.32 0.02" rgba="0.45 0.45 0.5 1"/>
+    <body name="press_platen" pos="0.15 0 0.85">
+      <geom type="box" size="0.48 0.40 0.02" rgba="0.45 0.45 0.5 1"/>
     </body>
 
     <body name="chute" pos="0.72 0 0.16" euler="0 0.65 0">

@@ -106,10 +106,58 @@ Enactic OpenArm v2, 7-DOF × 2 + grippers, Apache-2.0. Cite Enactic for the MJCF
 | Resource | Verdict | Notes |
 |----------|---------|-------|
 | MuJoCo `flexcomp` 2D cloth | **USE** | Start from OpenArm’s 9×9 self-colliding cloth, then coarsen if it explodes. |
-| Bundled flex models (`flag.xml`, `poncho.xml`, …) | **USE** | Poncho is the closest garment-shaped example. |
-| Elasticity shell plugin `mujoco.elasticity.shell` | **USE** | Young / Poisson / thickness for cloth bending. |
-| [Issue #1433 — Shirt/Cloth with flexcomp](https://github.com/google-deepmind/mujoco/issues/1433) | **USE** | Tunings that stop explosions: `internal="false"`, Young ~`5e3`, damping `1–10`. |
+| **Contact budget: `mjMAXCONPAIR` = 50** | **CONSTRAINT** | See below. Sets the vertex count, so decide it before anything else. |
+| Bundled flex models (`flag.xml`, `poncho.xml`, …) | **USE** | Poncho is the closest garment-shaped **param** reference (`refs/PONCHO.md`). |
+| Elasticity shell plugin `mujoco.elasticity.shell` | SKIP (3.13 pip) | Only `cable` is registered; use native `<elasticity>` (discrete) or edge equality. |
+| Generated T-outline (`xfold.generate_shirt_mesh`) | **USE** | Default shirt: torso + sleeves + crew neck → `shirt_t.obj`. Sized for the 0.70 m press. |
+| CLOTH3D / ClothesNet T-meshes | **ADAPT** | Geometry only if we want a scanned drape; convert with `xfold.convert_cloth3d_mesh`. |
+| [Issue #1433 — Shirt/Cloth with flexcomp](https://github.com/google-deepmind/mujoco/issues/1433) | **USE** | Tunings that stop explosions: `internal="false"`, Young ~`1e3–5e3`, damping `1–10`. |
 | ICARSC 2026 *Clothing Simulation in MuJoCo* | INSPIRE | Cite on the slide. |
+
+#### The contact budget decides the mesh density
+
+MuJoCo caps **one geom pair at 50 contacts** (`mjMAXCONPAIR`), and an entire
+flex against the floor counts as a single pair. A 20×20 grid resting flat has
+394 vertices touching and still gets exactly 50 contacts — raising `nconmax`,
+`margin` or splitting the floor into tiles changes nothing.
+
+Everything above that ceiling is unsupported. Measured on the 365-vertex shirt:
+363 vertices lay on the floor competing for 50 slots, 82 of them hung through
+the plane (the “floor overlap”), and because the solver picks a different 50
+each step the sheet never stopped moving — a 7.3 Hz ripple, 9.4 mm
+peak-to-peak, that no amount of `solref`, `solimp`, friction, `impratio`,
+`noslip`, edge damping or elasticity tuning removed. Only the vertex count did.
+
+| Physics verts | Resting ripple | Verts through floor | Real-time factor |
+|---|---|---|---|
+| 385 | 1.6 mm | 82 | 0.42x |
+| 207 | 0.4 mm | 0 | 0.61x |
+| **161 (default)** | **0.15 mm** | **0** | **1.1x** |
+
+So 161 vertices is not a compromise on looks, it is the physics budget — and it
+lands inside the range §4.3 already called for (OpenArm’s 9×9 = 81, “12×16 is
+plenty” = 192). Consequences for the rest of the build:
+
+- **Two knock-on fixes:** the solver is `CG`, not Newton (~2x faster on an
+  equality-heavy flex), and there is **no** `<joint damping>` on the cloth. DOF
+  damping is absolute-frame drag: at 0.008 it stretched free fall by 1.5x,
+  which is what read as a heavy object in slow motion.
+- **Folding is the open risk.** Cloth-on-cloth is its own pair with its own
+  50-contact cap. A three-layer ninja packet may exceed it and let layers
+  interpenetrate. Test at block 5 before trusting the fold.
+- The `flatness` metric (§8) is only meaningful below the ripple floor. At 385
+  verts the cloth wobbles 1.6 mm at rest, so “the press flattened it” is not
+  measurable; at 161 the noise floor is 0.15 mm.
+
+#### Looking like cloth is shading, not triangles
+
+The “it looks like slime” feedback survived every physics fix and went away
+with a material change. A saturated `rgba` under MuJoCo’s default specular
+gives wet-looking highlights that also wash out the folds. Use a matte,
+desaturated `<material specular="0.02" shininess="0.01">` and a low-specular
+headlight. Cube textures render white on a flex, so the fabric read has to come
+from shading. Also drop `radius` to 0.004: a 2D flex draws as a slab of
+half-thickness `radius`, and 0.008 was a 16 mm yoga mat.
 
 **Working shirt XML to start from** (grid, not a mesh):
 
@@ -135,7 +183,7 @@ Enactic OpenArm v2, 7-DOF × 2 + grippers, Apache-2.0. Cite Enactic for the MJCF
 
 If this diverges: lower Young, raise damping, disable internal contacts, reduce `count`. OpenArm’s 9×9 is a proven foldable sheet; a 12×16 grid is plenty for a shirt demo.
 
-T-shirt shape later: generate a T-outline mesh in Python (or a low-poly OBJ) and switch `type="mesh" file="shirt.obj"`. Same contact/elasticity block as above.
+T-shirt shape: `python -m xfold.generate_shirt_mesh` writes `shirt_t.obj` — 0.60×0.64 m body (thirds = 0.20 m), short sleeves, crew neck. Same contact / edge-equality block. Native bend elasticity needs `integrator="discrete"` and runs at ~0.5x realtime, so it stays in the poncho playground. Stay near 150 verts so the platen can support the whole T. Crease vertices live in `xfold.ninja`.
 
 ### 4.4 Mechanisms we build ourselves (no good OSS)
 
@@ -164,6 +212,8 @@ In MuJoCo we cheat honestly and then replace:
 
 A top-down camera (`<camera/>` + `mujoco.Renderer`) is enough for the “we perceive” story. Do not train YOLO / ACT unless the pipeline already runs from ground-truth vertices.
 
+**Built (`xfold/vision.py`).** `inspect_cam` sits on a post behind the press and watches the bed. Each check renders that camera, segments the blue garment in HSV, and back-projects the silhouette onto the bed plane using the camera pose and `fovy` — so everything downstream is in metres, not pixels. The pose comes from fitting the known shirt footprint (read out of `shirt.xml`) over the silhouette and keeping the best overlap; a bounding box will not do, because a T-shirt's box and its area centroid both sit off the garment's own frame. Output: centre, yaw, and an overlap score, accurate to a couple of millimetres and half a degree against ground truth. The crate is blue too, so only a fixed region of interest around the bed is searched.
+
 ---
 
 ## 5. Station design
@@ -181,6 +231,16 @@ A top-down camera (`<camera/>` + `mujoco.Renderer`) is enough for the “we perc
 5. Retract clear of the descending platen.
 
 **Failure modes:** shirt sticks to crate, arms collide, miss the platen. Mitigations: low-friction crate, keep arms on their halves, then **the press finishes flattening**. Step 1 does not need a perfect spread — “more or less stretched” is the spec.
+
+#### Built today: single-arm loading with a vision gate (`moon run sim:run`)
+
+Ahead of the bimanual version, the loading half of the cycle runs end to end with one arm, a rigid T-shirt, and the camera in the loop. Scene `press_cell.xml`, code `xfold/{scene,arm,vision,load_press}.py`.
+
+- **Arm** — UR5e from Menagerie, attached at runtime with `MjSpec` onto the pedestal declared in the XML. Differential IK through `mink`, solved on an arm-only copy of the model so the shirt and the press do not end up in the IK problem, then streamed to the arm's position actuators.
+- **Gripper** — four suction cups on a plate, driven by one `adhesion` actuator, with a contact `gap` so the cups grab from ~1 cm away. Four cups rather than one: a single contact point lets the garment pivot and dangle.
+- **Cycle** — pick from the crate → square the shirt up *outside* the press, then drive straight in along +y so the sleeves pass between the frame columns → lay down and release → **lift straight up** (sliding away sideways shoves the shirt off by centimetres) → step out of the camera's view.
+- **Gate** — the camera measures the placement. Within 15 mm and 5° the arm leaves and the press fires. Otherwise the arm grabs the shirt where the camera says it is, turns the wrist back by the measured yaw, and lays it on the target; up to four tries. Correcting the *command* this way also cancels the arm's own steady-state offset.
+- **Still fake:** the shirt is one rigid body (so “flat after pressing” is free), and the crate pose handed to the arm is ground truth plus noise, standing in for a second camera over the crate.
 
 ### Station 2 — Press / “hot air”
 
@@ -272,7 +332,7 @@ Vendor OpenArm as a copy or git submodule under `src/sim/models/openarm` + a thi
 |------|------------------|------------------|
 | Initial pose | Random yaw, small crumple from a drop | Fully wadded, overlapping pile |
 | Shirt size | One adult T | S / M / L via `shirt.py` spacing/count |
-| Shirt shape | Rectangle cloth | T-mesh (sleeves) |
+| Shirt shape | T-mesh (sleeves + crew neck) | Second size |
 | Colour / texture | One | Two colours (visual only) |
 | Scene | Fixed cell | Slight press/chute offset |
 
