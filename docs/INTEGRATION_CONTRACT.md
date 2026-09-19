@@ -65,7 +65,7 @@ Timeline terminal markers have `state: null`; they must not overwrite phase star
 | `type` | When to emit |
 |--------|----------------|
 | `run_started` | Run enters running |
-| `state_changed` | Simulator phase entry (`state`, optional `label` / `station`, `t`, `cycle`); line catalogue comes from `LINE_PHASES` |
+| `state_changed` | Simulator phase entry (`state`, optional `label` / `station`, `t`, `cycle`); line catalogue comes from `LINE_PHASES` (includes `ORIENT`) |
 | `metric_sample` | Metrics tick (may be coalesced; never instead of `state_changed`) |
 | `run_finished` | Terminal lifecycle |
 | `command_accepted` / `command_rejected` / `command_applied` | Command pipeline |

@@ -53,7 +53,7 @@ El visor ocupa aproximadamente dos tercios del espacio útil en escritorio. Nave
 - Individual: omitir progreso y cola de batch; mostrar estado y acciones de esa ejecución.
 - Sin actividad: «Sin ejecución activa» y «Nuevo experimento»; no mostrar ceros ficticios ni una cámara marcada en directo.
 - Sin imagen disponible: explicar que la vista no está disponible; conservar telemetría real. No fingir streaming con el mockup generado.
-- Etapas (OpenArm / protocolo actual): Recogida → Tensado → Prensado → Plegado ninja → Tolva → Embolsado (`PICK → SPREAD → PRESS → FOLD → CHUTE → BAG`). Reinicio se muestra cuando ocurra, separado del resultado productivo. La referencia visual antigua (UR5e / FlipFold) no define el ciclo.
+- Etapas (OpenArm / protocolo actual): Recogida → Orientación → Tensado → Prensado → Plegado ninja → Tolva → Embolsado (`PICK → ORIENT → SPREAD → PRESS → FOLD → CHUTE → BAG`). Reinicio se muestra cuando ocurra, separado del resultado productivo. La referencia visual antigua (UR5e / FlipFold) no define el ciclo.
 - Seleccionar una etapa abre duración, mediciones disponibles y eventos de esa etapa. Los eventos completos viven en el detalle, no compiten con la celda.
 
 ## Lanzamiento, batches y comandos

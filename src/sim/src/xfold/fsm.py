@@ -10,6 +10,7 @@ from enum import StrEnum
 
 class CellState(StrEnum):
     PICK = "PICK"
+    ORIENT = "ORIENT"
     SPREAD = "SPREAD"
     PRESS = "PRESS"
     FOLD = "FOLD"
@@ -23,6 +24,7 @@ CELL_STATES = tuple(CellState)
 # One unattended cycle, matching SOLUTION.md.
 CYCLE = (
     CellState.PICK,
+    CellState.ORIENT,
     CellState.SPREAD,
     CellState.PRESS,
     CellState.FOLD,

@@ -302,7 +302,7 @@ src/sim/
     cell.xml              # press, chute, bag, bin (rigid stub)
     openarm/              # vendored OpenArm v2 MJCF + meshes (next)
   src/xfold/
-    fsm.py                # PICK → SPREAD → PRESS → FOLD → CHUTE → BAG
+    fsm.py                # PICK → ORIENT → SPREAD → PRESS → FOLD → CHUTE → BAG
     telemetry.py
     mock_cycle.py
     scene.py              # MjSpec: OpenArm bimanual + our cell

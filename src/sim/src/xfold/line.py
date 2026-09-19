@@ -1,8 +1,9 @@
-"""The line: rotating infeed -> belt -> press -> flap folder -> bagger -> carton.
+"""The line: dual-belt turner -> belt -> press -> flap folder -> bagger -> carton.
 
 1. A shirt is laid on the infeed. If the selector's "skewed" condition is
-   on, it is dropped at a random heading. A rotating conveyor turns it
-   until the collar leads downstream, then the linear belt takes it.
+   on, it is dropped at a random heading. A dual conveyor product turner
+   yaws it until the collar leads downstream (one belt speeds up, the
+   other slows, then they resync), then the linear belt takes it.
 2. The belt carries it under the press and stops. The platen comes down on
    the belt itself, steams, and lifts.
 3. The belt runs on. The shirt leaves the belt's end onto the folder, and
@@ -44,7 +45,7 @@ layers apart from then on.
 
 With a window:  moon run sim:run              # type, then good / damaged / notGood / skewed
                 moon run sim:run -- -g tee
-                moon run sim:run -- -g tee --skewed  # any heading; conveyor squares it
+                moon run sim:run -- -g tee --skewed  # any heading; dual belts square it
 Headless:       pixi run -e mujoco python -P -m xfold.line --headless --cycles 1 -g jersey
 Catalogue:      moon run sim:run -- --list-garments
 """
@@ -114,8 +115,9 @@ BELT_ACCEL = 0.6  # m/s^2, both speeding up and braking
 # Cloth this close above the belt top rides with it.
 ON_BELT = 0.03
 
-# How far a "not square on the belt" drop may wander.
-# Heading is sampled from the run seed; the infeed turner squares it.
+# Operator place (selector "skewed"): a T on the belt, pose drawn each cycle.
+# Yaw is any heading. A 45° T is wider than the belt; we centre it and let
+# a sleeve hang, then the dual belts yaw it collar-downstream.
 SKEW_X_MAX = 0.05
 SKEW_Y_MAX = 0.05
 SKEW_WRINKLE = 0.004
@@ -380,8 +382,8 @@ def _slide_onto_belt(world: np.ndarray) -> np.ndarray:
 def operator_shirt(center_x: float, rng: np.random.Generator) -> OperatorPlace:
     """Random operator lay: any heading, a shift, light wrinkles.
 
-    Drawn again every cycle. The spreaders then spin it onto the square T,
-    collar downstream.
+    Drawn again every cycle. The dual-belt turner then yaws it onto the
+    square T, collar downstream.
     """
     yaw = float(rng.uniform(-math.pi, math.pi))
     dy = float(rng.uniform(-SKEW_Y_MAX, SKEW_Y_MAX))
@@ -693,8 +695,8 @@ class Line:
             )
             square = flat_shirt(SPAWN_X)
             self._enter(
-                "SPREAD",
-                "rotating conveyor squares the shirt",
+                "ORIENT",
+                "dual belts square the shirt",
                 phase="ORIENT",
             )
             yield from self._spread.cycle(self, square)
@@ -702,22 +704,27 @@ class Line:
             span = pos.max(axis=0) - pos.min(axis=0)
             err = float(np.linalg.norm((pos[:, :2] - square[:, :2]).mean(axis=0)))
             self._enter(
-                "SPREAD",
+                "ORIENT",
                 f"squared {span[0] * 100:.0f} x {span[1] * 100:.0f} cm, "
                 f"centre error {err * 1000:.0f} mm",
             )
-            yield from self._hold("SPREAD", "", 0.4, quiet=True)
+            yield from self._hold("ORIENT", "", 0.4, quiet=True)
+            self._spread.release()
         else:
-            load_msg = "flat shirt on the belt"
-            self.phase = "LOAD"
             yield from self._hold(
                 "LOAD",
-                load_msg,
+                "shirt square on the belt",
                 0.6,
                 measurements={
                     "spawnYawRad": self._skew_yaw,
                     "spawnOffsetYM": self._skew_y,
                 },
+            )
+            yield from self._hold(
+                "ORIENT",
+                "turner idle, shirt already square",
+                0.3,
+                phase="ORIENT",
             )
 
         self._enter("BELT", "carry the shirt under the press", phase="TO_PRESS")
@@ -1368,7 +1375,7 @@ class FollowCam:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="XFOLD line: spreaders, belt, press, folder")
+    parser = argparse.ArgumentParser(description="XFOLD line: dual-belt turner, belt, press, folder")
     parser.add_argument("--cycles", type=int, default=0, help="0 keeps going")
     parser.add_argument("--headless", action="store_true", help="no window, as fast as it can")
     parser.add_argument(
@@ -1380,7 +1387,7 @@ def main() -> None:
     parser.add_argument(
         "--flat",
         action="store_true",
-        help="skip the infeed turner even if --skewed",
+        help="skip the dual-belt turner even if --skewed",
     )
     add_garment_arguments(parser)
     parser.add_argument(

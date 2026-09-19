@@ -53,7 +53,7 @@ BatchLifecycle = Literal[
     "partial",
 ]
 
-CellState = Literal["PICK", "SPREAD", "PRESS", "FOLD", "CHUTE", "BAG", "RESET"]
+CellState = Literal["PICK", "ORIENT", "SPREAD", "PRESS", "FOLD", "CHUTE", "BAG", "RESET"]
 PhaseId = str
 
 

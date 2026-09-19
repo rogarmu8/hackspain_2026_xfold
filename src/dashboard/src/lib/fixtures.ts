@@ -51,6 +51,7 @@ function stagesThrough(active: CellState, failed?: CellState): StageProgress[] {
 function eventsFor(runId: string, upTo: CellState): RunEvent[] {
   const messages: Partial<Record<CellState, string>> = {
     PICK: "Agarre bimanual en el contenedor de entrada",
+    ORIENT: "Cintas duales cuadran la camisa (collar aguas abajo)",
     SPREAD: "Tensado sobre la platina (OpenArm L+R)",
     PRESS: "Platina inferior fija; platen superior en descenso",
     FOLD: "Pliegue ninja: línea de pliegue + bajo",

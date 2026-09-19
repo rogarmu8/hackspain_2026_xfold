@@ -13,7 +13,7 @@ Line owns its phase catalogue and observations (`LINE_PHASES`, `on_event`).
 The driver forwards those facts without translating or suppressing phases.
 The legacy `_STAGE_STATE` / `_RANK` constants below are not used by this driver.
 Add phases and operations in Line; the dashboard receives their IDs and labels.
-Infeed turner: Line stage SPREAD maps to phase ORIENT.
+Infeed: Line stage ORIENT is the dual-belt turner (phase ORIENT).
 
   runtime.emit_state(run_id, CellState.<STAGE>, t=session.sim_time())
   runtime.emit_log(run_id, msg, source="line")
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 # Line stage -> the cell state the dashboard stepper shows.
 _STAGE_STATE: dict[str, CellState] = {
     "LOAD": CellState.PICK,
-    "SPREAD": CellState.SPREAD,
+    "ORIENT": CellState.ORIENT,
     "BELT": CellState.SPREAD,  # only the first belt move; see _RANK
     "PRESS": CellState.PRESS,
     "STEAM": CellState.PRESS,
@@ -63,11 +63,12 @@ _STAGE_STATE: dict[str, CellState] = {
 # Cycle order, so a stage that maps backwards is ignored rather than emitted.
 _RANK: dict[CellState, int] = {
     CellState.PICK: 0,
-    CellState.SPREAD: 1,
-    CellState.PRESS: 2,
-    CellState.FOLD: 3,
-    CellState.CHUTE: 4,
-    CellState.BAG: 5,
+    CellState.ORIENT: 1,
+    CellState.SPREAD: 2,
+    CellState.PRESS: 3,
+    CellState.FOLD: 4,
+    CellState.CHUTE: 5,
+    CellState.BAG: 6,
 }
 
 # Camera look-at and trajectory sampling do not need every physics step.
@@ -75,9 +76,6 @@ _TRACK_EVERY = 16  # ~30 Hz at timestep 0.002
 # The UI flags a stall after 8 s without an event; keep well under it.
 _HEARTBEAT_S = 5.0
 # A cycle is ~45 s of sim time. Well past that, something is wedged.
-_SIM_TIME_CAP_S = 240.0
-
-
 _SIM_TIME_CAP_S = 240.0
 
 

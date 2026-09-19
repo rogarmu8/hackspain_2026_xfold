@@ -183,7 +183,7 @@ Python models live in [`src/sim/src/xfold/bridge/schema.py`](../src/sim/src/xfol
 | `type` | Meaning |
 |--------|---------|
 | `run_started` | New run entered `running` |
-| `state_changed` | Simulator phase entry (`state`, `label`, `station`, `t`, `cycle`); no fixed six-stage cycle for line |
+| `state_changed` | Simulator phase entry (`state`, `label`, `station`, `t`, `cycle`); line catalogue is `LINE_PHASES` (includes `ORIENT`) |
 | `metric_sample` | Measured metrics (`measurements` with unit-suffixed keys; nullable flatness/bag flag) |
 | `run_finished` | Terminal lifecycle + reason |
 | `command_accepted` | Command passed validation |

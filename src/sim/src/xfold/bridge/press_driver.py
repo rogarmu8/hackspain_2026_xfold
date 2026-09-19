@@ -180,10 +180,17 @@ class PressBridgeDriver:
                 self._abort_or_fail(run_id, recorder)
                 return
 
-            # --- SPREAD: place on bed + settle ---
-            if not self._emit(run_id, CellState.SPREAD):
+            # --- ORIENT: drop onto the bed, heading squared ---
+            if not self._emit(run_id, CellState.ORIENT):
                 return
             self.session.place_shirt_on_bed()
+            if not loop.hold(0.8):
+                self._abort_or_fail(run_id, recorder)
+                return
+
+            # --- SPREAD: settle taut ---
+            if not self._emit(run_id, CellState.SPREAD):
+                return
             if not loop.hold(1.0):
                 self._abort_or_fail(run_id, recorder)
                 return

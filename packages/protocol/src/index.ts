@@ -7,6 +7,7 @@
 
 export const CELL_STATES = [
   "PICK",
+  "ORIENT",
   "SPREAD",
   "PRESS",
   "FOLD",
@@ -42,6 +43,7 @@ export type SimOperation = {
 /** Productive cycle order (RESET is lifecycle-only, not a fold step). */
 export const PRODUCTIVE_CYCLE = [
   "PICK",
+  "ORIENT",
   "SPREAD",
   "PRESS",
   "FOLD",
@@ -52,6 +54,7 @@ export const PRODUCTIVE_CYCLE = [
 /** Spanish labels for the OpenArm → ninja fold → bag chute cell. */
 export const CELL_STAGE_LABELS: Record<CellState, string> = {
   PICK: "Recogida",
+  ORIENT: "Orientación",
   SPREAD: "Tensado",
   PRESS: "Prensado",
   FOLD: "Plegado ninja",
