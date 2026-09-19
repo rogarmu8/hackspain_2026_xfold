@@ -15,6 +15,7 @@ Integration contract: docs/INTEGRATION_CONTRACT.md §4b
 
 from __future__ import annotations
 
+import os
 import threading
 from pathlib import Path
 from typing import Any
@@ -31,7 +32,8 @@ _CELL_FALLBACK = Path(__file__).resolve().parents[3] / "models" / "cell.xml"
 class SimSession:
     """Thread-safe shared sim: step / forward / render / qpos snapshot."""
 
-    def __init__(self, *, width: int = 640, height: int = 360) -> None:
+    def __init__(self, *, width: int = 640, height: int = 360, cloth_contact: str | None = None) -> None:
+        self._cloth_contact = cloth_contact
         self.width = width
         self.height = height
         self.lock = threading.RLock()
@@ -150,12 +152,16 @@ class SimSession:
     def _compile_line(self, mujoco) -> bool:
         """line.xml — the belt/press/folder/bagger cycle LineDriver runs."""
         try:
-            from xfold.line import FollowCam, build
+            from xfold.line import FollowCam, build, cloth_contact_inputs
 
-            model = build()
+            model = build(cloth_contact=self._cloth_contact)
+            self._cloth_contact = cloth_contact_inputs(model)['clothContactMode']
             data = mujoco.MjData(model)
             mujoco.mj_forward(model, data)
         except Exception as exc:  # noqa: BLE001
+            requested = self._cloth_contact if self._cloth_contact is not None else os.environ.get('XFOLD_CLOTH_CONTACT', 'legacy')
+            if requested.strip().lower() != 'legacy':
+                raise
             print(f"[sim-session] line compile failed ({exc}); trying press_cell", flush=True)
             return False
         self.model, self.data, self.cell, self.kind = model, data, None, "line"
@@ -245,7 +251,7 @@ class SimSession:
         self._renderers.clear()
         from xfold.line import FollowCam, build
 
-        model = build()
+        model = build(cloth_contact=self._cloth_contact)
         data = self._mujoco.MjData(model)
         self._mujoco.mj_forward(model, data)
         self.model, self.data, self.cell, self.kind = model, data, None, "line"

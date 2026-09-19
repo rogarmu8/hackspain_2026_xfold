@@ -88,13 +88,15 @@ class LineDriver:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         from dataclasses import asdict
-        from xfold.line import LINE_PHASES
+        from xfold.line import LINE_PHASES, cloth_contact_inputs
         from xfold.shirt import shirt_config
 
         cfg = shirt_config()
         inputs = asdict(cfg)
         inputs["path"] = str(cfg.path)
         inputs.update({"seedApplied": True, "driver": "line"})
+        if getattr(session, 'model', None) is not None:
+            inputs.update(cloth_contact_inputs(session.model))
         runtime.configure_process(LINE_PHASES, scenario="line", config=inputs)
 
     def start(self) -> None:
@@ -230,8 +232,15 @@ class LineDriver:
                 f"{'custom garment (cut-out, both faces)' if custom_tex else cfg.texture} · "
                 f"{'placed skewed' if skewed else 'placed square'} · "
                 f"seed {seed} ({'applied to infeed' if run.inputs.get('seedApplied') else 'fixed infeed'}) · "
-                f"nq={session.model.nq} · timestep {dt:g}s",
+                f"nq={session.model.nq} · timestep {dt:g}s · cloth contact={line.cloth_contact}",
             )
+
+            if line.cloth_contact == 'partitioned':
+                from xfold.shirt import shirt_contact_patch_ids, shirt_vertex_bodies
+
+                self._log(run_id, f'Experimental cloth contact: {len(shirt_vertex_bodies(session.model))} physical vertices, '
+                          f'{len(shirt_contact_patch_ids(session.model))} collision patches; '
+                          'layer projection off; transport, press, folding and bagging remain scripted.', level='warning')
 
             stage = ""
             last_event = time.monotonic()

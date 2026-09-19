@@ -61,6 +61,15 @@ tasks:
     options:
       cache: false
       runFromWorkspaceRoot: true
+  cloth-lab:
+    command: bash
+    args:
+      - ./scripts/run-mjpython.sh
+      - -m
+      - xfold.cloth_lab
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
   shirt-play:
     command: bash
     args:

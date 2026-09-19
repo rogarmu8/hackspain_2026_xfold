@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import warnings
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -241,6 +243,67 @@ def _add_vertex_spheres(spec, cfg: ShirtConfig) -> int:
     return added
 
 
+def add_shirt_contact_patches(spec, patch_triangles: int = 8, *, collision_bit: int = 4) -> None:
+    import mujoco
+
+    if tuple(map(int, mujoco.__version__.split('.')[:2])) < (3, 13):
+        raise RuntimeError('Partitioned cloth contact requires MuJoCo 3.13 or newer')
+    if not isinstance(patch_triangles, int) or patch_triangles < 1:
+        raise ValueError('Contact patch size must be a positive integer')
+    cloth = spec.flex('shirt')
+    faces = np.asarray(cloth.elem).reshape(-1, 3)
+    bodies = list(cloth.vertbody)
+    points = np.asarray(cloth.vert).reshape(-1, 3) if len(cloth.vert) else np.zeros((len(bodies), 3))
+    for start in range(0, len(faces), patch_triangles):
+        ids, elements = np.unique(faces[start:start + patch_triangles], return_inverse=True)
+        spec.add_flex(
+            name=f'shirt_contact_{start // patch_triangles}', dim=2,
+            vertbody=[bodies[i] for i in ids], vert=points[ids].ravel().tolist(),
+            elem=elements.ravel().tolist(), radius=cloth.radius,
+            contype=collision_bit, conaffinity=collision_bit, condim=cloth.condim,
+            friction=cloth.friction, solref=cloth.solref, solimp=cloth.solimp,
+            internal=False, passive=False, selfcollide=mujoco.mjtFlexSelf.mjFLEXSELF_AUTO,
+            young=0, elastic2d=0, edgedamping=0, edgestiffness=0, group=5,
+        )
+    cloth.contype = cloth.conaffinity = 0
+    cloth.selfcollide = mujoco.mjtFlexSelf.mjFLEXSELF_NONE
+
+
+@contextmanager
+def contact_patch_warnings():
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', message="flex 'shirt_contact_[0-9]+' is not rigid and has no equality constraints or passive forces", category=UserWarning)
+        yield
+
+
+def shirt_contact_patch_ids(model) -> list[int]:
+    import mujoco
+
+    return [i for i in range(model.nflex)
+            if (mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_FLEX, i) or '').startswith('shirt_contact_')]
+
+
+def shirt_flex_id(model) -> int:
+    import mujoco
+
+    fid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_FLEX, 'shirt')
+    if fid >= 0:
+        return fid
+    if model.nflex == 1:
+        return 0
+    raise RuntimeError('Model has no canonical shirt flex')
+
+
+def shirt_vertex_slice(model) -> slice:
+    fid = shirt_flex_id(model)
+    start = int(model.flex_vertadr[fid])
+    return slice(start, start + int(model.flex_vertnum[fid]))
+
+
+def shirt_vertex_bodies(model) -> np.ndarray:
+    return np.asarray(model.flex_vertbodyid[shirt_vertex_slice(model)], dtype=np.int64)
+
+
 def spec_from_mjcf(xml_path: Path, cfg: ShirtConfig | None = None):
     """Load an MJCF scene with the active garment mesh and texture."""
     import mujoco
@@ -308,7 +371,7 @@ def shirt_vertex_positions(model, data) -> np.ndarray:
     """World-frame flex vertex positions, shape (nvert, 3)."""
     if model.nflexvert == 0:
         raise RuntimeError("Model has no flex vertices; is shirt.xml included?")
-    return np.asarray(data.flexvert_xpos, dtype=np.float64).reshape(-1, 3)
+    return np.asarray(data.flexvert_xpos, dtype=np.float64).reshape(-1, 3)[shirt_vertex_slice(model)]
 
 
 def flatness(model, data) -> float:
@@ -327,7 +390,7 @@ def set_steam(model, on: bool) -> None:
     """Press 'steam': extra edge damping, not thermodynamics."""
     if model.nflexedge == 0:
         return
-    model.flex_edgedamping[:] = STEAM_EDGE_DAMPING if on else DRY_EDGE_DAMPING
+    model.flex_edgedamping[shirt_flex_id(model)] = STEAM_EDGE_DAMPING if on else DRY_EDGE_DAMPING
 
 
 def aabb_overlaps_press(model, data, margin: float = 0.05) -> bool:
@@ -413,7 +476,7 @@ def shirt_footprint_polygons() -> list[np.ndarray]:
 
 def shirt_vertex_qposadr(model) -> np.ndarray:
     """qpos address of the first slide joint of each flex vertex."""
-    bodies = np.asarray(model.flex_vertbodyid)
+    bodies = shirt_vertex_bodies(model)
     addresses = np.empty(len(bodies), dtype=int)
     for index, body in enumerate(bodies):
         joints = np.flatnonzero(model.jnt_bodyid == body)
@@ -466,7 +529,7 @@ class PinchHold:
         self._data = data
         self._hz = float(hz)
         self._force_limit = float(force_limit)
-        self._vert_body = np.asarray(model.flex_vertbodyid, dtype=np.int64)
+        self._vert_body = shirt_vertex_bodies(model)
         self._bodies: np.ndarray | None = None
         self._offsets: np.ndarray | None = None
 

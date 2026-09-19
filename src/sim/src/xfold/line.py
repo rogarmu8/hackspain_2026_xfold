@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,13 +73,17 @@ from .self_collide import ClothLayers
 from .spread import SpreadStation, _heading
 from .shirt import (
     SHIRT_RADIUS,
+    add_shirt_contact_patches,
     apply_shirt_config,
+    contact_patch_warnings,
     load_mujoco_plugins,
     load_shirt_mesh,
     select_garment,
     set_steam,
     shirt_config,
+    shirt_contact_patch_ids,
     shirt_rest_world,
+    shirt_vertex_bodies,
     shirt_vertex_qposadr,
     spec_from_mjcf,
 )
@@ -86,6 +91,7 @@ from .sim_loop import smoothstep
 from .steam import SteamField
 
 LINE_PATH = Path(__file__).resolve().parents[2] / "models" / "line.xml"
+CLOTH_CONTACT_PATCH_TRIANGLES = 8
 
 LINE_PHASES = (
     {"state": "LOAD", "label": "Load", "station": "infeed"},
@@ -153,7 +159,8 @@ STROKE_PRESSED = -0.755
 # Belt 2, the bag and the stations along it (xfold: line.xml). Belt 2 has the
 # same top height as the folder table, so the peel's bottom is flush with it.
 BELT2_X = (0.985, 2.10)
-BELT2_SPEED = 0.35
+BELT2_SPEED = 0.55
+BELT2_ACCEL = 1.2
 # The bag's centre at the load station and at the seal station, and its
 # half-length.
 BAG_X = 1.32
@@ -249,9 +256,9 @@ class Flap:
 
 # In folding order.
 FLAPS = (
-    Flap("flap_left", (1.0, 0.0, 0.0), over=1.2, back=0.8, lift=0.028),
-    Flap("flap_right", (-1.0, 0.0, 0.0), over=1.2, back=0.8, lift=0.036),
-    Flap("flap_bottom", (0.0, 1.0, 0.0), over=1.4, back=0.9, lift=0.060),
+    Flap("flap_left", (1.0, 0.0, 0.0), over=0.52, back=0.28, lift=0.028),
+    Flap("flap_right", (-1.0, 0.0, 0.0), over=0.52, back=0.28, lift=0.036),
+    Flap("flap_bottom", (0.0, 1.0, 0.0), over=0.62, back=0.32, lift=0.060),
 )
 
 
@@ -271,10 +278,28 @@ class _Layers(ClothLayers):
         return np.column_stack(np.nonzero(near & self._allow))
 
 
-def build():
+def cloth_contact_mode(value: str | None = None) -> str:
+    mode = (value if value is not None else os.environ.get('XFOLD_CLOTH_CONTACT', 'legacy')).strip().lower()
+    if mode not in ('legacy', 'partitioned'):
+        raise ValueError(f'Unknown cloth contact mode: {mode!r}; choose legacy or partitioned')
+    return mode
+
+
+def cloth_contact_inputs(model) -> dict:
+    patches = shirt_contact_patch_ids(model)
+    return {
+        'clothContactMode': 'partitioned' if patches else 'legacy',
+        'clothContactPatchTriangles': CLOTH_CONTACT_PATCH_TRIANGLES if patches else None,
+        'clothLayerProjection': not bool(patches),
+        'clothScriptedMotion': True,
+    }
+
+
+def build(cloth_contact: str | None = None):
     """Compile line.xml, with the press's own bed and table taken out."""
     import mujoco
 
+    mode = cloth_contact_mode(cloth_contact)
     load_mujoco_plugins()
     spec = spec_from_mjcf(LINE_PATH)
     apply_shirt_config(spec, claws=False)
@@ -291,7 +316,13 @@ def build():
         spec.delete(spec.body(name))
     spec.body("press_origin").pos = [PRESS_X, 0.0, 0.0]
     _widen_press(spec, PRESS_WIDEN)
-    return spec.compile()
+    if mode == 'partitioned':
+        add_shirt_contact_patches(spec, CLOTH_CONTACT_PATCH_TRIANGLES, collision_bit=8)
+        spec.memory = max(spec.memory, 128 * 1024 * 1024)
+        spec.nconmax = spec.njmax = spec.nstack = -1
+        spec.option.disableflags |= mujoco.mjtDisableBit.mjDSBL_AUTORESET
+    with contact_patch_warnings():
+        return spec.compile()
 
 
 def _widen_press(spec, dy: float) -> None:
@@ -510,9 +541,10 @@ class Line:
         )
         self.dt = float(model.opt.timestep)
 
+        self.cloth_contact = cloth_contact_inputs(model)['clothContactMode']
         self._qadr = shirt_vertex_qposadr(model)
         self._dadr = np.array(
-            [int(model.jnt_dofadr[model.body_jntadr[b]]) for b in model.flex_vertbodyid]
+            [int(model.jnt_dofadr[model.body_jntadr[b]]) for b in shirt_vertex_bodies(model)]
         )
         mujoco.mj_resetData(model, data)
         mujoco.mj_forward(model, data)
@@ -635,7 +667,12 @@ class Line:
         self._drive_belt()
         self._drive_belt2()
         self._steam.follow(self.data)
+        before = float(self.data.time)
         self._mujoco.mj_step(self.model, self.data)
+        if self.cloth_contact == 'partitioned':
+            warnings = [self._mujoco.mjtWarning(i).name for i, count in enumerate(self.data.warning.number) if count]
+            if warnings or not np.isfinite(self.data.qpos).all() or not np.isfinite(self.data.qvel).all() or not math.isfinite(self.data.time) or self.data.time <= before:
+                raise RuntimeError(f'Experimental cloth physics failed: {", ".join(warnings) or "invalid state or simulation clock"}')
         self._hold_bag()
         self._carry_cloth()
         self._since_layers += 1
@@ -823,12 +860,13 @@ class Line:
         self._bagger = self._prepare_bag()
         yield from self._hold("SETTLE", "shirt on the folder", 0.5, phase="FOLD")
 
-        self._layers = _Layers(self.model, self.data, thickness=0.5 * LAYER_GAP)
+        if self.cloth_contact == 'legacy':
+            self._layers = _Layers(self.model, self.data, thickness=0.5 * LAYER_GAP)
         for flap in FLAPS:
             self._enter("FOLD", flap.body.replace("flap_", "") + " flap over",
                         operation=flap.body.upper())
             yield from self._flip(flap)
-            yield from self._hold("FOLD", "", 0.3, quiet=True)
+            yield from self._hold("FOLD", "", 0.08, quiet=True)
 
         pos = self.positions()
         size = pos.max(axis=0) - pos.min(axis=0)
@@ -839,7 +877,7 @@ class Line:
             operation="PACK_MEASURED",
             measurements={"packLengthM": float(size[0]), "packWidthM": float(size[1]), "packHeightM": float(size[2])},
         )
-        yield from self._hold("FOLD", "", 0.6, quiet=True)
+        yield from self._hold("FOLD", "", 0.2, quiet=True)
 
         if not self._bag_ready:
             self._enter("WAIT", "the pack waits for the bagger to open a bag")
@@ -848,16 +886,16 @@ class Line:
 
         self._enter("BAG", "peel runs out on its slides and carries the pack into the open bag", phase="INSERT")
         travel = BAG_X + BAG_HALF_LENGTH - BAG_END_MARGIN - float(pos[:, 0].max())
-        yield from self._move_peel(travel, 0.0, 2.4, carry=True)
+        yield from self._move_peel(travel, 0.0, 1.1, carry=True)
         self._enter(
             "TILT",
             f"lifters push the drawer's back end up, the peel tips {math.degrees(PEEL_TILT):.0f} deg "
             "on its nose and the pack's front lands on the bag floor",
         )
-        yield from self._move_peel(travel, PEEL_TILT, 0.8, carry=True)
+        yield from self._move_peel(travel, PEEL_TILT, 0.35, carry=True)
         self._enter("PEEL", "peel slides back out from under the pack, levelling off on the way")
-        yield from self._withdraw_peel(travel, 2.2)
-        yield from self._hold("PEEL", "", 0.5, quiet=True)
+        yield from self._withdraw_peel(travel, 0.9)
+        yield from self._hold("PEEL", "", 0.15, quiet=True)
         # The shirt lies still in the bag now. Fix it there: it cannot sag while
         # the bag closes, and it goes wherever the bag goes.
         self._layers = None
@@ -872,7 +910,7 @@ class Line:
 
         self._enter("BELT", "belt 2 carries the bag to the carton", phase="TO_CARTON")
         yield from self._convey()
-        yield from self._hold("DONE", "sequence complete; packaging quality not validated", 2.5, phase="DONE")
+        yield from self._hold("DONE", "sequence complete; packaging quality not validated", 0.8, phase="DONE")
 
     def _set_flash(self, level: float) -> None:
         """0 dark, 1 full. Lamps, bulbs and the scene dip move together."""
@@ -1120,7 +1158,7 @@ class Line:
         cloth = self.positions()
         # The shirt in the peel's frame at the start, about its pivot.
         local = cloth - (self._peel_pivot + (shift0, 0.0, 0.0))
-        everything = np.arange(self.model.nflexvert)
+        everything = np.arange(len(self._qadr))
         previous = cloth
         for blend in self._tween(seconds):
             now_shift = shift0 + (shift - shift0) * blend
@@ -1165,30 +1203,30 @@ class Line:
 
         log("BAG_PICK", "picker takes the top bag off the magazine")
         grip_mag = MAG_BAG_Z + BAG_FLOOR + BAG_FLAT + FILM
-        yield from self._move_picker(MAG_Y, PICKER_PARK_Z, grip_mag, 0.6)
-        yield from self._hold("", "", 0.25, quiet=True)  # vacuum builds
+        yield from self._move_picker(MAG_Y, PICKER_PARK_Z, grip_mag, 0.3)
+        yield from self._hold("", "", 0.12, quiet=True)  # vacuum builds
         grip = BAG_FLOOR + BAG_FLAT + FILM  # cups' lips above the bag's centre
-        yield from self._move_picker(MAG_Y, grip_mag, CARRY_BAG_Z + grip, 0.6, carry=True)
+        yield from self._move_picker(MAG_Y, grip_mag, CARRY_BAG_Z + grip, 0.3, carry=True)
         log("BAG_PLACE", "picker carries it over belt 2 and lays it down, mouth toward the folder")
-        yield from self._move_picker(MAG_Y, CARRY_BAG_Z + grip, CARRY_BAG_Z + grip, 1.2,
+        yield from self._move_picker(MAG_Y, CARRY_BAG_Z + grip, CARRY_BAG_Z + grip, 0.55,
                                      carry=True, to_y=0.0)
-        yield from self._move_picker(0.0, CARRY_BAG_Z + grip, BELT2_BAG_Z + grip, 0.6, carry=True)
+        yield from self._move_picker(0.0, CARRY_BAG_Z + grip, BELT2_BAG_Z + grip, 0.3, carry=True)
         # Vacuum off: the bag lies on the belt, and the belt's vacuum box holds
         # its bottom film.
         self._bag_held = None
-        yield from self._hold("", "", 0.2, quiet=True)
-        yield from self._move_picker(0.0, BELT2_BAG_Z + grip, PICKER_PARK_Z, 0.5)
+        yield from self._hold("", "", 0.1, quiet=True)
+        yield from self._move_picker(0.0, BELT2_BAG_Z + grip, PICKER_PARK_Z, 0.25)
 
         log("BAG_OPEN", "mouth cup lifts the top lip, air knife blows the bag open")
         cup = self._mouth_cup
         bag_z = float(data.qpos[self._bag_qadr + 2])
-        park_back = self._move_picker(0.0, PICKER_PARK_Z, PICKER_PARK_Z, 1.2, to_y=MAG_Y)
-        for blend in self._tween(0.5):
+        park_back = self._move_picker(0.0, PICKER_PARK_Z, PICKER_PARK_Z, 0.55, to_y=MAG_Y)
+        for blend in self._tween(0.25):
             data.mocap_pos[cup][2] = MOUTH_CUP_PARK_Z + (self._mouth_cup_z(bag_z) - MOUTH_CUP_PARK_Z) * blend
             next(park_back, None)
             yield
         jet = self._g["air_jet"]
-        for index, blend in enumerate(self._tween(1.4)):
+        for index, blend in enumerate(self._tween(0.65)):
             self._shape_bag(BAG_FLAT + (BAG_OPEN - BAG_FLAT) * blend, TAIL_FLARE * blend)
             data.mocap_pos[cup][2] = self._mouth_cup_z(bag_z)
             model.geom_rgba[jet, 3] = 0.16 + 0.08 * math.sin(0.35 * index)
@@ -1198,10 +1236,10 @@ class Line:
             yield
 
         log("BAG_HOLD", "spreader fingers drop into the mouth's corners and hold it square")
-        for blend in self._tween(0.5):
+        for blend in self._tween(0.25):
             self._set_fingers(FINGER_IN_Y, FINGER_PARK_Z + (FINGER_DOWN_Z - FINGER_PARK_Z) * blend)
             yield
-        for blend in self._tween(0.4):
+        for blend in self._tween(0.2):
             self._set_fingers(FINGER_IN_Y + (FINGER_OUT_Y - FINGER_IN_Y) * blend, FINGER_DOWN_Z)
             yield
         model.geom_rgba[jet, 3] = 0.0
@@ -1238,15 +1276,15 @@ class Line:
     def _release_bag(self, settled: float):
         """Fingers in and up, mouth cup off: the film settles on the pack."""
         data = self.data
-        for blend in self._tween(0.4):
+        for blend in self._tween(0.2):
             self._set_fingers(FINGER_OUT_Y + (FINGER_IN_Y - FINGER_OUT_Y) * blend, FINGER_DOWN_Z)
             yield
-        for blend in self._tween(0.5):
+        for blend in self._tween(0.25):
             self._set_fingers(FINGER_IN_Y, FINGER_DOWN_Z + (FINGER_PARK_Z - FINGER_DOWN_Z) * blend)
             yield
         cup_z = float(data.mocap_pos[self._mouth_cup][2])
         h0, tail0 = self._bag_h, self._bag_tail
-        for blend in self._tween(1.0):
+        for blend in self._tween(0.4):
             self._shape_bag(h0 + (settled - h0) * blend, tail0 * (1.0 - blend))
             data.mocap_pos[self._mouth_cup][2] = cup_z + (MOUTH_CUP_PARK_Z - cup_z) * blend
             yield
@@ -1259,8 +1297,8 @@ class Line:
                 break
             self.belt2_speed = min(
                 BELT2_SPEED,
-                self.belt2_speed + BELT_ACCEL * self.dt,
-                max(0.02, math.sqrt(2.0 * BELT_ACCEL * left)),
+                self.belt2_speed + BELT2_ACCEL * self.dt,
+                max(0.02, math.sqrt(2.0 * BELT2_ACCEL * left)),
             )
             yield
         self.belt2_speed = 0.0
@@ -1314,21 +1352,21 @@ class Line:
         bag_z = float(self.data.qpos[self._bag_qadr + 2])
         bar_z = bag_z + BAG_FLOOR + 3.0 * FILM + SEAL_BAR_HALF
         stamp_z = bag_z + BAG_FLOOR + self._bag_h + FILM + STAMP_UNDER
-        yield from self._move_presses(bar_z, stamp_z, 1.2, press_tail=True)
+        yield from self._move_presses(bar_z, stamp_z, 0.55, press_tail=True)
 
         model.geom_rgba[g["bag_seam"]] = (0.70, 0.84, 0.95, 0.85)
         model.geom_rgba[g["stamp_sticker"], 3] = 0.0
         model.geom_rgba[g["bag_sticker"], 3] = 1.0
         cold = self._rgba0["seal_bar_head"]
         hot = np.array([1.0, 0.45, 0.15, 1.0])
-        dwell = 1.6
+        dwell = 0.7
         for index in range(self._steps(dwell)):
             glow = math.sin(math.pi * min(1.0, index * self.dt / dwell))
             model.geom_rgba[g["seal_bar_head"]] = cold + (hot - cold) * glow
             yield
         model.geom_rgba[g["seal_bar_head"]] = cold
 
-        yield from self._move_presses(PRESS_HOVER_Z, PRESS_HOVER_Z, 1.0)
+        yield from self._move_presses(PRESS_HOVER_Z, PRESS_HOVER_Z, 0.45)
 
     def _move_presses(self, bar_z: float, stamp_z: float, seconds: float, press_tail: bool = False):
         bar, stamp = self._seal_bar, self._stamp
@@ -1355,10 +1393,10 @@ class Line:
     def _convey(self):
         """Run belt 2 until the bag is in the carton."""
         while self.data.qpos[self._bag_qadr + 2] > BOXED_Z:
-            self.belt2_speed = min(BELT2_SPEED, self.belt2_speed + BELT_ACCEL * self.dt)
+            self.belt2_speed = min(BELT2_SPEED, self.belt2_speed + BELT2_ACCEL * self.dt)
             yield
         self.belt2_speed = 0.0
-        yield from self._hold("BOXED", "", 1.0, quiet=True)
+        yield from self._hold("BOXED", "", 0.3, quiet=True)
 
     def _flip(self, flap: Flap):
         """Swing a flap over, carrying its cloth, let go, swing back.
@@ -1403,8 +1441,17 @@ class Line:
     def _swing(self, start: float, end: float, seconds: float):
         steps = self._steps(seconds)
         previous = start
+        ramp = 0.12
+        scale = 1.0 - ramp
         for index in range(steps):
-            angle = start + (end - start) * smoothstep((index + 1) / steps)
+            t = (index + 1) / steps
+            if t < ramp:
+                progress = 0.5 * t * t / (ramp * scale)
+            elif t > 1.0 - ramp:
+                progress = 1.0 - 0.5 * (1.0 - t) ** 2 / (ramp * scale)
+            else:
+                progress = (t - 0.5 * ramp) / scale
+            angle = start + (end - start) * progress
             yield angle, (angle - previous) / self.dt
             previous = angle
 
@@ -1503,6 +1550,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="XFOLD line: dual-belt turner, belt, press, folder")
     parser.add_argument("--cycles", type=int, default=0, help="0 keeps going")
     parser.add_argument("--headless", action="store_true", help="no window, as fast as it can")
+    parser.add_argument('--cloth-contact', choices=('legacy', 'partitioned'), default=None,
+                        help='cloth contact mode; default: XFOLD_CLOTH_CONTACT or legacy')
     parser.add_argument(
         "--seed",
         type=int,
@@ -1543,7 +1592,7 @@ def main() -> None:
     if args.garment:
         select_garment(args.garment)
     cfg = shirt_config()
-    model = build()
+    model = build(cloth_contact=args.cloth_contact)
     data = mujoco.MjData(model)
     line = Line(
         model,
@@ -1555,9 +1604,14 @@ def main() -> None:
     )
     pose = "operator-skewed" if args.skewed and not args.flat else "square"
     print(
-        f"XFOLD line  garment={cfg.garment} ({cfg.mesh})  pose={pose}  {LINE_PATH}",
+        f"XFOLD line  garment={cfg.garment} ({cfg.mesh})  pose={pose}  "
+        f"cloth contact={line.cloth_contact}  {LINE_PATH}",
         flush=True,
     )
+
+    if line.cloth_contact == 'partitioned':
+        print('Experimental cloth contacts enabled; layer projection off. '
+              'The line movements and bag attachment remain scripted.', flush=True)
 
     def done() -> bool:
         return line.finished or (args.cycles and line.cycles > args.cycles)

@@ -1,0 +1,58 @@
+<mujoco model="xfold-cloth-lab">
+  <compiler angle="radian"/>
+  <option timestep="0.002" solver="CG" iterations="80" integrator="Euler">
+    <flag autoreset="disable"/>
+  </option>
+  <size memory="128M"/>
+  <visual>
+    <headlight ambient="0.3 0.3 0.3" diffuse="0.7 0.7 0.7"/>
+  </visual>
+  <default>
+    <geom friction="0.8 0.005 0.0001" solref="0.008 1" condim="3"/>
+  </default>
+  <asset>
+    <material name="cloth" rgba="0.25 0.40 0.65 1" specular="0.02" shininess="0.01"/>
+  </asset>
+  <worldbody>
+    <light pos="0 -1 2" dir="0 0 -1"/>
+    <camera name="overview" pos="1 -1 1.1" xyaxes="0.707 0.707 0 -0.408 0.408 0.816"/>
+    <geom name="floor" type="plane" size="1 1 0.05" rgba="0.25 0.25 0.25 1"/>
+    <geom name="table" type="box" pos="0.25 0 -0.006" size="0.25 0.4 0.006" rgba="0.6 0.6 0.6 1"/>
+    <body name="flap">
+      <joint name="flap_hinge" type="hinge" axis="0 1 0" range="-0.03 3.04" damping="0.03" armature="0.002"/>
+      <geom name="flap_plate" type="box" pos="-0.25 0 -0.003" size="0.25 0.4 0.003" mass="0.6" rgba="0.9 0.6 0.15 1"/>
+    </body>
+    <body name="folder">
+      <geom name="folder_table" type="box" pos="0 0.12 -0.003" size="0.08 0.12 0.003" rgba="0.6 0.6 0.6 1"/>
+      <body name="fold_left" pos="-0.08 0 0">
+        <joint name="fold_left_lift" type="slide" axis="0 0 1" range="0 0.08"/>
+        <joint name="fold_left_hinge" type="hinge" axis="0 1 0" range="-0.03 3.18" damping="0.03" armature="0.002"/>
+        <geom name="fold_left_plate" type="box" pos="-0.08 0 -0.003" size="0.08 0.24 0.003" mass="0.3" rgba="0.9 0.6 0.15 1"/>
+      </body>
+      <body name="fold_right" pos="0.08 0 0">
+        <joint name="fold_right_lift" type="slide" axis="0 0 1" range="0 0.08"/>
+        <joint name="fold_right_hinge" type="hinge" axis="0 -1 0" range="-0.03 3.18" damping="0.03" armature="0.002"/>
+        <geom name="fold_right_plate" type="box" pos="0.08 0 -0.003" size="0.08 0.24 0.003" mass="0.3" rgba="0.8 0.3 0.25 1"/>
+      </body>
+      <body name="fold_hem">
+        <joint name="fold_hem_lift" type="slide" axis="0 0 1" range="0 0.08"/>
+        <joint name="fold_hem_hinge" type="hinge" axis="-1 0 0" range="-0.03 3.18" damping="0.03" armature="0.002"/>
+        <geom name="fold_hem_plate" type="box" pos="0 -0.12 -0.003" size="0.08 0.12 0.003" mass="0.3" rgba="0.45 0.35 0.75 1"/>
+      </body>
+    </body>
+    <flexcomp name="shirt" type="grid" dim="2" count="13 13 1" spacing="0.04 0.04 0.04" pos="0 0 0.25" radius="0.003" mass="0.18" material="cloth">
+      <contact internal="false" selfcollide="auto" passive="false" contype="1" conaffinity="1" solref="0.008 1" solimp="0.95 0.99 0.001" friction="0.8 0.005 0.0001" condim="3"/>
+      <edge equality="true" damping="0.1"/>
+      <elasticity young="3000" poisson="0" thickness="0.001" elastic2d="bend" damping="0.02"/>
+    </flexcomp>
+  </worldbody>
+  <actuator>
+    <position name="flap_motor" joint="flap_hinge" kp="12" kv="2" ctrlrange="0 3" forcerange="-8 8"/>
+    <position name="fold_left_motor" joint="fold_left_hinge" kp="30" kv="3" ctrlrange="0 3.141593" forcerange="-8 8"/>
+    <position name="fold_left_lift_motor" joint="fold_left_lift" kp="5000" kv="70" ctrlrange="0 0.08" forcerange="-40 40"/>
+    <position name="fold_right_motor" joint="fold_right_hinge" kp="30" kv="3" ctrlrange="0 3.141593" forcerange="-8 8"/>
+    <position name="fold_right_lift_motor" joint="fold_right_lift" kp="5000" kv="70" ctrlrange="0 0.08" forcerange="-40 40"/>
+    <position name="fold_hem_motor" joint="fold_hem_hinge" kp="30" kv="3" ctrlrange="0 3.141593" forcerange="-8 8"/>
+    <position name="fold_hem_lift_motor" joint="fold_hem_lift" kp="5000" kv="70" ctrlrange="0 0.08" forcerange="-40 40"/>
+  </actuator>
+</mujoco>

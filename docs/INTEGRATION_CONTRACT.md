@@ -49,6 +49,23 @@ A `log` additionally carries `stage`, `operation`, `station`, `parallel`. These 
 
 `config.inputs` stores the effective per-run garment/mesh/texture/cloth/solver configuration, condition, pose flag, seed and whether it is actually applied. `/capabilities.process.seedApplied: true` advertises seed support; per-run `seedApplied` is true for random/list selections, stain variants or skewed poses, and false for fixed clean/torn selections. `spawnYawRad` and `spawnOffsetYM` are emitted at LOAD from the actual initial pose. Inputs are resolved for each run, not copied from the garment compiled at process startup. Scenario is `line`, regardless of stale UI launch defaults. Legacy drivers retain their own process catalogue. `run_started` persists the run's `stages`, `inputs` and `driver` in the journal as well, so configuration is not confined to the in-memory snapshot.
 
+### Experimental line cloth contact
+
+The line supports `XFOLD_CLOTH_CONTACT=legacy|partitioned` at bridge startup (default `legacy`), and `--cloth-contact` for the standalone line viewer. The selected mode is fixed in `SimSession` across garment rebuilds. No launch request fields, commands, event envelopes or transports are added.
+
+`LineDriver` publishes the compiled line's mode through the existing `config.inputs` / `run_started.inputs` dictionaries:
+
+- `clothContactMode`: `legacy` or `partitioned`.
+- `clothContactPatchTriangles`: configured patch-size limit, currently 8, or null in legacy mode.
+- `clothLayerProjection`: whether the legacy Python layer-separation path is enabled.
+- `clothScriptedMotion`: true; transport, press flattening, flap carrying, insertion and bag attachment still use the existing scripted controller.
+
+Partitioned contact uses collision-only flex patches sharing the original shirt bodies, with collision bit 8 reserved for cloth-to-cloth contact (bag bit 4 is unchanged). It adds no garment mass or degrees of freedom. Python layer projection is disabled in this mode. Metrics, pose control and camera tracking must use canonical shirt vertices, not total `nflexvert` or all `flexvert_xpos`. Actual per-SKU vertex/patch counts are logged after compilation, not copied from the startup SKU into another run's inputs. The viewport renders the original shirt; collision patches remain hidden.
+
+An experimental run is not a fully physical fold or a validated bagging result. Numerical warnings/non-finite state fail the experimental run rather than allowing an automatic physics reset to look like progress. Failure to compile an explicitly selected experimental line does not silently select the older arm plant; startup reports the error and the bridge's existing MockDriver fallback, if used, remains advertised in capabilities.
+
+### Replay
+
 Timeline terminal markers have `state: null`; they must not overwrite phase start markers. Replay uses `run.stages`, not a hard-coded sequence. Trajectory remains qpos-only: line replay is explicitly **partial**, because mocap and mutable visual geometry are not recorded. Durable run recovery and geometric quality gates remain separate work.
 
 ### Shared package

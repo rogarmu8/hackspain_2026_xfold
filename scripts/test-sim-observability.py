@@ -189,25 +189,334 @@ class ObservabilityTests(unittest.TestCase):
         self.assertIsNone(run["metrics"]["flatnessPost"])
 
 
+class LineModelFixture(unittest.TestCase):
+    def setUp(self):
+        from unittest.mock import patch
+        import mujoco
+        import xfold.shirt as shirt
+
+        self.enterContext(patch.dict(os.environ, {"XFOLD_CLOTH_CONTACT": "legacy"}))
+        for attr in ('_CFG', '_MESH_CACHE', 'SHIRT_MESH'):
+            self.enterContext(patch.object(shirt, attr, getattr(shirt, attr)))
+        shirt.select_garment('tee')
+
+        def memory_spec(path, cfg=None):
+            cfg = cfg or shirt.shirt_config()
+            cloth = shirt.SHIRT_XML.read_text().replace('shirt_t.obj', cfg.mesh).replace('shirt_print.png', cfg.texture)
+            scene = path.read_text().replace('shirt_t.obj', cfg.mesh).replace('shirt_print.png', cfg.texture)
+            with mujoco.MjVfs() as vfs:
+                vfs[str(path)] = scene.encode()
+                vfs[str(path.parent / 'shirt.xml')] = cloth.encode()
+                return mujoco.MjSpec.from_file(str(path), vfs=vfs)
+
+        self.enterContext(patch('xfold.line.spec_from_mjcf', side_effect=memory_spec))
+
+
+class LineContactTests(LineModelFixture):
+    def test_partitioned_line_keeps_canonical_shirt_and_bag_filtering(self):
+        import mujoco
+        import numpy as np
+        from xfold.line import build
+        from xfold.shirt import shirt_vertex_positions, shirt_vertex_qposadr, shirt_vertex_bodies
+
+        legacy, native = build(cloth_contact='legacy'), build(cloth_contact='partitioned')
+        self.assertEqual(legacy.nq, native.nq)
+        self.assertEqual(legacy.nv, native.nv)
+        np.testing.assert_array_equal(legacy.body_mass, native.body_mass)
+        data = mujoco.MjData(native)
+        line = Line(native, data, repeat=False, seed=42, log=lambda message: None)
+        self.assertEqual(len(line.positions()), legacy.nflexvert)
+        self.assertEqual(len(shirt_vertex_positions(native, data)), legacy.nflexvert)
+        self.assertEqual(len(shirt_vertex_bodies(native)), legacy.nflexvert)
+        self.assertEqual(len(np.unique(shirt_vertex_qposadr(native))), legacy.nflexvert)
+        self.assertGreater(native.nflexvert, legacy.nflexvert)
+        self.assertEqual(line.cloth_contact, 'partitioned')
+        bag = native.geom('bag_hull').id
+        self.assertFalse(np.any((native.geom_contype | native.geom_conaffinity) & 8))
+        for f in range(1, native.nflex):
+            self.assertEqual(native.flex_contype[f], 8)
+            self.assertEqual(native.flex_conaffinity[f], 8)
+            self.assertFalse((native.flex_contype[f] & native.geom_conaffinity[bag]) or
+                             (native.geom_contype[bag] & native.flex_conaffinity[f]))
+        self.assertTrue(native.opt.disableflags & mujoco.mjtDisableBit.mjDSBL_AUTORESET)
+
+    def test_flatness_uses_unweighted_physical_vertices_only(self):
+        import mujoco
+        import numpy as np
+        from xfold.line import build
+        from xfold.shirt import flatness, shirt_vertex_qposadr, shirt_vertex_slice
+
+        model = build(cloth_contact='partitioned')
+        data = mujoco.MjData(model)
+        data.qpos[shirt_vertex_qposadr(model)[0] + 2] = .08
+        mujoco.mj_forward(model, data)
+        z = data.flexvert_xpos[shirt_vertex_slice(model), 2]
+        self.assertAlmostEqual(flatness(model, data), float(np.std(z)))
+        self.assertNotAlmostEqual(flatness(model, data), float(np.std(data.flexvert_xpos[:, 2])))
+
+    def test_steam_does_not_add_elastic_forces_to_collision_patches(self):
+        import mujoco
+        import numpy as np
+        from xfold.line import build
+        from xfold.shirt import set_steam
+
+        model = build(cloth_contact='partitioned')
+        for on in (True, False):
+            set_steam(model, on)
+            self.assertGreater(model.flex_edgedamping[0], 0)
+            np.testing.assert_array_equal(model.flex_edgedamping[1:], 0)
+
+    def test_selection_is_validated_and_environment_can_be_overridden(self):
+        from unittest.mock import patch
+        from xfold.line import build
+
+        with patch.dict(os.environ, {'XFOLD_CLOTH_CONTACT': 'partitioned'}):
+            self.assertGreater(build().nflex, 1)
+            self.assertEqual(build(cloth_contact='legacy').nflex, 1)
+        with self.assertRaises(ValueError):
+            build(cloth_contact='typo')
+
+    def test_shared_session_preserves_mode_across_garment_rebuilds(self):
+        from xfold.bridge.sim_session import SimSession
+        from xfold.shirt import load_shirt_mesh, shirt_contact_patch_ids
+
+        session = SimSession(cloth_contact='partitioned')
+        self.addCleanup(session.stop)
+        self.assertTrue(session.start())
+        self.assertEqual(session.kind, 'line')
+        for garment in ('jersey', 'tank', 'tee'):
+            session.ensure_garment(garment)
+            self.assertTrue(shirt_contact_patch_ids(session.model))
+            line = Line(session.model, session.data, repeat=False, seed=42, log=lambda message: None)
+            line.step()
+            self.assertEqual(len(line.positions()), len(load_shirt_mesh()[0]))
+            self.assertEqual(line.cloth_contact, 'partitioned')
+            model = session.model
+            session.ensure_garment(garment)
+            self.assertIs(session.model, model)
+
+    def test_driver_pause_resume_cancel_and_new_run(self):
+        import threading
+        import time
+        import numpy as np
+        from unittest.mock import patch
+        from xfold.bridge.sim_session import SimSession
+        from xfold.bridge.line_driver import LineDriver
+        from xfold.bridge.schema import CommandRequest
+
+        session = SimSession(cloth_contact='partitioned')
+        self.addCleanup(session.stop)
+        self.assertTrue(session.start())
+        runtime = Runtime(Journal())
+        driver = LineDriver(runtime, session)
+        self.addCleanup(driver.stop)
+        recorder = self.enterContext(patch('xfold.bridge.line_driver.TrajectoryRecorder'))
+        recorder.return_value.finalize.return_value = None
+        progress, paused = threading.Event(), threading.Event()
+        first_states = []
+        original_step, original_wait = Line.step, runtime.wait_wake
+
+        def step(line):
+            original_step(line)
+            if abs(line.data.time - line.dt) < 1e-9:
+                first_states.append(line.data.qpos.copy())
+            if line.data.time >= .02:
+                progress.set()
+
+        def wait(timeout):
+            active = runtime.driver_active_run()
+            if active is not None and active.paused:
+                paused.set()
+            return original_wait(timeout)
+
+        self.enterContext(patch.object(Line, 'step', step))
+        self.enterContext(patch.object(runtime, 'wait_wake', wait))
+
+        def command(kind, run_id, suffix):
+            reply = runtime.handle_command(CommandRequest(clientCommandId=f'{kind}-{suffix}', kind=kind, runId=run_id))
+            self.assertEqual(reply['status'], 'accepted')
+
+        try:
+            run_id = runtime.launch_run(name='pause-test', seed=42, scenario='line')['id']
+            command('pause_run', run_id, 'initial')
+            driver.start()
+            self.assertTrue(paused.wait(5))
+            self.assertEqual(session.sim_time(), 0)
+            paused.clear()
+            command('resume_run', run_id, 'first')
+            self.assertTrue(progress.wait(5))
+            command('pause_run', run_id, 'mid-run')
+            self.assertTrue(paused.wait(5))
+            frozen_time, frozen_qpos = session.sim_time(), session.copy_qpos()
+            time.sleep(.03)
+            self.assertEqual(session.sim_time(), frozen_time)
+            np.testing.assert_array_equal(session.copy_qpos(), frozen_qpos)
+            command('cancel_run', run_id, 'first')
+            driver.stop()
+            self.assertEqual(runtime.get_run(run_id)['lifecycle'], 'cancelled')
+            self.assertEqual(session.sim_time(), frozen_time)
+            progress.clear()
+            second = runtime.launch_run(name='restart-test', seed=42, scenario='line')['id']
+            driver.start()
+            self.assertTrue(progress.wait(5))
+            command('cancel_run', second, 'second')
+            driver.stop()
+            self.assertEqual(len(first_states), 2)
+            np.testing.assert_allclose(first_states[0], first_states[1], atol=1e-9)
+            self.assertEqual(runtime.get_run(second)['config']['inputs']['clothContactMode'], 'partitioned')
+        finally:
+            driver.stop()
+
+    @unittest.skipUnless(os.environ.get('XFOLD_TEST_RENDER') == '1', 'set XFOLD_TEST_RENDER=1 for offscreen viewport')
+    def test_live_and_replay_viewport_preserve_physical_state(self):
+        import numpy as np
+        from xfold.bridge.sim_session import SimSession
+
+        session = SimSession(width=160, height=90, cloth_contact='partitioned')
+        self.addCleanup(session.stop)
+        self.assertTrue(session.start())
+        line = Line(session.model, session.data, repeat=False, seed=42, log=lambda message: None)
+        line.step()
+        qpos, qvel, t = session.copy_qpos(), session.data.qvel.copy(), session.sim_time()
+        for frame in (session.render_jpeg(), session.seek_render(qpos)):
+            self.assertIsNotNone(frame)
+            self.assertEqual(frame[1], 'image/jpeg')
+            self.assertTrue(frame[0].startswith(b'\xff\xd8'))
+        np.testing.assert_array_equal(session.copy_qpos(), qpos)
+        np.testing.assert_array_equal(session.data.qvel, qvel)
+        self.assertEqual(session.sim_time(), t)
+
+    def test_explicit_experimental_compile_failure_does_not_fall_back_to_another_plant(self):
+        from unittest.mock import patch
+        from xfold.bridge.sim_session import SimSession
+
+        session = SimSession(cloth_contact='partitioned')
+        with patch('xfold.line.build', side_effect=ValueError('test compile failure')), patch.object(session, '_compile_press_cell') as fallback:
+            self.assertFalse(session.start())
+            self.assertFalse(session.ok)
+            fallback.assert_not_called()
+
+    def test_experimental_numerical_warning_is_not_reported_as_completion(self):
+        import mujoco
+        from xfold.line import build
+
+        model = build(cloth_contact='partitioned')
+        data = mujoco.MjData(model)
+        line = Line(model, data, repeat=False, seed=42, log=lambda message: None)
+        line.step()
+        data.warning[mujoco.mjtWarning.mjWARN_BADQVEL].number = 1
+        with self.assertRaisesRegex(RuntimeError, 'Experimental cloth physics failed'):
+            line.step()
+        self.assertFalse(line.finished)
+
+    def test_driver_records_mode_without_reusing_vertex_counts_for_other_skus(self):
+        from xfold.line import build
+        from xfold.bridge.line_driver import LineDriver
+
+        model = build(cloth_contact='partitioned')
+        runtime = Runtime(Journal())
+        LineDriver(runtime, SimpleNamespace(model=model))
+        run_id = runtime.launch_run(name='contact-mode', seed=42, scenario='line', cloth_type='jersey')['id']
+        inputs = runtime.get_run(run_id)['config']['inputs']
+        self.assertEqual(inputs['clothContactMode'], 'partitioned')
+        self.assertFalse(inputs['clothLayerProjection'])
+        self.assertTrue(inputs['clothScriptedMotion'])
+        self.assertNotIn('clothPhysicsVertices', inputs)
+        event = next(e for e in runtime.journal.since() if e.type == 'run_started')
+        self.assertEqual(event.inputs['clothContactMode'], 'partitioned')
+
+
 @unittest.skipUnless(os.environ.get("XFOLD_TEST_PHYSICS") == "1", "set XFOLD_TEST_PHYSICS=1 for full MuJoCo cycle")
-class PhysicsObservabilityTests(unittest.TestCase):
+class PhysicsObservabilityTests(LineModelFixture):
     def test_seeded_spawn_reports_actual_pose(self):
         import mujoco
-        from xfold.line import build, skew_pose
+        import numpy as np
+        from xfold.line import SPAWN_X, build, operator_shirt
 
-        model = build()
-        poses = []
-        for seed in (7, 7, 8):
-            events = []
-            line = Line(model, mujoco.MjData(model), repeat=False, skewed=True, seed=seed,
-                        log=lambda message: None, on_event=events.append)
+        for mode in ('legacy', 'partitioned'):
+            model = build(cloth_contact=mode)
+            poses = []
+            for seed in (7, 7, 8):
+                events, positions = [], []
+                def observe(event):
+                    events.append(event)
+                    positions.append(line.positions().copy())
+                expected = operator_shirt(SPAWN_X, np.random.default_rng(seed))
+                line = Line(model, mujoco.MjData(model), repeat=False, skewed=True, seed=seed,
+                            log=lambda message: None, on_event=observe)
+                line.step()
+                measured = events[0]['measurements']
+                pose = (measured['spawnYawRad'], measured['spawnOffsetYM'])
+                self.assertEqual(pose, (expected.yaw, expected.dy))
+                np.testing.assert_allclose(positions[0], expected.world, atol=1e-12)
+                poses.append(pose)
+            self.assertEqual(poses[0], poses[1])
+            self.assertNotEqual(poses[0], poses[2])
+
+    def test_partitioned_line_cycle_and_reset(self):
+        import mujoco
+        import numpy as np
+        from unittest.mock import patch
+        from xfold.line import build
+        from xfold.bridge.line_driver import LineDriver
+        from xfold.shirt import shirt_vertex_positions
+
+        model = build(cloth_contact='partitioned')
+        data = mujoco.MjData(model)
+        runtime = Runtime(Journal())
+        driver = LineDriver(runtime, SimpleNamespace(model=model))
+        run_id = runtime.launch_run(name='partitioned-headless', seed=42, scenario='line')['id']
+        pending = []
+        line = Line(model, data, repeat=False, seed=42, on_event=pending.append, log=lambda message: None)
+        line.step()
+        start = data.qpos.copy()
+        with patch('xfold.line._Layers', side_effect=AssertionError('Legacy projection used with native contact')):
+            while not line.finished and data.time < 120:
+                line.step()
+                for event in pending:
+                    driver._publish(run_id, event)
+                    if event['operation'] in ('FLAP_LEFT', 'FLAP_RIGHT', 'FLAP_BOTTOM', 'PACK_MEASURED', 'DONE'):
+                        print('partitioned line', event['operation'], event['t'], event['measurements'], flush=True)
+                pending.clear()
+        self.assertTrue(line.finished)
+        self.assertTrue(np.isfinite(data.qpos).all())
+        self.assertFalse(np.any(data.warning.number))
+        self.assertIsNone(line._layers)
+        self.assertEqual(len(line.positions()), 384)
+        mujoco.mj_forward(model, data)
+        np.testing.assert_allclose(line.positions(), shirt_vertex_positions(model, data), atol=1e-9)
+        runtime.finish_success(run_id, float(data.time))
+        run = runtime.get_run(run_id)
+        self.assertEqual(run['config']['inputs']['clothContactMode'], 'partitioned')
+        self.assertTrue(all(s['status'] == 'completed' for s in run['stages']))
+        self.assertIsNone(run['metrics']['shirtInBag'])
+        reset = Line(model, data, repeat=False, seed=42, log=lambda message: None)
+        reset.step()
+        np.testing.assert_allclose(data.qpos, start, atol=1e-9)
+        self.assertIsNone(reset._layers)
+
+    def test_partitioned_skewed_jersey_cycle(self):
+        import mujoco
+        import numpy as np
+        from xfold.line import build
+        from xfold.shirt import select_garment
+
+        select_garment('jersey')
+        model = build(cloth_contact='partitioned')
+        data = mujoco.MjData(model)
+        events = []
+        line = Line(model, data, repeat=False, seed=7, skewed=True, log=lambda message: None, on_event=events.append)
+        while not line.finished and data.time < 120:
             line.step()
-            measured = events[0]["measurements"]
-            pose = (measured["spawnYawRad"], measured["spawnOffsetYM"])
-            self.assertEqual(pose, skew_pose(seed))
-            poses.append(pose)
-        self.assertEqual(poses[0], poses[1])
-        self.assertNotEqual(poses[0], poses[2])
+        self.assertTrue(line.finished)
+        self.assertFalse(np.any(data.warning.number))
+        self.assertIsNone(line._layers)
+        self.assertEqual(len(line.positions()), 588)
+        states = list(dict.fromkeys(e['state'] for e in events))
+        self.assertEqual(states, [p['state'] for p in LINE_PHASES])
+        measured = next(e['measurements'] for e in events if e['operation'] == 'PACK_MEASURED')
+        self.assertTrue(all(np.isfinite(value) and value >= 0 for value in measured.values()))
+        print(f'partitioned skewed jersey: {data.time:.3f}s sim; measured={measured}', flush=True)
 
     def test_actual_line_cycle(self):
         import mujoco
@@ -237,7 +546,7 @@ class PhysicsObservabilityTests(unittest.TestCase):
         states = [e.state for e in runtime.journal.since() if e.type == "state_changed"]
         self.assertEqual(states, [p["state"] for p in LINE_PHASES])
         press = next(s for s in run["stages"] if s["state"] == "PRESS")
-        self.assertEqual(press["durationSimS"], 7.5)
+        self.assertEqual(press["durationSimS"], 7.7)
         self.assertEqual(len(photos), 1)
         self.assertEqual(photos[0][0], "PHOTO")
         photo = next(s for s in run["stages"] if s["state"] == "PHOTO")

@@ -76,6 +76,16 @@ mesh/texture. The pixels stay off the journal (`customDesign: true` on
 `run_started` only). `XFOLD_GARMENT` and `[garment] type` in `shirt.toml` remain the
 compile-time default.
 
+### Experimental cloth contacts in the main line
+
+Start the bridge/dashboard with `XFOLD_CLOTH_CONTACT=partitioned moon run pack`, or the bridge alone with `XFOLD_CLOTH_CONTACT=partitioned moon run sim:bridge`. The standalone main-line viewer accepts `moon run sim:run -- --cloth-contact partitioned -g tee --cycles 1`. Leave the variable unset or set it to `legacy` to retain the previous behavior. Selection is process/session-level, not a new REST command; an already running bridge must be restarted to change it.
+
+The selected preset survives garment changes. `config.inputs` and `run_started.inputs` record `clothContactMode`, `clothContactPatchTriangles`, `clothLayerProjection` and `clothScriptedMotion`. The dashboard already displays these inputs and the driver emits an explicit experimental-mode warning. Per-garment physical vertex and collision-patch counts are logged after compilation, avoiding stale counts when the SKU changes.
+
+The partitioned preset shares the tested patch builder with the cloth lab, disables Python layer projection, reserves collision bit 8 so it does not collide with the bag hull on bit 4, and allocates a 128 MiB solver arena. Shirt observations use only canonical garment vertices; patches do not add mass, DOFs, rendered cloth or journal vertices. Numerical errors fail the run instead of silently resetting physics. Explicit experimental startup failures do not fall back to the old arm plant; the existing advertised mock fallback may still be used if the session cannot start.
+
+This changes contacts, not the line's motion model: conveyors, press flattening, flap carrying and bag attachment retain their scripted assistance. A completed cycle still does not prove fold compactness, containment or sealing. The experimental three-panel folding lab and a hollow/sewn garment are not integrated by this preset.
+
 ## Why this shape (and not WS / gRPC)
 
 | Need | Choice |
