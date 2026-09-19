@@ -21,6 +21,7 @@ from typing import Any
 
 import numpy as np
 
+from xfold.bridge.photo import PHOTO_SIZE
 from xfold.bridge.viewport import encode_frame
 
 # Fallback stub if press_cell fails to compile.
@@ -81,10 +82,10 @@ class SimSession:
                 self._mujoco = mujoco
                 self._compile(mujoco)
                 self.model.vis.global_.offwidth = max(
-                    self.model.vis.global_.offwidth, self.width
+                    self.model.vis.global_.offwidth, self.width, PHOTO_SIZE
                 )
                 self.model.vis.global_.offheight = max(
-                    self.model.vis.global_.offheight, self.height
+                    self.model.vis.global_.offheight, self.height, PHOTO_SIZE
                 )
                 self._ok = True
                 self._source = "mujoco"
@@ -289,9 +290,62 @@ class SimSession:
                 self.data.time = saved_time
                 self._mujoco.mj_forward(self.model, self.data)
 
-    def render_jpeg(self) -> tuple[bytes, str] | None:
+    def render_photo(
+        self, camera: str, size: int = PHOTO_SIZE
+    ) -> tuple[bytes, str] | None:
+        """One square frame from a named camera — the QC product shot.
+
+        Its own Renderer, because it is square and larger than the viewport's,
+        and it is thrown away afterwards: this runs once per cycle, not per
+        frame. A failure here is local to the shot and does not disable the
+        viewport.
+        """
         with self.lock:
-            return self.render_jpeg_unlocked()
+            if not self._ok or self._mujoco is None or self._render_broken:
+                return None
+            renderer = None
+            try:
+                renderer = self._mujoco.Renderer(self.model, height=size, width=size)
+                renderer.update_scene(self.data, camera=camera)
+                return encode_frame(np.asarray(renderer.render()), quality=88)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[sim-session] product shot failed: {exc}", flush=True)
+                return None
+            finally:
+                if renderer is not None:
+                    try:
+                        renderer.close()
+                    except Exception:
+                        pass
+
+    def render_jpeg(self) -> tuple[bytes, str] | None:
+        """Live viewport frame, holding the lock only as long as it must.
+
+        `update_scene` reads MjData and needs the lock; rasterising works off
+        the scene it just filled and does not. Keeping the whole render under
+        the lock starves the driver — on software GL a frame costs tens of
+        milliseconds, and at 12 fps that is most of the wall clock.
+        """
+        with self.lock:
+            if not self._ok or self._mujoco is None or self._render_broken:
+                return None
+            try:
+                renderer = self._renderer_for_current_thread()
+                renderer.update_scene(self.data, camera=self.camera)
+            except Exception as exc:  # noqa: BLE001
+                self._render_broken = True
+                self._renderers.pop(threading.get_ident(), None)
+                print(
+                    f"[sim-session] offscreen render unavailable ({exc}); "
+                    "continuing without a viewport",
+                    flush=True,
+                )
+                return None
+        try:
+            return encode_frame(np.asarray(renderer.render()))
+        except Exception as exc:  # noqa: BLE001
+            print(f"[sim-session] render failed: {exc}", flush=True)
+            return None
 
     def render_jpeg_unlocked(self, camera: Any = None) -> tuple[bytes, str] | None:
         if not self._ok or self._mujoco is None or self._render_broken:

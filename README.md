@@ -129,6 +129,32 @@ The bridge takes the same inputs from the environment, since swapping SKU means
 recompiling the model: `XFOLD_GARMENT=tee_damaged XFOLD_SKEWED=1 moon run
 sim:bridge`. Each run's first console line says which input it got.
 
+### Product shot → try-on
+
+Just past the press the belt stops the garment, the line's lights dip and a
+flash fires: `qc_cam` takes a square top-down product shot. It lands in
+`data/photos/{run}.jpg`, the bridge serves it at `GET /runs/{id}/photo`, and the
+run view shows it under **Foto de producto** — the hole in a `_damaged` tee or
+the stain on a `_notgood` one is plainly visible.
+
+**Generar look con modelo** sends that shot to OpenAI's image edit endpoint
+(`gpt-image-1`) and shows the garment on a model beside it. The call runs
+server-side so the key never reaches the browser:
+
+```bash
+cp src/dashboard/.env.example src/dashboard/.env.local
+# put your key in OPENAI_API_KEY, then restart the dashboard
+```
+
+Without `OPENAI_API_KEY` the rest of the dashboard is unaffected — the button
+just reports that the key is missing. `OPENAI_IMAGE_MODEL`, `OPENAI_IMAGE_SIZE`,
+`OPENAI_IMAGE_QUALITY`, `TRYON_PROMPT` and `OPENAI_BASE_URL` override the call.
+
+`gpt-image-1` returns base64 rather than a hosted URL, so the route hands the
+browser a data URI; nothing is stored. Note that OpenAI gates `gpt-image-1`
+behind organisation verification — if the button reports a 403, that is what it
+means.
+
 **Live monitor:** `moon run pack` starts bridge + dashboard together. The UI probes `http://127.0.0.1:8765` (override with `NEXT_PUBLIC_XFOLD_BRIDGE_URL`). If the bridge is down, the dashboard keeps honest **fixtures**.
 
 - **Binding contract (teammates & agents):** [docs/INTEGRATION_CONTRACT.md](docs/INTEGRATION_CONTRACT.md)

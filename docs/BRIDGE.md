@@ -41,6 +41,14 @@ Offscreen GL is probed once at startup. Without it the bridge keeps serving the
 journal with `viewportStream: false` — the dashboard shows the FSM and the live
 console, just no video — instead of taking the process down with it.
 
+**QC station.** Just past the press, the belt stops the pressed garment under
+`qc_cam`, the line's own lights dip to `QC_DIP` and two flash heads fire. The
+Driver renders one square 768 px frame at the top of the flash and writes it to
+`data/photos/{run}.jpg`; the run detail then carries `hasPhoto: true` and the
+dashboard shows it. The dip is not decoration: the overview lighting blows a
+white garment to flat white from 1 m up, taking the print and any stain with
+it. The image is a file, never a journal event — same rule as the viewport.
+
 The line's input garment is fixed when the scene compiles, because a different
 SKU is a different mesh: `XFOLD_GARMENT` (or `[garment] type` in
 `models/shirt.toml`) chooses it, and `XFOLD_SKEWED=1` drops it off square.
@@ -105,6 +113,7 @@ curl -sN 'http://127.0.0.1:8765/events/stream?after_seq=0'
 | `GET` | `/runs/{id}/timeline` | FSM markers (`state_changed`) for scrubber |
 | `GET` | `/runs/{id}/recording` | Trajectory meta (`tMax`, `hasTrajectory`, …) |
 | `GET` | `/runs/{id}/recording/frame?t=` | Seek nearest sample → JPEG base64 + `state` |
+| `GET` | `/runs/{id}/photo` | QC camera's product shot (JPEG, 404 until the flash fires) |
 | `GET` | `/events/stream?after_seq=N` | SSE journal (replay + live) |
 
 ### Viewport architecture (media plane)

@@ -97,6 +97,21 @@ ON_BELT = 0.03
 # How far a "not square on the belt" drop is rotated / shifted.
 SKEW_YAW = math.radians(35.0)
 SKEW_Y = 0.09
+# QC station: where the belt stops the pressed shirt for its product shot.
+# Downstream of the press and far enough from the belt's end (0.30) that the
+# whole 0.65 m of shirt stays on the belt.
+QC_X = -0.20
+FLASH_RISE = 0.12  # seconds, dark -> full
+FLASH_HOLD = 0.10  # seconds at full; the shot is taken in here
+FLASH_FALL = 0.35  # seconds, full -> dark
+# The station works like a photo booth: the line's own lights dip, then the
+# flash fires. The dip is what makes the stop read as "a picture is being
+# taken", and without it the shot is useless — the overview lighting is tuned
+# for a wide shot and blows a white garment to pure white from 1 m up, taking
+# the print and any stain with it.
+QC_DIP = 0.22  # scene lights during the shot, as a fraction of normal
+FLASH_DIFFUSE = (0.34, 0.34, 0.33)
+
 # The shirt's centre when it is put on the belt, and where the press is.
 SPAWN_X = -1.55
 PRESS_X = -0.75
@@ -304,7 +319,16 @@ class Line:
     viewer, a headless run and the dashboard viewport all just call step().
     """
 
-    def __init__(self, model, data, repeat: bool = True, log=print, *, skewed: bool = False) -> None:
+    def __init__(
+        self,
+        model,
+        data,
+        repeat: bool = True,
+        log=print,
+        *,
+        skewed: bool = False,
+        on_photo=None,
+    ) -> None:
         import mujoco
 
         self._mujoco = mujoco
@@ -313,6 +337,18 @@ class Line:
         self.repeat = repeat
         self.log = log
         self.skewed = skewed
+        # Called once, at the top of the flash, to take the product shot.
+        # None (the windowed run) still fires the flash; nothing records it.
+        self.on_photo = on_photo
+        self._flash = [int(model.light(n).id) for n in ("qc_flash_l", "qc_flash_r")]
+        self._bulb = [int(model.geom(n).id) for n in ("qc_bulb_l", "qc_bulb_r")]
+        self._bulb_rgba = model.geom_rgba[self._bulb].copy()
+        self._scene_lights = [i for i in range(model.nlight) if i not in self._flash]
+        self._light0 = model.light_diffuse.copy()
+        self._head0 = (
+            np.array(model.vis.headlight.diffuse, dtype=float).copy(),
+            np.array(model.vis.headlight.ambient, dtype=float).copy(),
+        )
         self.dt = float(model.opt.timestep)
 
         self._qadr = shirt_vertex_qposadr(model)
@@ -543,6 +579,10 @@ class Line:
         self._enter("LIFT", "platen up")
         yield from self._ramp_stroke(STROKE_OPEN, 2.0)
 
+        self._enter("BELT", "carry the pressed shirt to the inspection station")
+        yield from self._belt_until(lambda pos: QC_X - float(pos[:, 0].mean()))
+        yield from self._shoot()
+
         self._enter("BELT", "run the shirt off the belt onto the folder")
         self._drive_to = FOLDER_X[1]
         yield from self._belt_until(lambda pos: FOLDER_X[0] + HEM_INSET - float(pos[:, 0].min()))
@@ -599,6 +639,49 @@ class Line:
         yield from self._convey()
         yield from self._hold("DONE", "bagged, sealed, tagged, boxed", 2.5)
 
+    def _set_flash(self, level: float) -> None:
+        """0 dark, 1 full. Lamps, bulbs and the scene dip move together."""
+        model = self.model
+        model.light_diffuse[self._flash] = np.array(FLASH_DIFFUSE) * level
+        rgba = self._bulb_rgba.copy()
+        rgba[:, :3] += (1.0 - rgba[:, :3]) * level
+        model.geom_rgba[self._bulb] = rgba
+        # Everything else fades toward QC_DIP as the flash comes up.
+        dip = 1.0 - (1.0 - QC_DIP) * level
+        model.light_diffuse[self._scene_lights] = self._light0[self._scene_lights] * dip
+        model.vis.headlight.diffuse[:] = self._head0[0] * dip
+        model.vis.headlight.ambient[:] = self._head0[1] * dip
+
+    def _shoot(self):
+        """Stop, let the cloth settle, fire the flash, take the product shot.
+
+        The belt has already braked to a stop at QC_X. The shot is taken at
+        the top of the flash, so what the camera sees is what the dashboard
+        shows. `on_photo` is optional: without it the flash still fires, which
+        is what makes the stop legible in the live viewport.
+        """
+        self._enter("PHOTO", "shirt stopped square under the QC camera")
+        yield from self._hold("PHOTO", "", 0.45, quiet=True)
+        for blend in self._tween(FLASH_RISE):
+            self._set_flash(blend)
+            yield
+        self._set_flash(1.0)
+        taken = False
+        for _ in range(self._steps(FLASH_HOLD)):
+            if not taken:
+                # One step in, so the renderer sees the lit frame.
+                taken = True
+                if self.on_photo is not None:
+                    try:
+                        self.on_photo()
+                    except Exception as exc:  # noqa: BLE001 — a bad shot is not a bad cycle
+                        self.log(f"[line {self.cycles}] PHOTO  camera failed: {exc}")
+            yield
+        for blend in self._tween(FLASH_FALL):
+            self._set_flash(1.0 - blend)
+            yield
+        self._set_flash(0.0)
+
     def _load(self) -> None:
         mujoco = self._mujoco
         mujoco.mj_resetData(self.model, self.data)
@@ -627,6 +710,7 @@ class Line:
         self._hold_bag()
         self._shape_bag(BAG_FLAT, 0.0)
         self._set_peel(0.0, 0.0)
+        self._set_flash(0.0)
         mujoco.mj_forward(self.model, self.data)
 
     def _enter(self, stage: str, message: str) -> None:
