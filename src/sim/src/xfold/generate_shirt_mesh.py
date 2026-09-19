@@ -22,11 +22,16 @@ BODY_W = 0.60
 BODY_L = 0.64
 # Laid-flat stack: two layers, not a worn torso. Wearable topology, foldable pose.
 TORSO_D = 0.012
-SLEEVE_L = 0.15
+# Short-sleeve tee matching a classic crew silhouette (hanging set-in sleeves).
+SLEEVE_L = 0.18
 SLEEVE_H = 0.16
-NECK_W = 0.18
+NECK_W = 0.20
 NECK_D = 0.08
+NECK_WRAP = 1.72
+# Physics grid: ~410 verts at 3.2 cm stays near 60 fps (shirt.toml).
+# The silhouette is snapped to the smooth outline, so this is not voxel stairs.
 DEFAULT_SPACING = 0.032
+HI_SPACING = 0.024
 DEFAULT_NX = 22
 DEFAULT_NY = 24
 DEFAULT_NS = 6
@@ -37,41 +42,93 @@ RIGHT_CREASE_X = BODY_W / 6.0
 _HEM, _NECK, _LCUFF, _RCUFF, _SEAM = "hem", "neck", "lcuff", "rcuff", "seam"
 
 
+def _cubic(
+    p0: np.ndarray, p1: np.ndarray, p2: np.ndarray, p3: np.ndarray, n: int
+) -> np.ndarray:
+    """Open cubic Bezier from p0 to p3."""
+    t = np.linspace(0.0, 1.0, n, endpoint=True)
+    u = 1.0 - t
+    p0, p1, p2, p3 = (np.asarray(p, dtype=np.float64) for p in (p0, p1, p2, p3))
+    return (
+        (u**3)[:, None] * p0
+        + (3.0 * u**2 * t)[:, None] * p1
+        + (3.0 * u * t**2)[:, None] * p2
+        + (t**3)[:, None] * p3
+    )
+
+
 def shirt_outline() -> np.ndarray:
-    """Closed iconic T, clockwise, starting at the left neck."""
+    """Closed short-sleeve tee, clockwise from the left neck.
+
+    Classic crew silhouette: round collar, one-piece rounded shoulders,
+    short sleeves that hang with a slanted cuff. Body width stays BODY_W
+    so ninja thirds stay at ±body/6.
+    """
     hw = 0.5 * BODY_W
     hl = 0.5 * BODY_L
-    nw = 0.5 * NECK_W
-    y_collar = hl
-    y_shoulder = hl - 0.02
-    y_cuff_top = y_shoulder - 0.03
-    y_armpit = y_shoulder - SLEEVE_H
-    y_hem = -hl
-    x_cuff = hw + SLEEVE_L
-    return np.array(
-        [
-            (-nw, y_collar),
-            (-hw + 0.02, y_shoulder),
-            (-x_cuff, y_cuff_top),
-            (-x_cuff - 0.01, y_cuff_top - 0.55 * SLEEVE_H),
-            (-x_cuff, y_armpit),
-            (-hw, y_armpit),
-            (-hw - 0.01, y_hem + 0.06),
-            (-hw + 0.02, y_hem),
-            (0.0, y_hem - 0.02),
-            (hw - 0.02, y_hem),
-            (hw + 0.01, y_hem + 0.06),
-            (hw, y_armpit),
-            (x_cuff, y_armpit),
-            (x_cuff + 0.01, y_cuff_top - 0.55 * SLEEVE_H),
-            (x_cuff, y_cuff_top),
-            (hw - 0.02, y_shoulder),
-            (nw, y_collar),
-            (0.4 * nw, y_collar - NECK_D),
-            (-0.4 * nw, y_collar - NECK_D),
-        ],
-        dtype=np.float64,
+    rx, ry = 0.5 * NECK_W, NECK_D
+    beta = NECK_WRAP
+    y_c = hl - 0.04
+    x_join = float(rx * np.sin(beta))
+    y_join = float(y_c - ry * np.cos(beta))
+
+    # Set-in sleeve as a hanging parallelogram (axis ~20°), blunt cuff.
+    ang = np.deg2rad(20.0)
+    axis = np.array([-np.cos(ang), -np.sin(ang)])
+    perp = np.array([np.sin(ang), -np.cos(ang)])  # toward underarm along the cuff
+    y_arm_top = hl - 0.05
+    y_arm_bot = y_arm_top - 0.20
+    arm_top = np.array([-hw, y_arm_top])
+    arm_bot = np.array([-hw, y_arm_bot])
+    cuff_mid = 0.5 * (arm_top + arm_bot) + SLEEVE_L * axis
+    cuff_half = 0.082
+    cuff_top = cuff_mid - cuff_half * perp
+    cuff_bot = cuff_mid + cuff_half * perp
+
+    # Collar → high round shoulder → down the sleeve to the cuff.
+    shoulder_sleeve = _cubic(
+        (-x_join, y_join),
+        (-x_join - 0.07, hl + 0.01),
+        (-hw - 0.05, hl - 0.01),
+        tuple(cuff_top),
+        24,
     )
+    cuff = _cubic(
+        tuple(cuff_top),
+        tuple(0.70 * cuff_top + 0.30 * cuff_bot + 0.004 * axis),
+        tuple(0.30 * cuff_top + 0.70 * cuff_bot + 0.004 * axis),
+        tuple(cuff_bot),
+        10,
+    )
+    # Underarm rises into a small armpit fillet, like the reference tee.
+    sleeve_bot = _cubic(
+        tuple(cuff_bot),
+        tuple(0.60 * cuff_bot + 0.40 * arm_bot + np.array([-0.02, -0.012])),
+        tuple(arm_bot + np.array([-0.035, 0.012])),
+        tuple(arm_bot),
+        14,
+    )
+    side = _cubic(
+        tuple(arm_bot),
+        (-hw - 0.002, 0.04),
+        (-hw + 0.008, -0.18),
+        (-hw + 0.022, -hl + 0.025),
+        12,
+    )
+    hem_l = _cubic(
+        (-hw + 0.022, -hl + 0.025),
+        (-hw + 0.05, -hl - 0.004),
+        (-0.14, -hl - 0.02),
+        (0.0, -hl - 0.022),
+        12,
+    )
+    left = np.vstack([shoulder_sleeve[:-1], cuff[:-1], sleeve_bot[:-1], side[:-1], hem_l])
+    right = left[::-1].copy()
+    right[:, 0] *= -1.0
+
+    t = np.linspace(beta, -beta, 41)
+    neck = np.column_stack((rx * np.sin(t), y_c - ry * np.cos(t)))
+    return np.vstack([left, right[1:], neck[1:-1]])
 
 
 def _point_in_poly(x: float, y: float, poly: np.ndarray) -> bool:
@@ -97,6 +154,60 @@ def _axis(lo: float, hi: float, spacing: float) -> np.ndarray:
 def _quad(faces: list[tuple[int, int, int]], a: int, b: int, c: int, d: int) -> None:
     faces.append((a, b, c))
     faces.append((a, c, d))
+
+
+def _arclength_samples(poly: np.ndarray, n: int) -> np.ndarray:
+    """n points around a closed polyline, starting at poly[0], equal arc length."""
+    pts = np.vstack([poly, poly[0]]) if not np.allclose(poly[0], poly[-1]) else poly
+    seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+    s = np.concatenate(([0.0], np.cumsum(seg)))
+    total = float(s[-1])
+    t = (np.arange(n, dtype=np.float64) / max(n, 1)) * total
+    k = np.clip(np.searchsorted(s, t, side="right") - 1, 0, len(seg) - 1)
+    u = ((t - s[k]) / (seg[k] + 1e-18))[:, None]
+    return pts[k] + u * (pts[k + 1] - pts[k])
+
+
+def _snap_boundary_to_outline(
+    verts: np.ndarray, faces: np.ndarray, poly: np.ndarray
+) -> tuple[np.ndarray, list[int]]:
+    """Move the raster silhouette onto the true T outline so the cloth looks like a tee."""
+    loops = boundary_loops(faces)
+    loop = max(loops, key=len)
+    start = int(np.argmin(np.sum((verts[loop, :2] - poly[0]) ** 2, axis=1)))
+    order = loop[start:] + loop[:start]
+    want = poly[1] - poly[0]
+    got = verts[order[1], :2] - verts[order[0], :2]
+    if float(np.dot(want, got)) < 0.0:
+        order = [order[0]] + order[:0:-1]
+    samples = _arclength_samples(poly[:, :2], len(order))
+    out = verts.copy()
+    out[order, 0] = samples[:, 0]
+    out[order, 1] = samples[:, 1]
+    return out, order
+
+
+def _relax_interior(verts: np.ndarray, faces: np.ndarray, boundary: list[int]) -> np.ndarray:
+    """Laplacian-smooth interior verts so snapped edges do not leave sliver triangles."""
+    n = len(verts)
+    adj: list[set[int]] = [set() for _ in range(n)]
+    for a, b, c in faces:
+        ia, ib, ic = int(a), int(b), int(c)
+        adj[ia].update((ib, ic))
+        adj[ib].update((ia, ic))
+        adj[ic].update((ia, ib))
+    bound = np.zeros(n, dtype=bool)
+    bound[list(boundary)] = True
+    out = verts.copy()
+    for _ in range(12):
+        nxt = out.copy()
+        for i in range(n):
+            if bound[i] or not adj[i]:
+                continue
+            pts = out[list(adj[i]), :2]
+            nxt[i, :2] = pts.mean(axis=0)
+        out = nxt
+    return out
 
 
 def build_panel(spacing: float) -> tuple[np.ndarray, np.ndarray]:
@@ -132,7 +243,19 @@ def build_panel(spacing: float) -> tuple[np.ndarray, np.ndarray]:
 
     if not verts or not faces:
         raise RuntimeError("T-shirt panel is empty — check silhouette bounds")
-    return np.asarray(verts, dtype=np.float64), np.asarray(faces, dtype=np.int32)
+    v = np.asarray(verts, dtype=np.float64)
+    f = np.asarray(faces, dtype=np.int32)
+    v, boundary = _snap_boundary_to_outline(v, f, poly)
+    v = _relax_interior(v, f, boundary)
+    a, b, c = v[f[:, 0]], v[f[:, 1]], v[f[:, 2]]
+    area = (b[:, 0] - a[:, 0]) * (c[:, 1] - a[:, 1]) - (b[:, 1] - a[:, 1]) * (
+        c[:, 0] - a[:, 0]
+    )
+    flip = area < 0.0
+    if np.any(flip):
+        f = f.copy()
+        f[flip] = f[flip][:, (0, 2, 1)]
+    return v, f
 
 
 def _oriented_boundary(faces: np.ndarray) -> list[tuple[int, int]]:
@@ -161,10 +284,10 @@ def _label_vert(x: float, y: float, xs: np.ndarray, ys: np.ndarray) -> str:
         return _LCUFF
     if x >= xmax - pad:
         return _RCUFF
-    if y >= ymax - NECK_D - pad and abs(x) <= 0.5 * NECK_W + pad:
+    if y >= ymax - 0.16 - pad and abs(x) <= 0.5 * NECK_W + 0.04:
         return _NECK
     # Neck bite sits inside the bounding box; catch the U as well.
-    if y >= 0.5 * BODY_L - NECK_D - pad and abs(x) <= 0.5 * NECK_W + 0.01:
+    if y >= 0.5 * BODY_L - 0.16 - pad and abs(x) <= 0.5 * NECK_W + 0.04:
         return _NECK
     if abs(x) >= hw + 0.5 * SLEEVE_L and x < 0:
         return _LCUFF
