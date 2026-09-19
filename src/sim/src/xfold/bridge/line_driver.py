@@ -9,14 +9,10 @@ Integration contract: docs/INTEGRATION_CONTRACT.md §4 / §4b
 =============================================================================
 AGENT NOTE — PRESS / LINE TRACK
 -----------------------------------------------------------------------------
-Line stages are free-form strings (`Line._enter`). The dashboard stepper only
-knows the six `CellState`s, so `_STAGE_STATE` maps one onto the other and
-`_RANK` keeps the mapping monotonic — `BELT` means SPREAD on the way to the
-press and nothing at all on the way to the carton, and the stepper must never
-walk backwards.
-
-Add a stage to `Line`? Add it to `_STAGE_STATE` too, or it silently keeps the
-previous CellState.
+Line owns its phase catalogue and observations (`LINE_PHASES`, `on_event`).
+The driver forwards those facts without translating or suppressing phases.
+The legacy `_STAGE_STATE` / `_RANK` constants below are not used by this driver.
+Add phases and operations in Line; the dashboard receives their IDs and labels.
 
   runtime.emit_state(run_id, CellState.<STAGE>, t=session.sim_time())
   runtime.emit_log(run_id, msg, source="line")
@@ -92,6 +88,15 @@ class LineDriver:
         self.session = session
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        from dataclasses import asdict
+        from xfold.line import LINE_PHASES
+        from xfold.shirt import shirt_config
+
+        cfg = shirt_config()
+        inputs = asdict(cfg)
+        inputs["path"] = str(cfg.path)
+        inputs.update({"skewed": _skewed_default(), "seedApplied": False, "driver": "line"})
+        runtime.configure_process(LINE_PHASES, scenario="line", config=inputs)
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -139,7 +144,7 @@ class LineDriver:
 
     def _wait_unpaused(self, run_id: str) -> bool:
         """Block while the run is paused. False once it is gone or cancelled."""
-        while True:
+        while not self._stop.is_set():
             run = self._active(run_id)
             if run is None:
                 return False
@@ -147,6 +152,20 @@ class LineDriver:
                 self.runtime.wait_wake(0.1)
                 continue
             return True
+        return False
+
+    def _publish(self, run_id: str, observation: dict) -> None:
+        if self._active(run_id) is None:
+            return
+        self.runtime.emit_state(run_id, observation["state"], observation["t"])
+        self.runtime.emit_log(
+            run_id, observation["message"], t=observation["t"],
+            source="bagger" if observation["parallel"] else "line",
+            operation=observation["operation"], station=observation["station"],
+            parallel=observation["parallel"],
+        )
+        if observation["measurements"]:
+            self.runtime.emit_metrics(run_id, observation["t"], observation["measurements"])
 
     # --- the cycle -------------------------------------------------------
 
@@ -162,7 +181,7 @@ class LineDriver:
         # Line.log fires inside session.lock; emit_log takes the runtime lock.
         # Buffer here and flush once the session lock is released, so the two
         # locks are never held at the same time in this order.
-        pending: list[str] = []
+        pending: list[dict] = []
 
         try:
             session.reset_time()
@@ -171,18 +190,18 @@ class LineDriver:
                     session.model,
                     session.data,
                     repeat=False,
-                    log=pending.append,
+                    log=lambda message: None,
                     skewed=skewed,
+                    on_event=pending.append,
                 )
             cfg = shirt_config()
             self._log(
                 run_id,
                 f"ciclo iniciado · {cfg.garment} ({cfg.mesh}) · "
                 f"{'colocada torcida' if skewed else 'colocada a escuadra'} · "
-                f"seed {seed} · nq={session.model.nq} · timestep {dt:g}s",
+                f"seed {seed} (no aplicada por esta línea) · nq={session.model.nq} · timestep {dt:g}s",
             )
 
-            state: CellState | None = None
             stage = ""
             last_event = time.monotonic()
             steps = 0
@@ -196,33 +215,21 @@ class LineDriver:
                 with session.lock:
                     line.step()
                     t = float(session.data.time)
-                    stage_now = line.stage
+                    stage = line.phase
                     finished = line.finished
                     qpos = np.asarray(session.data.qpos, dtype=np.float64).copy()
                     cloth = line.positions() if (track and session.follow) else None
                 steps += 1
 
-                for message in pending:
-                    self.runtime.emit_log(run_id, message, source="line", t=t)
+                for observation in pending:
+                    self._publish(run_id, observation)
                     last_event = time.monotonic()
                 pending.clear()
 
                 if cloth is not None:
                     session.track_camera(cloth, _TRACK_EVERY * dt)
-                recorder.maybe_sample(t, state.value if state else None, qpos)
+                recorder.maybe_sample(t, stage, qpos)
                 self.runtime.bump_sim_time(run_id, t)
-
-                if stage_now != stage:
-                    stage = stage_now
-                    mapped = _STAGE_STATE.get(stage)
-                    if mapped is not None and (
-                        state is None or _RANK[mapped] > _RANK[state]
-                    ):
-                        state = mapped
-                        if self._active(run_id) is None:
-                            return
-                        self.runtime.emit_state(run_id, state, t)
-                        last_event = time.monotonic()
 
                 if finished:
                     break
@@ -251,7 +258,7 @@ class LineDriver:
             if self._active(run_id) is None:
                 return
             with session.lock:
-                recorder.maybe_sample(t, CellState.BAG.value, session.data.qpos)
+                recorder.maybe_sample(t, line.phase, session.data.qpos)
             self._log(run_id, f"ciclo completo · {t:.1f}s de simulación")
             self.runtime.finish_success(run_id, t)
         except Exception as exc:  # noqa: BLE001

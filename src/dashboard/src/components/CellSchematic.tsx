@@ -1,7 +1,13 @@
-import type { CellState } from "@xfold/protocol";
+import type { PhaseId, PhaseDefinition } from "@xfold/protocol";
 
 /** Schematic only: not rendered physics or live robot poses. */
-export function CellSchematic({ stage }: { stage: CellState | null }) {
+export function CellSchematic({ stage, stages }: { stage: PhaseId | null; stages?: PhaseDefinition[] }) {
+  if (stages?.some((s) => s.label)) {
+    return <div className="flex max-w-2xl flex-col gap-4 text-center font-mono text-xs">
+      <p>Sin imagen reconstruible · fases registradas por la simulación</p>
+      <ol className="flex flex-wrap justify-center gap-3">{stages.map((s) => <li key={s.state} className={s.state === stage ? "text-hud" : "text-hud-dim"}>{s.label ?? s.state}</li>)}</ol>
+    </div>;
+  }
   return <svg viewBox="0 0 800 340" className="w-full max-h-[330px]" role="img" aria-label="Esquema de la celda: entrada, dos brazos OpenArm, prensa y tolva hacia la bolsa. No representa posiciones reales.">
     <defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="#faf6ec" strokeOpacity=".045" /></pattern></defs>
     <rect width="800" height="340" fill="url(#grid)" />

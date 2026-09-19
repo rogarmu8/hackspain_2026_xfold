@@ -297,6 +297,8 @@ def create_app(*, persist: bool = True) -> FastAPI:
                     {
                         "t": float(ev.get("t") or 0),
                         "state": ev.get("state"),
+                        "label": ev.get("label"),
+                        "station": ev.get("station"),
                         "seq": ev.get("seq"),
                     }
                 )
@@ -304,7 +306,7 @@ def create_app(*, persist: bool = True) -> FastAPI:
                 markers.append(
                     {
                         "t": float(ev.get("t") or 0),
-                        "state": "BAG" if ev.get("lifecycle") == "succeeded" else None,
+                        "state": None,
                         "seq": ev.get("seq"),
                         "finished": True,
                         "lifecycle": ev.get("lifecycle"),

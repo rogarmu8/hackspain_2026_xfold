@@ -65,6 +65,9 @@ export class BridgeClient {
   private _pendingCommandId: string | null = null;
   private _pendingKind: CommandKind | null = null;
   private _capabilities: BridgeCapabilities | null = null;
+  private snapshotRequest: Promise<ControlSnapshot | null> | null = null;
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(baseUrl: string = bridgeBaseUrl()) {
     this.baseUrl = baseUrl;
@@ -100,10 +103,18 @@ export class BridgeClient {
     }
     await this.refreshSnapshot();
     this.openEventSource();
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = setInterval(() => {
+      if (this._connection === "connected") void this.refreshSnapshot();
+    }, 1000);
     return true;
   }
 
   stop() {
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    this.pollTimer = null;
+    this.refreshTimer = null;
     this.es?.close();
     this.es = null;
     this._connection = "disconnected";
@@ -126,10 +137,14 @@ export class BridgeClient {
     es.onmessage = (msg) => {
       try {
         const event = JSON.parse(msg.data) as JournalEvent;
-        this.lastSeq = Math.max(this.lastSeq, event.seq);
+        if (event.seq <= this.lastSeq) return;
+        this.lastSeq = event.seq;
         this.applyEvent(event);
         this.notify();
-        void this.refreshSnapshot();
+        if (!this.refreshTimer) this.refreshTimer = setTimeout(() => {
+          this.refreshTimer = null;
+          void this.refreshSnapshot();
+        }, 100);
       } catch {
         /* ignore malformed frames */
       }
@@ -152,16 +167,20 @@ export class BridgeClient {
     }
   }
 
-  async refreshSnapshot(): Promise<ControlSnapshot | null> {
+  refreshSnapshot(): Promise<ControlSnapshot | null> {
+    if (!this.snapshotRequest) {
+      this.snapshotRequest = this.loadSnapshot().finally(() => { this.snapshotRequest = null; });
+    }
+    return this.snapshotRequest;
+  }
+
+  private async loadSnapshot(): Promise<ControlSnapshot | null> {
     try {
       const res = await fetch(`${this.baseUrl}/snapshot`);
       if (!res.ok) throw new Error(`snapshot ${res.status}`);
       const raw = (await res.json()) as ControlSnapshot & {
         journalSeq?: number;
       };
-      if (typeof raw.journalSeq === "number") {
-        this.lastSeq = Math.max(this.lastSeq, raw.journalSeq);
-      }
       this._capabilities = raw.capabilities as BridgeCapabilities;
       this._snapshot = {
         ...raw,

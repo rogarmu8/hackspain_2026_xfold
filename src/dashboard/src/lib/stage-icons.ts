@@ -1,6 +1,7 @@
-import type { CellState } from "@xfold/protocol";
+import type { PhaseId } from "@xfold/protocol";
 import {
   ArrowDownToLine,
+  Circle,
   FoldVertical,
   Funnel,
   Hand,
@@ -11,7 +12,7 @@ import {
 } from "lucide-react";
 
 /** One Lucide glyph per cell stage — shared by stepper, HUD and history. */
-export const STAGE_ICONS: Record<CellState, LucideIcon> = {
+export const STAGE_ICONS: Partial<Record<PhaseId, LucideIcon>> = {
   PICK: Hand,
   SPREAD: StretchHorizontal,
   PRESS: ArrowDownToLine,
@@ -20,3 +21,5 @@ export const STAGE_ICONS: Record<CellState, LucideIcon> = {
   BAG: Package,
   RESET: RotateCcw,
 };
+
+export const DEFAULT_STAGE_ICON = Circle;

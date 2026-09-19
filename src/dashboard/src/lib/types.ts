@@ -1,4 +1,4 @@
-import type { CellState, Telemetry } from "@xfold/protocol";
+import type { PhaseId, PhaseDefinition, ProcessDefinition, LogLevel, Telemetry } from "@xfold/protocol";
 
 /** Provenance of every value shown in the UI. */
 export type DataProvenance = "live" | "fixture" | "stale" | "absent";
@@ -34,6 +34,7 @@ export type CommandStatus = "idle" | "pending" | "confirmed" | "rejected";
 
 /** What the current backend actually accepts. Unknown ⇒ do not show as active. */
 export type SimulatorCapabilities = {
+  process?: ProcessDefinition | null;
   liveTelemetry: boolean;
   viewportStream: boolean;
   recordingSeek?: boolean;
@@ -44,7 +45,7 @@ export type SimulatorCapabilities = {
 
 export type TimelineMarker = {
   t: number;
-  state: CellState | null;
+  state: PhaseId | null;
   seq?: number;
   finished?: boolean;
   lifecycle?: string;
@@ -70,13 +71,12 @@ export type RecordingFrame = {
   runId: string;
   t: number;
   requestedT: number;
-  state: CellState;
+  state: PhaseId;
   mime: string;
   imageBase64: string;
 };
 
-export type StageProgress = {
-  state: CellState;
+export type StageProgress = PhaseDefinition & {
   status: "completed" | "active" | "pending" | "failed" | "skipped";
   startedAtSimS: number | null;
   durationSimS: number | null;
@@ -86,9 +86,13 @@ export type RunEvent = {
   id: string;
   atSimS: number;
   atWallIso: string | null;
-  stage: CellState | null;
+  stage: PhaseId | null;
   message: string;
-  level: "info" | "warning" | "error";
+  level: LogLevel;
+  source?: string;
+  operation?: string | null;
+  station?: string | null;
+  parallel?: boolean;
 };
 
 export type RunMetrics = {
@@ -97,6 +101,7 @@ export type RunMetrics = {
   flatnessPre: number | null;
   flatnessPost: number | null;
   shirtInBag: boolean | null;
+  measurements?: Record<string, number>;
 };
 
 export type RunConfig = {
@@ -104,6 +109,7 @@ export type RunConfig = {
   seed: number;
   scenario: string;
   notes: string | null;
+  inputs?: Record<string, unknown>;
 };
 
 export type RunSummary = {
@@ -112,7 +118,7 @@ export type RunSummary = {
   lifecycle: RunLifecycle;
   seed: number;
   name: string | null;
-  currentState: CellState | null;
+  currentState: PhaseId | null;
   startedAtIso: string | null;
   finishedAtIso: string | null;
   failReason: string | null;

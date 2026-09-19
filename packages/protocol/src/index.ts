@@ -17,6 +17,28 @@ export const CELL_STATES = [
 
 export type CellState = (typeof CELL_STATES)[number];
 
+export type PhaseId = string;
+
+export type PhaseDefinition = {
+  state: PhaseId;
+  label?: string | null;
+  station?: string | null;
+};
+
+export type ProcessDefinition = {
+  scenario: string;
+  stages: PhaseDefinition[];
+  seedApplied: boolean | null;
+};
+
+export type SimOperation = {
+  id: string;
+  station: string | null;
+  message: string;
+  t: number;
+  parallel: boolean;
+};
+
 /** Productive cycle order (RESET is lifecycle-only, not a fold step). */
 export const PRODUCTIVE_CYCLE = [
   "PICK",
@@ -41,10 +63,12 @@ export const CELL_STAGE_LABELS: Record<CellState, string> = {
 /** Shared snapshot the sim materializes and the bridge streams to the dashboard. */
 export type Telemetry = {
   t: number;
-  state: CellState;
+  state: PhaseId;
   cycle: number;
   flatness: number | null;
-  shirt_in_bag: boolean;
+  shirt_in_bag: boolean | null;
+  operation?: SimOperation | null;
+  activities?: SimOperation[];
 };
 
 export const SAMPLE_TELEMETRY: Telemetry = {
@@ -108,6 +132,7 @@ export type BatchLifecycle =
 
 /** What the bridge actually exposes right now. */
 export type BridgeCapabilities = {
+  process?: ProcessDefinition | null;
   liveTelemetry: boolean;
   viewportStream: boolean;
   /** True once at least one JPEG has been published. */
@@ -140,6 +165,9 @@ type JournalEnvelope = {
 export type JournalEvent =
   | (JournalEnvelope & {
       type: "run_started";
+      stages?: PhaseDefinition[];
+      inputs?: Record<string, unknown>;
+      driver?: string;
       seed: number;
       name: string | null;
       scenario: string;
@@ -147,7 +175,9 @@ export type JournalEvent =
     })
   | (JournalEnvelope & {
       type: "state_changed";
-      state: CellState;
+      state: PhaseId;
+      label?: string | null;
+      station?: string | null;
       t: number;
       cycle: number;
     })
@@ -155,9 +185,10 @@ export type JournalEvent =
       type: "metric_sample";
       t: number;
       flatness: number | null;
-      shirt_in_bag: boolean;
+      shirt_in_bag: boolean | null;
+      measurements?: Record<string, number>;
       cycle: number;
-      state: CellState;
+      state: PhaseId;
     })
   | (JournalEnvelope & {
       type: "run_finished";
@@ -191,6 +222,10 @@ export type JournalEvent =
       /** Emitter, e.g. "press-driver", "line", "sim-session". */
       source: string;
       t: number | null;
+      stage?: PhaseId | null;
+      operation?: string | null;
+      station?: string | null;
+      parallel?: boolean;
     });
 
 export type BridgeHealth = {

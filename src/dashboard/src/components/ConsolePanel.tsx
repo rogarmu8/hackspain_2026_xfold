@@ -77,7 +77,7 @@ export function ConsolePanel({
         <span className="font-mono text-[11px] tabular text-muted-foreground">{lines.length}</span>
         {stalled ? (
           <StatusBadge tone="danger" icon={<TriangleAlert className="size-3" aria-hidden />} title={`Sin eventos desde hace ${Math.round(silenceS)} s`}>
-            Atasco · {Math.round(silenceS)} s
+            Sin señal · {Math.round(silenceS)} s
           </StatusBadge>
         ) : running ? (
           <StatusBadge tone="active" pulse>en vivo</StatusBadge>
@@ -112,7 +112,10 @@ export function ConsolePanel({
                 {line.atSimS == null ? "—" : formatSeconds(line.atSimS)}
               </span>
               <span className="min-w-0 break-words">
-                <span className="text-muted-foreground">{line.source} </span>
+                <span className="text-muted-foreground">
+                  {[line.station ?? line.source, line.stage, line.operation].filter(Boolean).join(" · ")}
+                  {line.parallel ? " · paralelo" : ""}{" "}
+                </span>
                 {line.message}
               </span>
             </li>
@@ -123,7 +126,7 @@ export function ConsolePanel({
             <span className="tabular">—</span>
             <span>
               <span className="opacity-70">watchdog </span>
-              sin eventos desde hace {Math.round(silenceS)} s · posible atasco
+              sin eventos desde hace {Math.round(silenceS)} s · comprobar bridge o simulación
             </span>
           </li>
         ) : null}

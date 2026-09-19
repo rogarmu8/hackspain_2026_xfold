@@ -44,7 +44,17 @@ console, just no video — instead of taking the process down with it.
 The line's input garment is fixed when the scene compiles, because a different
 SKU is a different mesh: `XFOLD_GARMENT` (or `[garment] type` in
 `models/shirt.toml`) chooses it, and `XFOLD_SKEWED=1` drops it off square.
-`LineDriver` logs which input a cycle got as its first console line.
+`LineDriver` logs which input a cycle got as its first console line and stores the effective configuration in `run.config.inputs`.
+
+### Simulator-defined process (0.2)
+
+`xfold.line.LINE_PHASES` is the sole line phase catalogue. The driver registers it with Runtime and forwards `Line.on_event` observations; the browser consumes `run.stages` and simulator labels. `/capabilities.process` advertises the scenario/catalogue/seed support before launch; `run_started` journals `stages`, `inputs` and `driver` for traceability. The old six-state mapping is no longer used for the line. Main phases distinguish all three conveyor trips, insertion, sealing and completion. Sub-operations distinguish each flap, press motion and peel action. Bag preparation logs `parallel: true`, without advancing the main phase.
+
+Structured log context: `stage`, `operation`, `station`, `parallel`, plus existing `source`, `level`, `t`. Run snapshots preserve it for history/reconnect. The console uses complete `run.events` plus journal command events, rather than replacing history with a partial SSE tail. SSE cursors advance only on received events; snapshot sequence numbers cannot skip unread facts. Snapshot refreshes are coalesced and a 1 Hz refresh keeps the sim clock current between observations.
+
+Metrics are observations only: z-standard-deviation before/after the press (`flatnessPreM`, `flatnessPostM`) and folded AABB dimensions (`packLengthM`, `packWidthM`, `packHeightM`). All units are metres on the wire. No hard-coded flatness or bag success; unknown containment is null. Completing the script is not quality validation. Wall time includes pauses; the line explicitly reports that seed is not applied.
+
+Timeline final markers have no phase. Replay follows the supplied phase catalogue, including failed/cancelled endings, and labels qpos-only line reconstruction as partial. The console silence warning means **no signal**, not physical jam detection. Full replay fidelity, durable restart recovery and measured progress/quality gates are not implemented by this change.
 ## Why this shape (and not WS / gRPC)
 
 | Need | Choice |
@@ -151,8 +161,8 @@ Python models live in [`src/sim/src/xfold/bridge/schema.py`](../src/sim/src/xfol
 | `type` | Meaning |
 |--------|---------|
 | `run_started` | New run entered `running` |
-| `state_changed` | FSM stage changed (`PICK`…`BAG`) |
-| `metric_sample` | Throttled metrics (flatness, bag flag) |
+| `state_changed` | Simulator phase entry (`state`, `label`, `station`, `t`, `cycle`); no fixed six-stage cycle for line |
+| `metric_sample` | Measured metrics (`measurements` with unit-suffixed keys; nullable flatness/bag flag) |
 | `run_finished` | Terminal lifecycle + reason |
 | `command_accepted` | Command passed validation |
 | `command_rejected` | Invalid / unsupported |
@@ -164,7 +174,7 @@ Envelope on every event: `seq`, `tsIso`, `runId`, `batchId`.
 
 ### Console (dashboard)
 
-`bridge-client` keeps a ring buffer (2000) of journal facts; `ControlRoom` renders them for the open run in `ConsolePanel` (`src/dashboard/src/lib/console.ts` maps each `type` to a line; `metric_sample`/`batch_updated` are hidden). A UI **stall watchdog** flags a `running` run with no fact for `STALL_AFTER_S` (8 s) — so drivers should log at stage granularity, not stay silent for long phases.
+`bridge-client` keeps a ring buffer (2000) of journal facts; `ControlRoom` renders them for the open run in `ConsolePanel` (`src/dashboard/src/lib/console.ts` maps each `type` to a line; `metric_sample`/`batch_updated` are hidden). A UI **silence watchdog** flags a `running` run with no console fact for `STALL_AFTER_S` (8 s). It is a signal-health warning, not a physical stall detector; heartbeats do not prove material progress.
 
 ## Invariants
 

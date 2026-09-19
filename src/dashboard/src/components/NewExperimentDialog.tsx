@@ -115,6 +115,8 @@ function NewExperimentDialogBody({
     setError(null);
   }
 
+  const process = snapshot.capabilities.process;
+  const scenario = snapshot.provenance === "fixture" ? "openarm-ninja-bag" : process?.scenario ?? "default";
   const canLaunch =
     mode === "individual"
       ? snapshot.capabilities.startRun
@@ -148,7 +150,7 @@ function NewExperimentDialogBody({
               mode: "individual",
               name: name.trim(),
               seed,
-              scenario: "openarm-ninja-bag",
+              scenario,
             })
           : launch({
               mode: "batch",
@@ -156,7 +158,7 @@ function NewExperimentDialogBody({
               count,
               seedStrategy: "sequential",
               baseSeed: seed,
-              scenario: "openarm-ninja-bag",
+              scenario,
             }),
       );
 
@@ -178,7 +180,7 @@ function NewExperimentDialogBody({
       <DialogHeader>
         <DialogTitle>Nuevo experimento</DialogTitle>
         <DialogDescription>
-          Individual o batch secuencial · escenario OpenArm (ninja fold → bolsa)
+          Individual o batch secuencial · {process?.scenario ?? "configuración activa del simulador"}
         </DialogDescription>
       </DialogHeader>
 
@@ -213,7 +215,7 @@ function NewExperimentDialogBody({
               id={`${formId}-name`}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="p. ej. Smoke OpenArm"
+              placeholder="p. ej. Comprobación de ciclo"
             />
             <FieldDescription>Visible en Experimentos e Historial.</FieldDescription>
           </Field>
@@ -232,7 +234,9 @@ function NewExperimentDialogBody({
               required
             />
             <FieldDescription>
-              Entero ≥ 0. En batch secuencial se incrementa por ejecución.
+              {process?.seedApplied === false
+                ? "Esta simulación no utiliza la seed para variar la entrada. El batch repite la configuración activa."
+                : "Entero ≥ 0. En batch secuencial se incrementa por ejecución."}
             </FieldDescription>
           </Field>
 
@@ -261,9 +265,7 @@ function NewExperimentDialogBody({
               Opciones avanzadas
             </summary>
             <p className="mt-2 text-sm text-muted-foreground">
-              Escenario fijo:{" "}
-              <code className="font-mono">openarm-ninja-bag</code> (PICK →
-              SPREAD → PRESS → FOLD → CHUTE → BAG).
+              {process?.stages.map((s) => s.label ?? s.state).join(" → ") ?? "Las fases y los parámetros los determina el simulador activo."}
             </p>
           </details>
         </FieldGroup>
@@ -272,7 +274,7 @@ function NewExperimentDialogBody({
           <p className="font-semibold text-foreground">Resumen</p>
           <p className="mt-1">
             {mode === "individual"
-              ? `1 ejecución · semilla ${seed} · openarm-ninja-bag`
+              ? `1 ejecución · semilla ${seed} · ${scenario}`
               : `Batch ×${count} · semillas ${seed}… · cola secuencial`}
           </p>
         </div>

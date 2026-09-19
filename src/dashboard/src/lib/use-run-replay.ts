@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PRODUCTIVE_CYCLE, type CellState } from "@xfold/protocol";
+import type { PhaseId } from "@xfold/protocol";
 import { BridgeClient, bridgeBaseUrl } from "@/lib/bridge-client";
 import type {
   RecordingFrame,
@@ -19,7 +19,7 @@ export type RunReplay = {
   markers: TimelineMarker[];
   /** Stage progress as it was at time `t`. */
   stages: StageProgress[];
-  active: CellState | null;
+  active: PhaseId | null;
   /** `data:` URL of the recorded frame at `t`, if any. */
   frameSrc: string | null;
   seek: (t: number) => void;
@@ -39,33 +39,32 @@ type Cursor = { runId: string | null; t: number; playing: boolean };
 
 const IDLE: Cursor = { runId: null, t: 0, playing: false };
 
-function activeStateAt(markers: TimelineMarker[], t: number): CellState | null {
-  let current: CellState | null = null;
+function activeStateAt(markers: TimelineMarker[], t: number): PhaseId | null {
+  let current: PhaseId | null = null;
   for (const m of markers) {
     if (m.t > t) break;
-    if (m.state) current = m.state as CellState;
+    if (m.state && !m.finished) current = m.state;
   }
   return current;
 }
 
-function stagesForT(markers: TimelineMarker[], t: number, tMax: number): StageProgress[] {
+export function stagesForT(markers: TimelineMarker[], t: number, tMax: number, stages: StageProgress[]): StageProgress[] {
   const active = activeStateAt(markers, t);
-  const byState = new Map<string, number>();
-  for (const m of markers) if (m.state) byState.set(m.state, m.t);
-  return PRODUCTIVE_CYCLE.map((state) => {
-    const start = byState.get(state);
+  const transitions = markers.filter((m) => m.state && !m.finished);
+  const terminal = markers.find((m) => m.finished && m.t <= t);
+  return stages.map((stage) => {
+    const index = transitions.findIndex((m) => m.state === stage.state);
+    const start = transitions[index]?.t;
     if (start == null || t < start) {
-      return { state, status: "pending", startedAtSimS: start ?? null, durationSimS: null };
+      return { ...stage, status: terminal && start == null ? "skipped" : "pending", startedAtSimS: start ?? null, durationSimS: null };
     }
-    if (active === state) return { state, status: "active", startedAtSimS: start, durationSimS: null };
-    const next = PRODUCTIVE_CYCLE[PRODUCTIVE_CYCLE.indexOf(state) + 1];
-    const nextT = next ? byState.get(next) : tMax;
-    return {
-      state,
-      status: "completed",
-      startedAtSimS: start,
-      durationSimS: Math.max(0, (nextT ?? t) - start),
-    };
+    if (active === stage.state && !terminal) {
+      return { ...stage, status: "active", startedAtSimS: start, durationSimS: null };
+    }
+    const nextT = transitions.slice(index + 1).find((m) => m.state !== stage.state)?.t ?? terminal?.t ?? tMax;
+    const status = active === stage.state && terminal?.lifecycle === "failed" ? "failed"
+      : active === stage.state && terminal?.lifecycle === "cancelled" ? "skipped" : "completed";
+    return { ...stage, status, startedAtSimS: start, durationSimS: Math.max(0, nextT - start) };
   });
 }
 
@@ -177,7 +176,7 @@ export function useRunReplay({
     [markers, seek, t],
   );
 
-  const stages = useMemo(() => stagesForT(markers, t, tMax), [markers, t, tMax]);
+  const stages = useMemo(() => stagesForT(markers, t, tMax, run?.stages ?? []), [markers, t, tMax, run?.stages]);
 
   return {
     t,

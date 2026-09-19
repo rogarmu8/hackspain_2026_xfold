@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import type { CellState } from "@xfold/protocol";
+import type { PhaseId } from "@xfold/protocol";
 import { AppShell } from "@/components/AppShell";
 import { BatchContextPanel } from "@/components/BatchContextPanel";
 import { ConsolePanel } from "@/components/ConsolePanel";
@@ -116,7 +116,7 @@ export function ControlRoom({ runId }: { runId: string }) {
     getRun,
     getJournal,
   } = useDashboard();
-  const [selectedStage, setSelectedStage] = useState<CellState | null>(null);
+  const [selectedStage, setSelectedStage] = useState<PhaseId | null>(null);
   const stageTrigger = useRef<HTMLElement | null>(null);
   const inspector = useInspectorWidth();
 
@@ -137,7 +137,7 @@ export function ControlRoom({ runId }: { runId: string }) {
       ? run.events.filter((e) => e.stage === selectedStage)
       : [];
 
-  const selectStage = (state: CellState) => {
+  const selectStage = (state: PhaseId) => {
     if (finished) {
       setSelectedStage((prev) => (prev === state ? null : state));
       const marker = replay.markers.find((m) => m.state === state);
@@ -221,7 +221,7 @@ export function ControlRoom({ runId }: { runId: string }) {
             <Sheet open={Boolean(selectedStage && run && !finished)} onOpenChange={(open) => { if (!open) setSelectedStage(null); }}>
               <SheetContent onCloseAutoFocus={(event) => { event.preventDefault(); stageTrigger.current?.focus(); }}>
                 <SheetHeader>
-                  <SheetTitle>{selectedStage ? stageLabel(selectedStage) : "Detalle de etapa"}</SheetTitle>
+                  <SheetTitle>{selectedStage ? stageLabel(selectedStage, run?.stages) : "Detalle de etapa"}</SheetTitle>
                   <SheetDescription>{run?.id} · Trazabilidad de la etapa</SheetDescription>
                 </SheetHeader>
                 <div className="flex flex-col gap-6 overflow-y-auto px-4 pb-6">
