@@ -138,6 +138,7 @@ export const CLOTH_TYPE_KEYS = [
   "tank",
   "polo",
   "dress",
+  "custom",
 ] as const;
 
 export type ClothType = (typeof CLOTH_TYPE_KEYS)[number];
@@ -166,6 +167,14 @@ export type ConditionWeightMap = Partial<Record<ClothCondition, number>>;
 export type CatalogOption = {
   key: string;
   label: string;
+  /** PNG-space silhouette for the launch preview (cut-out when ``custom``). */
+  outlineUv?: number[][];
+};
+
+export type CustomDesignPayload = {
+  mime: string;
+  /** Raw base64, no ``data:`` prefix. Not a journal field. */
+  data: string;
 };
 
 /** What the bridge actually exposes right now. */
@@ -217,6 +226,7 @@ export type JournalEvent =
       clothType?: string | null;
       clothCondition?: string | null;
       skewed?: boolean;
+      customDesign?: boolean;
     })
   | (JournalEnvelope & {
       type: "state_changed";
@@ -290,6 +300,8 @@ export type BridgeLaunchRun = {
   clothTypeWeights?: ClothWeightMap;
   /** Used when `clothCondition` is `"random"`. */
   clothConditionWeights?: ConditionWeightMap;
+  /** Photo printed on both faces of the chosen SKU. */
+  customDesign?: CustomDesignPayload;
 };
 
 export type BridgeLaunchBatch = {
@@ -305,4 +317,5 @@ export type BridgeLaunchBatch = {
   conditions?: ClothCondition[];
   clothTypeWeights?: ClothWeightMap;
   clothConditionWeights?: ConditionWeightMap;
+  customDesign?: CustomDesignPayload;
 };

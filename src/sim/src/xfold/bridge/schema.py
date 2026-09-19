@@ -83,6 +83,14 @@ BRIDGE_VERSION = "0.2.0"
 class CatalogOption(BaseModel):
     key: str
     label: str
+    outlineUv: list[list[float]] = Field(default_factory=list)
+
+
+class CustomDesignPayload(BaseModel):
+    """Operator photo, base64. Never written to the journal."""
+
+    mime: str = "image/png"
+    data: str = ""
 
 
 class BridgeCapabilities(BaseModel):
@@ -121,6 +129,7 @@ class LaunchRunRequest(BaseModel):
     clothCondition: str = "good"
     clothTypeWeights: dict[str, float] = Field(default_factory=dict)
     clothConditionWeights: dict[str, float] = Field(default_factory=dict)
+    customDesign: CustomDesignPayload | None = None
 
 
 class LaunchBatchRequest(BaseModel):
@@ -135,6 +144,7 @@ class LaunchBatchRequest(BaseModel):
     conditions: list[str] = Field(default_factory=lambda: ["good"])
     clothTypeWeights: dict[str, float] = Field(default_factory=dict)
     clothConditionWeights: dict[str, float] = Field(default_factory=dict)
+    customDesign: CustomDesignPayload | None = None
 
 
 class HealthResponse(BaseModel):

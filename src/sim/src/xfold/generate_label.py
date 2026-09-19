@@ -25,6 +25,7 @@ TITLES = {
     "tank": "TANK TOP",
     "polo": "POLO SHIRT",
     "dress": "DRESS",
+    "custom": "CUSTOM",
 }
 
 # Same code on every label. Module widths in order, bar first, then space.

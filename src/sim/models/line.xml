@@ -85,12 +85,14 @@
     <texture name="label_tank" type="2d" file="label_tank.png"/>
     <texture name="label_polo" type="2d" file="label_polo.png"/>
     <texture name="label_dress" type="2d" file="label_dress.png"/>
+    <texture name="label_custom" type="2d" file="label_custom.png"/>
     <material name="label_tee" texture="label_tee"/>
     <material name="label_work_tee" texture="label_work_tee"/>
     <material name="label_jersey" texture="label_jersey"/>
     <material name="label_tank" texture="label_tank"/>
     <material name="label_polo" texture="label_polo"/>
     <material name="label_dress" texture="label_dress"/>
+    <material name="label_custom" texture="label_custom"/>
     <material name="cardboard" rgba="0.62 0.47 0.30 1"/>
   </asset>
 

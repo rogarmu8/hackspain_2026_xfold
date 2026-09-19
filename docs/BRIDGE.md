@@ -67,8 +67,14 @@ use `seed` and optional `clothTypeWeights` / `clothConditionWeights` (0 = never)
 `LineDriver` calls `select_garment` and rebuilds the shared `SimSession` when
 the SKU mesh or texture changes. Pose-only `skewed` does not rebuild: the shirt
 stays flat on the belt and `seed` picks the heading. `GET /capabilities` lists
-`clothTypes` and `clothConditions` for the dashboard form. `XFOLD_GARMENT`
-and `[garment] type` in `shirt.toml` remain the compile-time default.
+`clothTypes` and `clothConditions` for the dashboard form.
+`customDesign` (`mime` + base64 `data`) is required when `clothType` /
+`clothTypes` is `custom`: the bridge detects the garment in the photo, crops it
+onto `_custom_garment.png`, and `LineDriver` rebuilds a **silhouette** flexcomp
+(cut to the detected outline, print on **both faces**). Other catalogue SKUs keep their own
+mesh/texture. The pixels stay off the journal (`customDesign: true` on
+`run_started` only). `XFOLD_GARMENT` and `[garment] type` in `shirt.toml` remain the
+compile-time default.
 
 ## Why this shape (and not WS / gRPC)
 

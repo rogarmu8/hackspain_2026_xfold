@@ -8,6 +8,8 @@ import type {
   ClothType,
   ClothWeightMap,
   ConditionWeightMap,
+  CatalogOption,
+  CustomDesignPayload,
   Telemetry,
 } from "@xfold/protocol";
 
@@ -52,8 +54,8 @@ export type SimulatorCapabilities = {
   startRun: boolean;
   startBatch: boolean;
   commands: Partial<Record<CommandKind, boolean>>;
-  clothTypes?: { key: string; label: string }[];
-  clothConditions?: { key: string; label: string }[];
+  clothTypes?: CatalogOption[];
+  clothConditions?: CatalogOption[];
 };
 
 export type TimelineMarker = {
@@ -127,6 +129,7 @@ export type RunConfig = {
   clothType?: string | null;
   clothCondition?: string | null;
   skewed?: boolean;
+  customDesign?: boolean;
 };
 
 export type RunSummary = {
@@ -219,6 +222,7 @@ export type LaunchRequest =
       clothCondition: ClothCondition | "random";
       clothTypeWeights?: ClothWeightMap;
       clothConditionWeights?: ConditionWeightMap;
+      customDesign?: CustomDesignPayload;
     }
   | {
       mode: "batch";
@@ -233,4 +237,5 @@ export type LaunchRequest =
       conditions: ClothCondition[];
       clothTypeWeights?: ClothWeightMap;
       clothConditionWeights?: ConditionWeightMap;
+      customDesign?: CustomDesignPayload;
     };

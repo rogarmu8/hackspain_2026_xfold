@@ -271,6 +271,8 @@ def build():
     # One bag label per clean SKU: a torn / stained twin ships in its base
     # SKU's bag, so key the sticker off the base garment, not the variant.
     label = f"label_{base_garment(shirt_config().garment).key}"
+    if spec.material(label) is None:
+        label = "label_tee"
     for name in ("bag_sticker", "stamp_sticker"):
         spec.geom(name).material = label
     # The belt runs through the press, so the belt is its bed now.

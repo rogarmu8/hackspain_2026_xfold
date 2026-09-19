@@ -183,6 +183,7 @@ class LineDriver:
         seed = int(run.seed)
         garment = getattr(run, "garment", None) or shirt_config().garment
         skewed = bool(getattr(run, "skewed", False))
+        custom_tex = getattr(run, "customTexture", None)
         recorder = TrajectoryRecorder(run_id, sample_hz=10.0)
         session = self.session
         dt = float(session.model.opt.timestep) if session.ok else 0.002
@@ -205,7 +206,7 @@ class LineDriver:
                 if name:
                     shot.append(name)
 
-            session.ensure_garment(garment)
+            session.ensure_garment(garment, texture=custom_tex)
             session.reset_time()
             dt = float(session.model.opt.timestep)
             with session.lock:
@@ -223,6 +224,7 @@ class LineDriver:
             self._log(
                 run_id,
                 f"ciclo iniciado · {cfg.garment} ({cfg.mesh}) · "
+                f"{'prenda personalizada (recorte, dos caras)' if custom_tex else cfg.texture} · "
                 f"{'colocada torcida' if skewed else 'colocada a escuadra'} · "
                 f"seed {seed} ({'aplicada a entrada' if run.inputs.get('seedApplied') else 'entrada fija'}) · "
                 f"nq={session.model.nq} · timestep {dt:g}s",
