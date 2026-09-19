@@ -43,14 +43,13 @@ tasks:
       persistent: true
       runFromWorkspaceRoot: true
   # The line: belt, press, folder, bagger (peel, seal, RFID sticker), belt 2, carton.
+  # `command` (not `script`) so `moon run sim:run -- --garment tank` reaches Python.
   run:
-    script: |
-      . ./scripts/pixi-path.sh
-      if [ "$(uname -s)" = Darwin ]; then
-        pixi run --environment mujoco mjpython -P -m xfold.line
-      else
-        pixi run --environment mujoco python -P -m xfold.line
-      fi
+    command: bash
+    args:
+      - ./scripts/run-mjpython.sh
+      - -m
+      - xfold.line
     options:
       cache: false
       persistent: true
@@ -63,13 +62,11 @@ tasks:
       cache: false
       runFromWorkspaceRoot: true
   shirt-play:
-    script: |
-      . ./scripts/pixi-path.sh
-      if [ "$(uname -s)" = Darwin ]; then
-        pixi run --environment mujoco mjpython -P -m xfold.shirt_play
-      else
-        pixi run --environment mujoco python -P -m xfold.shirt_play
-      fi
+    command: bash
+    args:
+      - ./scripts/run-mjpython.sh
+      - -m
+      - xfold.shirt_play
     options:
       cache: false
       persistent: true

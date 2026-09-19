@@ -10,12 +10,14 @@ from pathlib import Path
 
 import numpy as np
 
+from xfold.garments import add_garment_arguments, garment_from_args
 from xfold.shirt import (
     PLAYGROUND_HI_XML,
     PLAYGROUND_PONCHO_XML,
     PLAYGROUND_XML,
     load_mjcf,
     load_mujoco_plugins,
+    select_garment,
     shirt_config,
 )
 from xfold.claws import ShirtClaws
@@ -164,7 +166,12 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Use bend-elasticity playground (experimental)",
     )
+    add_garment_arguments(parser)
     args = parser.parse_args(argv)
+
+    chosen = garment_from_args(args, interactive=True, current=shirt_config().garment)
+    if chosen:
+        args.garment = chosen
 
     try:
         import mujoco
@@ -175,9 +182,17 @@ def main(argv: list[str] | None = None) -> None:
             "From the repo root run:  moon run install-mujoco"
         )
 
-    forwarded = [f for f, on in (("--hi", args.hi), ("--poncho", args.poncho)) if on]
+    forwarded = [
+        f
+        for f, on in (("--hi", args.hi), ("--poncho", args.poncho))
+        if on
+    ]
+    if args.garment:
+        forwarded.extend(["--garment", args.garment])
     _reexec_mjpython_on_macos(forwarded)
     load_mujoco_plugins()
+    if args.garment:
+        select_garment(args.garment)
 
     if args.poncho:
         scene = PLAYGROUND_PONCHO_XML
@@ -191,7 +206,7 @@ def main(argv: list[str] | None = None) -> None:
     model, data = load_mjcf(scene)
     cfg = shirt_config()
     print(
-        f"shirt.toml  mass={cfg.mass} kg  young={cfg.young:g}  "
+        f"shirt.toml  garment={cfg.garment}  mass={cfg.mass} kg  young={cfg.young:g}  "
         f"edge_eq  bend  dt={cfg.timestep}  ({cfg.path})",
         flush=True,
     )

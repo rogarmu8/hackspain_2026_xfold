@@ -7,6 +7,22 @@
 # Sweep one group at a time (mass, then young, then damping, then friction).
 #
 # Override path:  XFOLD_SHIRT_CONFIG=/path/to/other.toml
+# Garment (CLI wins over env over this file):
+#   moon run sim:run                 # arrow-key list (↑↓, Enter)
+#   moon run sim:run -- -g dress     # skip the list
+#   moon run sim:run -- --pick
+#   moon run sim:run -- --list-garments
+#   XFOLD_GARMENT=jersey moon run sim:run
+
+[garment]
+# Foldable 2D sheets (same three FlipFold creases):
+#   tee        crew-neck T (default, white + α^x)
+#   work_tee   same T, white + pocket stitch
+#   jersey     long V-neck, long raglan sleeves
+#   tank       sleeveless
+#   polo       spread collar + cap sleeves
+#   dress      pinafore with braces, longer A-line (can overhang the folder)
+type = "tee"
 
 [cloth]
 # Dry T-shirt weight (kg). Adult cotton tee is typically 0.15–0.22.

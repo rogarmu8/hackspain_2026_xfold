@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from .claws import add_claw_bodies
+from .garments import resolve_garment
 
 MODELS_DIR = Path(__file__).resolve().parents[2] / "models"
 DEFAULT_CONFIG = MODELS_DIR / "shirt.toml"
@@ -17,9 +18,10 @@ PLAYGROUND_HI_XML = MODELS_DIR / "shirt_playground_hi.xml"
 PLAYGROUND_PONCHO_XML = MODELS_DIR / "shirt_playground_poncho.xml"
 SHIRT_XML = MODELS_DIR / "shirt.xml"
 CELL_XML = MODELS_DIR / "cell.xml"
+ACTIVE_SHIRT_XML = MODELS_DIR / "_garment_active.xml"
+ACTIVE_SCENE_XML = MODELS_DIR / "_scene_active.xml"
 
 # Matches models/shirt.toml — bend FEM + edge equality, not cotton constants.
-SHIRT_MESH = "shirt_t.obj"
 # Flex-vs-one-plane is still one pair (mjMAXCONPAIR=50). Ground support
 # comes from per-vertex sphere geoms added in apply_shirt_config.
 SHIRT_CONTACT_BUDGET = 50
@@ -47,6 +49,9 @@ class ShirtConfig:
     iterations: int = 80
     claw_force: float = 12.0
     claw_hz: float = 5.0
+    garment: str = "tee"
+    mesh: str = "shirt_t.obj"
+    texture: str = "shirt_print.png"
     path: Path = DEFAULT_CONFIG
 
 
@@ -66,6 +71,10 @@ def load_shirt_config(path: Path | None = None) -> ShirtConfig:
     cloth = raw.get("cloth", {})
     solver = raw.get("solver", {})
     fold = raw.get("fold", {})
+    garment_raw = raw.get("garment", {})
+    env_kind = os.environ.get("XFOLD_GARMENT", "").strip()
+    kind = env_kind or str(garment_raw.get("type", "tee"))
+    item = resolve_garment(kind)
     return ShirtConfig(
         mass=float(cloth.get("mass", 0.18)),
         young=float(cloth.get("young", 3.0e3)),
@@ -79,6 +88,9 @@ def load_shirt_config(path: Path | None = None) -> ShirtConfig:
         iterations=int(solver.get("iterations", 80)),
         claw_force=float(fold.get("claw_force", 12.0)),
         claw_hz=float(fold.get("claw_hz", 5.0)),
+        garment=item.key,
+        mesh=item.mesh,
+        texture=item.texture,
         path=src,
     )
 
@@ -89,9 +101,37 @@ SHIRT_YOUNG = _CFG.young
 SHIRT_POISSON = _CFG.poisson
 SHIRT_THICKNESS = _CFG.thickness
 SHIRT_RADIUS = _CFG.radius
+SHIRT_MESH = _CFG.mesh
 
 
 def shirt_config() -> ShirtConfig:
+    return _CFG
+
+
+def select_garment(name: str) -> ShirtConfig:
+    """Switch the active catalogue item (CLI / XFOLD_GARMENT)."""
+    global _CFG, _MESH_CACHE, SHIRT_MESH
+    item = resolve_garment(name)
+    _MESH_CACHE = None
+    _CFG = ShirtConfig(
+        mass=_CFG.mass,
+        young=_CFG.young,
+        poisson=_CFG.poisson,
+        thickness=_CFG.thickness,
+        damping=_CFG.damping,
+        edge_damping=_CFG.edge_damping,
+        radius=_CFG.radius,
+        friction=_CFG.friction,
+        timestep=_CFG.timestep,
+        iterations=_CFG.iterations,
+        claw_force=_CFG.claw_force,
+        claw_hz=_CFG.claw_hz,
+        garment=item.key,
+        mesh=item.mesh,
+        texture=item.texture,
+        path=_CFG.path,
+    )
+    SHIRT_MESH = _CFG.mesh
     return _CFG
 
 
@@ -194,13 +234,32 @@ def _add_vertex_spheres(spec, cfg: ShirtConfig) -> int:
     return added
 
 
+def spec_from_mjcf(xml_path: Path, cfg: ShirtConfig | None = None):
+    """Load an MJCF scene with the active garment mesh and texture."""
+    import mujoco
+
+    cfg = cfg or shirt_config()
+    shirt = SHIRT_XML.read_text(encoding="utf-8")
+    shirt = shirt.replace("shirt_t.obj", cfg.mesh)
+    shirt = shirt.replace("shirt_print.png", cfg.texture)
+    ACTIVE_SHIRT_XML.write_text(shirt, encoding="utf-8")
+    text = xml_path.read_text(encoding="utf-8")
+    text = text.replace('include file="shirt.xml"', 'include file="_garment_active.xml"')
+    text = text.replace('file="shirt_t.obj"', f'file="{cfg.mesh}"')
+    text = text.replace('file="shirt_print.png"', f'file="{cfg.texture}"')
+    if xml_path.resolve() == SHIRT_XML.resolve():
+        return mujoco.MjSpec.from_file(ACTIVE_SHIRT_XML.as_posix())
+    ACTIVE_SCENE_XML.write_text(text, encoding="utf-8")
+    return mujoco.MjSpec.from_file(ACTIVE_SCENE_XML.as_posix())
+
+
 def load_mjcf(xml_path: Path, cfg: ShirtConfig | None = None, *, claws: bool = True):
     """Compile an MJCF scene with shirt.toml applied."""
     import mujoco
 
     load_mujoco_plugins()
     cfg = cfg or shirt_config()
-    spec = mujoco.MjSpec.from_file(xml_path.as_posix())
+    spec = spec_from_mjcf(xml_path, cfg)
     apply_shirt_config(spec, cfg, claws=claws)
     model = spec.compile()
     data = mujoco.MjData(model)
@@ -282,7 +341,7 @@ def load_shirt_mesh() -> tuple[np.ndarray, np.ndarray]:
     global _MESH_CACHE
     if _MESH_CACHE is not None:
         return _MESH_CACHE
-    path = MODELS_DIR / SHIRT_MESH
+    path = MODELS_DIR / shirt_config().mesh
     verts: list[list[float]] = []
     faces: list[tuple[int, int, int]] = []
     for line in path.read_text(encoding="utf-8").splitlines():

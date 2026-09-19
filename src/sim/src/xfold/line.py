@@ -7,10 +7,11 @@
    stops there with its hem on the folder's upstream edge.
 4. The folder flips its flaps, FlipFold style: left side, right side, then
    the hem half up over the collar half.
-5. The plate the pack sits on is a peel. It slides between two rails into an
-   open plastic bag, like a pizza into an oven, and pulls back out.
-6. The bag's top film drops onto the shirt. A seal bar closes the mouth and,
-   at the same time, a stamp sticks an RFID label on top.
+5. The plate the pack sits on is a peel. It slides between two rails into a
+   stiff, ready-made bag, like a pizza into an oven, and pulls back out.
+6. The bag is ready-made: floor, roof, sides and far end already welded. Only
+   the mouth is left. Its tail folds down to the floor, and a seal bar welds
+   it while a stamp sticks an RFID label on the roof.
 7. Belt 2 carries the bag off its end and it drops into a carton.
 
 A peel or a flap is a mocap body, which the contact solver sees as standing
@@ -31,8 +32,10 @@ real flap's friction does, and lets go at the top of the swing. The cloth
 does not collide with itself in MuJoCo, so ClothLayers keeps the folded
 layers apart from then on.
 
-With a window:  moon run sim:run
-Headless:       pixi run -e mujoco python -P -m xfold.line --headless --cycles 1
+With a window:  moon run sim:run              # arrow-key list
+                moon run sim:run -- -g dress  # skip the list
+Headless:       pixi run -e mujoco python -P -m xfold.line --headless --cycles 1 -g jersey
+Catalogue:      moon run sim:run -- --list-garments
 """
 
 from __future__ import annotations
@@ -45,6 +48,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .garments import add_garment_arguments, garment_from_args, rewrite_argv_garment
 from .platform import reexec_under_mjpython
 from .self_collide import ClothLayers
 from .shirt import (
@@ -52,9 +56,12 @@ from .shirt import (
     apply_shirt_config,
     load_mujoco_plugins,
     load_shirt_mesh,
+    select_garment,
     set_steam,
+    shirt_config,
     shirt_rest_world,
     shirt_vertex_qposadr,
+    spec_from_mjcf,
 )
 from .sim_loop import smoothstep
 from .steam import SteamField
@@ -90,24 +97,26 @@ STROKE_PRESSED = -0.755
 BELT2_X = (0.985, 2.10)
 BELT2_SPEED = 0.35
 # The bag's centre when it stands open at the bagger, and its half-length.
-BAG_X = 1.25
-BAG_HALF_LENGTH = 0.23
+BAG_X = 1.32
+BAG_HALF_LENGTH = 0.30
 # The shirt's leading edge stops this far short of the bag's closed end.
-BAG_END_MARGIN = 0.09
-# How far the top film is held open at its mouth, degrees, and its closed height
-# above the bag's centre (just over the folded pack).
-BAG_OPEN = math.radians(30.0)
-BAG_HINGE = (0.23, 0.0, 0.0183)
-BAG_FILM_LENGTH = 0.41
+BAG_END_MARGIN = 0.02
+# The tail is the last stretch of the bag's roof, at the mouth. It lies flat
+# while the bag is loaded and folds down to the floor to close it: hinge
+# position in the bag's frame, length, and the angle (down is negative) at
+# which its far end just touches the floor.
+BAG_TAIL_HINGE = (-0.19, 0.0, 0.0372)
+BAG_TAIL_LENGTH = 0.11
+BAG_TAIL_CLOSED = -math.asin(0.0727 / BAG_TAIL_LENGTH)
 # Seal bar and stamp: hover and pressed heights.
 PRESS_HOVER_Z = 0.70
-SEAL_BAR_Z = 0.600
-STAMP_Z = 0.603
+SEAL_BAR_Z = 0.562
+STAMP_Z = 0.637
 # The bag counts as boxed once its centre is below this.
 BOXED_Z = 0.25
 
-# Gap the folded layers keep between them. The flap hinges in line.xml are
-# lifted by multiples of this so each flip lands on top of what is there.
+# Gap the folded layers keep between them. Each flap lands on the layers
+# already folded, so its hinge rides up by its ``lift`` as it goes over.
 LAYER_GAP = 0.008
 # Keeping the layers apart is Python, not MuJoCo; every step is 3x too slow
 # for a live window, and under gravity a layer sags ~0.5 mm in 5 steps.
@@ -120,6 +129,7 @@ class Flap:
     axis: tuple[float, float, float]
     over: float  # seconds for the swing up and over
     back: float  # seconds to swing back down, empty
+    lift: float  # metres the hinge rides up by the time the flap lies over
 
     def carries(self, pos: np.ndarray, hinge: np.ndarray) -> np.ndarray:
         """Which cloth vertices lie on this flap's side of the hinge.
@@ -135,9 +145,9 @@ class Flap:
 
 # In folding order.
 FLAPS = (
-    Flap("flap_left", (1.0, 0.0, 0.0), over=1.2, back=0.8),
-    Flap("flap_right", (-1.0, 0.0, 0.0), over=1.2, back=0.8),
-    Flap("flap_bottom", (0.0, 1.0, 0.0), over=1.4, back=0.9),
+    Flap("flap_left", (1.0, 0.0, 0.0), over=1.2, back=0.8, lift=0.028),
+    Flap("flap_right", (-1.0, 0.0, 0.0), over=1.2, back=0.8, lift=0.036),
+    Flap("flap_bottom", (0.0, 1.0, 0.0), over=1.4, back=0.9, lift=0.060),
 )
 
 
@@ -162,7 +172,7 @@ def build():
     import mujoco
 
     load_mujoco_plugins()
-    spec = mujoco.MjSpec.from_file(LINE_PATH.as_posix())
+    spec = spec_from_mjcf(LINE_PATH)
     apply_shirt_config(spec, claws=False)
     # The belt runs through the press, so the belt is its bed now.
     spec.delete(spec.actuator("press_tilt"))
@@ -258,8 +268,8 @@ class Line:
         self._g = {
             name: model.geom(name).id
             for name in (
-                "bag_top",
-                "bag_lip",
+                "bag_tail",
+                "bag_seam",
                 "bag_sticker",
                 "bag_antenna",
                 "stamp_sticker",
@@ -408,7 +418,7 @@ class Line:
         )
         yield from self._hold("FOLD", "", 0.6, quiet=True)
 
-        self._enter("BAG", "peel slides the pack through the rails into the open bag")
+        self._enter("BAG", "peel slides the pack through the rails into the ready-made bag")
         travel = BAG_X + BAG_HALF_LENGTH - BAG_END_MARGIN - float(pos[:, 0].max())
         yield from self._slide_peel(travel, 2.4, carry=True)
         self._enter("PEEL", "peel slides back out from under the shirt")
@@ -419,9 +429,9 @@ class Line:
         self._layers = None
         self._seal_in()
 
-        self._enter("CLOSE", "top film comes down over the shirt")
+        self._enter("CLOSE", "the bag's tail folds down over the mouth")
         yield from self._close_bag(1.2)
-        self._enter("SEAL", "seal bar closes the mouth, stamp sticks the RFID label on")
+        self._enter("SEAL", "seal bar welds the mouth shut, stamp sticks the RFID label on")
         yield from self._seal_and_tag()
 
         self._enter("BELT", "belt 2 carries the bag to the carton")
@@ -443,10 +453,10 @@ class Line:
         self._pin(ids, world, None)
         for name, gid in self._g.items():
             self.model.geom_rgba[gid] = self._rgba0[name]
-        self.model.geom_rgba[self._g["bag_lip"], 3] = 0.0
+        self.model.geom_rgba[self._g["bag_seam"], 3] = 0.0
         self.model.geom_rgba[self._g["bag_sticker"], 3] = 0.0
         self.model.geom_rgba[self._g["bag_antenna"], 3] = 0.0
-        self._pose_top_film(BAG_OPEN)
+        self._pose_tail(0.0)
         mujoco.mj_forward(self.model, self.data)
 
     def _enter(self, stage: str, message: str) -> None:
@@ -517,34 +527,35 @@ class Line:
             done = blend
             yield
 
-    def _pose_top_film(self, angle: float) -> None:
-        """Hold the bag's top film open ``angle`` radians at its mouth.
+    def _pose_tail(self, angle: float) -> None:
+        """Hold the bag's tail ``angle`` radians off the roof, negative is down.
 
-        The film is hinged along its far edge, so the mouth end swings up.
+        The tail is hinged along the mouth end of the roof, so its far end
+        swings about the hinge.
         """
-        hinge = np.asarray(BAG_HINGE)
-        half = 0.5 * BAG_FILM_LENGTH
-        gid = self._g["bag_top"]
+        hinge = np.asarray(BAG_TAIL_HINGE)
+        half = 0.5 * BAG_TAIL_LENGTH
+        gid = self._g["bag_tail"]
         self.model.geom_pos[gid] = hinge + half * np.array([-math.cos(angle), 0.0, math.sin(angle)])
         self.model.geom_quat[gid] = [math.cos(0.5 * angle), 0.0, math.sin(0.5 * angle), 0.0]
 
     def _close_bag(self, seconds: float):
         steps = self._steps(seconds)
         for index in range(steps):
-            self._pose_top_film(BAG_OPEN * (1.0 - smoothstep((index + 1) / steps)))
+            self._pose_tail(BAG_TAIL_CLOSED * smoothstep((index + 1) / steps))
             yield
 
     def _seal_and_tag(self):
         """Lower the seal bar and the stamp together, dwell, lift.
 
-        On contact the bar's edge becomes the sealed lip, and the label moves
-        from the stamp to the bag.
+        On contact the mouth seam shows, and the label moves from the stamp
+        to the bag.
         """
         model, data = self.model, self.data
         bar, stamp, g = self._seal_bar, self._stamp, self._g
         yield from self._move_presses(SEAL_BAR_Z, STAMP_Z, 1.2)
 
-        model.geom_rgba[g["bag_lip"]] = (0.70, 0.84, 0.95, 0.85)
+        model.geom_rgba[g["bag_seam"]] = (0.70, 0.84, 0.95, 0.85)
         model.geom_rgba[g["stamp_sticker"], 3] = 0.0
         model.geom_rgba[g["stamp_antenna"], 3] = 0.0
         model.geom_rgba[g["bag_sticker"], 3] = 1.0
@@ -579,22 +590,33 @@ class Line:
         yield from self._hold("BOXED", "", 1.0, quiet=True)
 
     def _flip(self, flap: Flap):
-        """Swing a flap over, carrying its cloth, let go, swing back."""
+        """Swing a flap over, carrying its cloth, let go, swing back.
+
+        The hinge sits under the plates, clear of the cloth. It rides up as the
+        flap swings, so the flap lands on the layers already folded instead of
+        cutting through them.
+        """
         mocap = self._mocap[flap.body]
         hinge = self.data.mocap_pos[mocap].copy()
         axis = np.asarray(flap.axis)
+        up = np.array([0.0, 0.0, 1.0])
 
         pos = self.positions()
         ids = np.flatnonzero(flap.carries(pos, hinge))
         arm = pos[ids] - hinge
 
+        risen = 0.0
         for angle, rate in self._swing(0.0, math.pi, flap.over):
-            self._set_flap(mocap, axis, angle)
+            rise = flap.lift * _rise(angle)
+            pivot = hinge + rise * up
+            self._set_flap(mocap, axis, angle, pivot)
             moved = _rotate(arm, axis, angle)
-            self._pin(ids, hinge + moved, rate * np.cross(axis, moved))
+            climb = (rise - risen) / self.dt * up
+            self._pin(ids, pivot + moved, rate * np.cross(axis, moved) + climb)
+            risen = rise
             yield
         # Set down still, at the top of the swing.
-        self._pin(ids, hinge + _rotate(arm, axis, math.pi), None)
+        self._pin(ids, hinge + flap.lift * up + _rotate(arm, axis, math.pi), None)
 
         # Swinging back empty, the flap's edge by the hinge would sweep
         # through the crease it just made and trap it underneath.
@@ -602,8 +624,9 @@ class Line:
         affinity = int(self.model.geom_conaffinity[geom])
         self.model.geom_conaffinity[geom] = 0
         for angle, _ in self._swing(math.pi, 0.0, flap.back):
-            self._set_flap(mocap, axis, angle)
+            self._set_flap(mocap, axis, angle, hinge + flap.lift * _rise(angle) * up)
             yield
+        self._set_flap(mocap, axis, 0.0, hinge)
         self.model.geom_conaffinity[geom] = affinity
 
     def _swing(self, start: float, end: float, seconds: float):
@@ -614,12 +637,22 @@ class Line:
             yield angle, (angle - previous) / self.dt
             previous = angle
 
-    def _set_flap(self, mocap: int, axis: np.ndarray, angle: float) -> None:
+    def _set_flap(self, mocap: int, axis: np.ndarray, angle: float, pivot: np.ndarray) -> None:
         half = 0.5 * angle
         self.data.mocap_quat[mocap] = [math.cos(half), *(math.sin(half) * axis)]
+        self.data.mocap_pos[mocap] = pivot
 
     def _steps(self, seconds: float) -> int:
         return max(1, int(round(seconds / self.dt)))
+
+
+def _rise(angle: float) -> float:
+    """How far up its lift a flap's hinge is, 0 to 1.
+
+    Half of it by upright: the flap's edge by the pin then clears the rail,
+    and the flap moves as if hinged half its lift above the plates.
+    """
+    return 0.5 * (1.0 - math.cos(angle))
 
 
 def _rotate(points: np.ndarray, axis: np.ndarray, angle: float) -> np.ndarray:
@@ -686,6 +719,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="XFOLD line: belt, press, folder")
     parser.add_argument("--cycles", type=int, default=0, help="0 keeps going")
     parser.add_argument("--headless", action="store_true", help="no window, as fast as it can")
+    add_garment_arguments(parser)
     parser.add_argument(
         "--shots", default="", help="headless: save a frame per stage into this directory"
     )
@@ -695,6 +729,12 @@ def main() -> None:
         help="follow (tracks the shirt) or a fixed one: overview, press_cam, fold_cam",
     )
     args = parser.parse_args()
+    chosen = garment_from_args(
+        args, interactive=not args.headless, current=shirt_config().garment
+    )
+    if chosen:
+        rewrite_argv_garment(chosen)
+        args.garment = chosen
 
     try:
         import mujoco
@@ -703,10 +743,16 @@ def main() -> None:
     if not args.headless:
         reexec_under_mjpython("xfold.line")
 
+    if args.garment:
+        select_garment(args.garment)
+    cfg = shirt_config()
     model = build()
     data = mujoco.MjData(model)
     line = Line(model, data, repeat=args.cycles == 0)
-    print(f"XFOLD line  {LINE_PATH}", flush=True)
+    print(
+        f"XFOLD line  garment={cfg.garment} ({cfg.mesh})  {LINE_PATH}",
+        flush=True,
+    )
 
     def done() -> bool:
         return line.finished or (args.cycles and line.cycles > args.cycles)

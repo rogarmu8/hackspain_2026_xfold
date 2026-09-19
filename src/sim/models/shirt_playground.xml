@@ -18,7 +18,8 @@
              rgb1="0.2 0.2 0.22" rgb2="0.24 0.24 0.26"/>
     <material name="floor_mat" texture="grid" texrepeat="6 6"
               specular="0.05" shininess="0.02" reflectance="0"/>
-    <material name="shirt_cloth" rgba="0.20 0.31 0.46 1"
+    <texture name="shirt_print" type="2d" file="shirt_print.png"/>
+    <material name="shirt_cloth" texture="shirt_print" rgba="1 1 1 1"
               specular="0.02" shininess="0.01" reflectance="0"/>
   </asset>
 
