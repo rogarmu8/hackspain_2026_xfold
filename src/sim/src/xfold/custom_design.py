@@ -40,18 +40,18 @@ def decode_payload(data: str, mime: str = "image/png") -> bytes:
     """Base64 body of ``customDesign.data``. Rejects huge or empty payloads."""
     kind = (mime or "image/png").split(";")[0].strip().lower()
     if kind not in ALLOWED_MIME:
-        raise ValueError(f"formato no soportado ({mime}); usa PNG, JPEG o WebP")
+        raise ValueError(f"unsupported format ({mime}); use PNG, JPEG, or WebP")
     raw = (data or "").strip()
     if raw.startswith("data:"):
         _, _, raw = raw.partition(",")
     try:
         blob = base64.b64decode(raw, validate=False)
     except (binascii.Error, ValueError) as exc:
-        raise ValueError("la imagen no es base64 válido") from exc
+        raise ValueError("the image is not valid base64") from exc
     if not blob:
-        raise ValueError("la imagen está vacía")
+        raise ValueError("the image is empty")
     if len(blob) > MAX_BYTES:
-        raise ValueError("la imagen supera 4 MB")
+        raise ValueError("the image exceeds 4 MB")
     return blob
 
 
@@ -62,7 +62,7 @@ def _load_rgb(blob: bytes):
         img = Image.open(io.BytesIO(blob))
         img.load()
     except Exception as exc:  # noqa: BLE001 — operator upload, not a bug
-        raise ValueError("no se pudo leer la imagen") from exc
+        raise ValueError("could not read the image") from exc
     return img.convert("RGB")
 
 
@@ -154,7 +154,7 @@ def detect_garment_mask(rgb: np.ndarray) -> np.ndarray:
     frac = float(fg.mean()) if fg.size else 0.0
     if frac < 0.02:
         raise ValueError(
-            "no se ve una prenda; prueba con un fondo más liso y la ropa centrada"
+            "no garment visible; try a smoother backdrop and centre the clothing"
         )
     if frac > 0.94:
         return np.ones(fg.shape, dtype=bool)

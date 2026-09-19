@@ -73,13 +73,13 @@ export function SimulationViewport({
       <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-divider px-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <h2 className="truncate font-mono text-[13px] font-semibold tabular">
-            {run ? run.id : "Sin ejecución"}
+            {run ? run.id : "No run"}
           </h2>
           {run?.seed != null ? (
             <span className="eyebrow hidden sm:inline">seed {run.seed}</span>
           ) : null}
           {live ? (
-            <StatusBadge tone="active">En directo</StatusBadge>
+            <StatusBadge tone="active">Live</StatusBadge>
           ) : null}
           {run && !running ? (
             <StatusBadge tone={run.lifecycle === "failed" ? "danger" : "neutral"}>
@@ -88,11 +88,11 @@ export function SimulationViewport({
           ) : null}
           {provenance === "fixture" ? (
             <StatusBadge tone="neutral" icon={<FlaskConical className="size-3" aria-hidden />}>
-              Ejemplo
+              Sample
             </StatusBadge>
           ) : null}
           {showLive ? <ViewportStatusBadge status={viewport.status} /> : null}
-          {replay?.loading ? <StatusBadge tone="neutral">Cargando replay</StatusBadge> : null}
+          {replay?.loading ? <StatusBadge tone="neutral">Loading replay</StatusBadge> : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <Button
@@ -100,8 +100,8 @@ export function SimulationViewport({
             size="icon-sm"
             className="size-8"
             onClick={toggleFullscreen}
-            aria-label={fullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
-            title={fullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+            aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+            title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
           >
             {fullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
           </Button>
@@ -120,7 +120,7 @@ export function SimulationViewport({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={replay.frameSrc}
-              alt={`Frame MuJoCo en t=${formatSeconds(replay.t)}`}
+              alt={`MuJoCo frame at t=${formatSeconds(replay.t)}`}
               className="absolute inset-0 h-full w-full object-contain"
             />
           ) : (
@@ -133,15 +133,15 @@ export function SimulationViewport({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={viewport.src}
-              alt="Vista MuJoCo de la celda XFold"
+              alt="MuJoCo view of the XFold cell"
               className="absolute inset-0 h-full w-full object-contain"
             />
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center font-mono text-[12px] uppercase tracking-[0.12em] text-hud-dim">
               <span>
                 {viewport.status === "offline"
-                  ? viewport.error ?? "Sin señal del viewport"
-                  : "Cargando vista 3D…"}
+                  ? viewport.error ?? "No viewport signal"
+                  : "Loading 3D view…"}
               </span>
               {viewport.error && viewport.status !== "offline" ? (
                 <span className="normal-case tracking-normal text-hud-dim/70">
@@ -174,7 +174,7 @@ export function SimulationViewport({
             {replay ? (
               <>
                 <History className="size-3.5" strokeWidth={1.75} aria-hidden />
-                <span>replay{replay.hasTrajectory ? run?.config.inputs?.driver === "line" ? " parcial · qpos" : " · mujoco" : " · fases"}</span>
+                <span>replay{replay.hasTrajectory ? run?.config.inputs?.driver === "line" ? " partial · qpos" : " · mujoco" : " · phases"}</span>
               </>
             ) : live ? (
               <>
@@ -192,7 +192,7 @@ export function SimulationViewport({
             ) : (
               <>
                 <CameraOff className="size-3.5 text-hud-dim" strokeWidth={1.75} aria-hidden />
-                <span className="text-hud-dim">esquema</span>
+                <span className="text-hud-dim">schematic</span>
               </>
             )}
           </div>
@@ -201,23 +201,23 @@ export function SimulationViewport({
         {!replay && run?.telemetry?.operation ? (
           <div className="pointer-events-none absolute inset-x-6 top-16 max-w-xl bg-black/50 px-2 py-1 font-mono text-[11px] text-hud">
             <p>{run.telemetry.operation.message}</p>
-            {run.telemetry.activities?.map((activity) => <p key={activity.station} className="text-hud-dim">{activity.station} · último hito paralelo: {activity.message}</p>)}
+            {run.telemetry.activities?.map((activity) => <p key={activity.station} className="text-hud-dim">{activity.station} · last parallel hit: {activity.message}</p>)}
           </div>
         ) : null}
         {replay ? (
           <ReplayControls replay={replay} />
         ) : run?.telemetry ? (
           <dl className="pointer-events-none absolute inset-x-0 bottom-0 grid grid-cols-5 gap-x-3 border-t border-hud/15 bg-black/60 px-6 py-2.5 text-left backdrop-blur-[2px]">
-            <Metric label="operación" value={run.telemetry.operation?.id ?? stageLabel(run.telemetry.state, run.stages)} />
-            <Metric label="ciclo" value={String(run.telemetry.cycle)} />
-            <Metric label="planitud" value={formatFlatness(run.telemetry.flatness)} />
-            <Metric label="en bolsa" value={run.telemetry.shirt_in_bag == null ? "no medido" : run.telemetry.shirt_in_bag ? "sí" : "no"} />
-            <Metric label="t sim" value={formatSeconds(run.telemetry.t)} />
+            <Metric label="operation" value={run.telemetry.operation?.id ?? stageLabel(run.telemetry.state, run.stages)} />
+            <Metric label="cycle" value={String(run.telemetry.cycle)} />
+            <Metric label="flatness" value={formatFlatness(run.telemetry.flatness)} />
+            <Metric label="in bag" value={run.telemetry.shirt_in_bag == null ? "not measured" : run.telemetry.shirt_in_bag ? "yes" : "no"} />
+            <Metric label="sim t" value={formatSeconds(run.telemetry.t)} />
           </dl>
         ) : !run && !showLive ? (
           <p className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-2 px-6 py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-hud-dim">
             <Radio className="size-3.5" strokeWidth={1.75} aria-hidden />
-            Lanza un experimento para ver la celda
+            Launch an experiment to see the cell
           </p>
         ) : null}
       </div>
@@ -231,13 +231,13 @@ function ReplayControls({ replay }: { replay: RunReplay }) {
   return (
     <div className="absolute inset-x-0 bottom-0 flex items-center gap-3 border-t border-hud/15 bg-black/60 px-4 py-2 backdrop-blur-[2px]">
       <div className="flex shrink-0 items-center gap-0.5">
-        <Button variant="ghost" size="icon-sm" className="size-7 text-hud hover:bg-hud/10 hover:text-hud" onClick={() => replay.stepMarker(-1)} aria-label="Fase anterior" title="Fase anterior">
+        <Button variant="ghost" size="icon-sm" className="size-7 text-hud hover:bg-hud/10 hover:text-hud" onClick={() => replay.stepMarker(-1)} aria-label="Previous phase" title="Previous phase">
           <ChevronLeft className="size-4" />
         </Button>
-        <Button variant="ghost" size="icon-sm" className="size-7 text-hud hover:bg-hud/10 hover:text-hud" onClick={replay.togglePlay} aria-label={replay.playing ? "Pausa" : "Reproducir"} title={replay.playing ? "Pausa" : "Reproducir"}>
+        <Button variant="ghost" size="icon-sm" className="size-7 text-hud hover:bg-hud/10 hover:text-hud" onClick={replay.togglePlay} aria-label={replay.playing ? "Pause" : "Play"} title={replay.playing ? "Pause" : "Play"}>
           {replay.playing ? <Pause className="size-4" /> : <Play className="size-4" />}
         </Button>
-        <Button variant="ghost" size="icon-sm" className="size-7 text-hud hover:bg-hud/10 hover:text-hud" onClick={() => replay.stepMarker(1)} aria-label="Fase siguiente" title="Fase siguiente">
+        <Button variant="ghost" size="icon-sm" className="size-7 text-hud hover:bg-hud/10 hover:text-hud" onClick={() => replay.stepMarker(1)} aria-label="Next phase" title="Next phase">
           <ChevronRight className="size-4" />
         </Button>
       </div>
@@ -259,7 +259,7 @@ function ReplayControls({ replay }: { replay: RunReplay }) {
           step={0.01}
           value={replay.t}
           onChange={(e) => replay.seek(Number(e.target.value))}
-          aria-label="Tiempo simulado del replay"
+          aria-label="Replay simulated time"
           className="relative block w-full accent-[var(--color-hud)]"
         />
       </div>
@@ -274,13 +274,13 @@ function ReplayControls({ replay }: { replay: RunReplay }) {
 function ViewportStatusBadge({ status }: { status: ViewportStatus }) {
   if (status === "live") return null;
   if (status === "waiting") {
-    return <StatusBadge tone="neutral">Esperando frame</StatusBadge>;
+    return <StatusBadge tone="neutral">Waiting for frame</StatusBadge>;
   }
   if (status === "stale") {
-    return <StatusBadge tone="pending">Vista stale</StatusBadge>;
+    return <StatusBadge tone="pending">Stale view</StatusBadge>;
   }
   if (status === "offline") {
-    return <StatusBadge tone="danger">Sin cámara</StatusBadge>;
+    return <StatusBadge tone="danger">No camera</StatusBadge>;
   }
   return null;
 }

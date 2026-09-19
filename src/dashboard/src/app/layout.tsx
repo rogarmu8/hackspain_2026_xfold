@@ -15,9 +15,9 @@ const plexMono = IBM_Plex_Mono({
   weight: ["400", "500", "600", "700"],
 });
 
-const TITLE = "XFold · Centro de control";
+const TITLE = "XFold · Control room";
 const DESCRIPTION =
-  "Monitor de la celda OpenArm: prensa, pliegue ninja y tolva a bolsa";
+  "OpenArm cell monitor: press, ninja fold, and bag chute";
 const OG_IMAGE = "/brand/xfold-og.png";
 
 export const viewport: Viewport = {
@@ -35,7 +35,7 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
     siteName: "XFold",
-    locale: "es_ES",
+    locale: "en_US",
     type: "website",
     images: [{ url: OG_IMAGE, width: 1200, height: 630, alt: "XFOLD" }],
   },
@@ -60,7 +60,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="es"
+      lang="en"
       className={`${plexSans.variable} ${plexMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-canvas text-ink">

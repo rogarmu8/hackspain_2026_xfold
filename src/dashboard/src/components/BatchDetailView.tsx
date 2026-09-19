@@ -15,12 +15,12 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
 
   if (!batch) {
     return (
-      <AppShell title="Batch no encontrado">
+      <AppShell title="Batch not found">
         <div className="border border-divider bg-surface px-6 py-10">
           <p className="text-sm text-muted-foreground">
-            No hay datos para <span className="font-mono">{batchId}</span>.
+            No data for <span className="font-mono">{batchId}</span>.
           </p>
-          <Button asChild variant="outline"><Link href="/">Volver a ejecuciones</Link></Button>
+          <Button asChild variant="outline"><Link href="/">Back to runs</Link></Button>
         </div>
       </AppShell>
     );
@@ -37,7 +37,7 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
     <AppShell
       title={batch.id}
       eyebrow={batch.name}
-      back={{ href: "/", label: "Ejecuciones" }}
+      back={{ href: "/", label: "Runs" }}
       actions={
         <StatusBadge
           tone={batch.lifecycle === "running" ? "active" : "neutral"}
@@ -48,38 +48,38 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
     >
       {snapshot.provenance === "fixture" ? (
         <p className="mb-4 text-[13px] font-semibold tracking-wide text-muted-foreground uppercase">
-          Datos de ejemplo
+          Sample data
         </p>
       ) : null}
 
       <section className="mb-6 grid gap-4 border border-divider bg-surface p-6 sm:grid-cols-3">
         <div>
-          <p className="text-[13px] text-muted-foreground">Finalizadas / total</p>
+          <p className="text-[13px] text-muted-foreground">Finished / total</p>
           <p className="mt-1 font-mono text-lg tabular">
             {formatCount(batch.finished)}/{formatCount(batch.total)}
           </p>
         </div>
         <div>
-          <p className="text-[13px] text-muted-foreground">Correctas / fallidas</p>
+          <p className="text-[13px] text-muted-foreground">Succeeded / failed</p>
           <p className="mt-1 font-mono text-lg tabular">
             {formatCount(batch.succeeded)} / {formatCount(batch.failed)}
           </p>
         </div>
         <div>
-          <p className="text-[13px] text-muted-foreground">Tasa de éxito</p>
+          <p className="text-[13px] text-muted-foreground">Success rate</p>
           <p className="mt-1 font-mono text-lg tabular">{successRate ?? "—"}</p>
           <p className="mt-1 text-[12px] text-muted-foreground">
-            correctas / (correctas + fallidas); excluye pendientes y canceladas
+            succeeded / (succeeded + failed); excludes pending and cancelled
           </p>
         </div>
       </section>
 
       <section className="border border-divider bg-surface">
         <div className="border-b border-divider px-4 py-3">
-          <h2 className="text-lg font-semibold">Ejecuciones del batch</h2>
+          <h2 className="text-lg font-semibold">Batch runs</h2>
         </div>
         {runs.length === 0 && batch.queuePreview.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-muted-foreground">Sin ejecuciones listadas.</p>
+          <p className="px-4 py-6 text-sm text-muted-foreground">No runs listed.</p>
         ) : (
           <ul className="divide-y divide-divider">
             {batch.activeRunId ? (
@@ -90,7 +90,7 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
                 >
                   {batch.activeRunId}
                 </Link>
-                <StatusBadge tone="active">{history.find((r) => r.id === batch.activeRunId)?.lifecycle === "paused" ? "En pausa" : "Activa"}</StatusBadge>
+                <StatusBadge tone="active">{history.find((r) => r.id === batch.activeRunId)?.lifecycle === "paused" ? "Paused" : "Active"}</StatusBadge>
               </li>
             ) : null}
             {runs
@@ -106,7 +106,7 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
                   >
                     {run.id}
                   </Link>
-                  <span className="text-muted-foreground">Semilla {run.seed}</span>
+                  <span className="text-muted-foreground">Seed {run.seed}</span>
                   <StatusBadge
                     tone={run.lifecycle === "failed" ? "danger" : "neutral"}
                   >
@@ -120,8 +120,8 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
                 className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
               >
                 <span className="font-mono tabular text-muted-foreground">{item.runId}</span>
-                <span className="text-muted-foreground">Semilla {item.seed}</span>
-                <StatusBadge tone="pending">En cola</StatusBadge>
+                <span className="text-muted-foreground">Seed {item.seed}</span>
+                <StatusBadge tone="pending">Queued</StatusBadge>
               </li>
             ))}
           </ul>
@@ -133,7 +133,7 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
           href="/"
           className="font-semibold underline-offset-2 hover:underline"
         >
-          ← Ejecuciones
+          ← Runs
         </Link>
       </p>
     </AppShell>

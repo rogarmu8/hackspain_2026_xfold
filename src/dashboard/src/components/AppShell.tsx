@@ -31,10 +31,10 @@ export function AppShell({
 }) {
   return (
     <div className={`flex flex-col bg-canvas text-ink ${fit ? "h-svh" : "min-h-svh"}`}>
-      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-surface focus:p-4">Saltar al contenido</a>
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-surface focus:p-4">Skip to content</a>
 
       <header className="sticky top-0 z-20 flex min-h-[var(--header-height)] shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-divider bg-canvas/95 px-6 py-2.5 backdrop-blur-[2px] max-[768px]:px-4">
-        <Link href="/" className="flex shrink-0 items-center text-ink no-underline" aria-label="XFold · ejecuciones">
+        <Link href="/" className="flex shrink-0 items-center text-ink no-underline" aria-label="XFold · runs">
           <FoldLogo width={96} className="max-[640px]:hidden" />
           <FoldMark size={26} className="min-[641px]:hidden" />
         </Link>

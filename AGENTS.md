@@ -1,6 +1,10 @@
-# AGENTS.md — contexto para Cursor
+# AGENTS.md — context for Cursor
 
 You are helping the XFOLD HackSpain '26 team. Read `SOLUTION.md` before inventing architecture. The running simulation is authoritative for the current process: `xfold.line.LINE_PHASES` + `Line.on_event`. Older design prose and legacy fixtures must not override its phases or measurements.
+
+## Language
+
+Operator-facing copy is **English**: dashboard UI, HTTP/validation errors, and console logs the operator sees (`Line`, `LineDriver`, `runtime.emit_log`). Do not add Spanish strings there. Internal comments and docs may stay mixed.
 
 ## Integration (sim ↔ dashboard) — mandatory
 
@@ -17,7 +21,7 @@ Bridge + dashboard work does **not** own arm IK or `flexcomp` physics. Integrate
 | Your track | Own these paths | How to talk to the dashboard |
 |------------|-----------------|------------------------------|
 | **Arm / FSM sequence** | controller Python, Menagerie overlays, arm MJCF | After each **stage change**, call `runtime.emit_state(run_id, CellState.…, t=data.time)`. Copy [`mock_driver.py`](src/sim/src/xfold/bridge/mock_driver.py). Respect `runtime.driver_active_run()` pause/cancel. |
-| **Press / line** | `xfold/line.py`, `line.xml`, `shirt.*` | **Fuente de verdad:** `xfold.line.LINE_PHASES` + `Line.on_event`. [`line_driver.py`](src/sim/src/xfold/bridge/line_driver.py) solo transmite observaciones al Runtime. Añade fases/operaciones en la simulación, no un mapa paralelo en bridge/UI. Métricas no medidas = null. |
+| **Press / line** | `xfold/line.py`, `line.xml`, `shirt.*` | **Source of truth:** `xfold.line.LINE_PHASES` + `Line.on_event`. [`line_driver.py`](src/sim/src/xfold/bridge/line_driver.py) only forwards observations into Runtime. Add phases/operations in the simulation, not a parallel map in the bridge/UI. Unmeasured metrics = null. |
 | **Cloth / shirt physics** | `flexcomp` MJCF, cloth params, mesh later | Keep cloth stable in **your** model. When ready for Control 3D, either merge into the scene that [`viewport_mujoco.py`](src/sim/src/xfold/bridge/viewport_mujoco.py) loads (`MODEL_PATH`) **or** point `MODEL_PATH` at your XML. Do **not** put cloth verts in the journal. |
 | **Shared plant stub** | [`src/sim/models/cell.xml`](src/sim/models/cell.xml) | Small shared file. Keep `camera name="overview"` and prefer additive bodies. If you replace `shirt_proxy`, update viewport pose map or stop using the proxy. Note merges in `TRACKING.md`. |
 

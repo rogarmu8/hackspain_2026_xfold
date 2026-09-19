@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-/** La creación de experimentos es un Dialog en Control / Experimentos. */
+/** Experiment creation is a dialog on Control / Runs. */
 export default function NewExperimentPage() {
   redirect("/");
 }

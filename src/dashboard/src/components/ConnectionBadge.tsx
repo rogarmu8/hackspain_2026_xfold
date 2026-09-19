@@ -19,24 +19,24 @@ export function ConnectionBadge({
 
   if (connection === "disconnected") {
     return (
-      <StatusBadge tone="danger" icon={<Unplug className="size-3.5" aria-hidden />} title="Bridge sin conexión">
-        Sin conexión {stamp}
+      <StatusBadge tone="danger" icon={<Unplug className="size-3.5" aria-hidden />} title="Bridge disconnected">
+        Offline {stamp}
       </StatusBadge>
     );
   }
 
   if (provenance === "fixture") {
     return (
-      <StatusBadge tone="neutral" icon={<FlaskConical className="size-3.5" aria-hidden />} title="Fixtures locales · bridge offline">
-        Ejemplo
+      <StatusBadge tone="neutral" icon={<FlaskConical className="size-3.5" aria-hidden />} title="Local fixtures · bridge offline">
+        Sample
       </StatusBadge>
     );
   }
 
   if (provenance === "stale") {
     return (
-      <StatusBadge tone="danger" icon={<TimerOff className="size-3.5" aria-hidden />} title="Último dato recibido">
-        Obsoleto {stamp}
+      <StatusBadge tone="danger" icon={<TimerOff className="size-3.5" aria-hidden />} title="Last data received">
+        Stale {stamp}
       </StatusBadge>
     );
   }
@@ -47,16 +47,16 @@ export function ConnectionBadge({
         tone="active"
         pulse
         icon={<PlugZap className="size-3.5" aria-hidden />}
-        title={provenance === "live" ? "Bridge · journal + SSE" : "Simulador OpenArm v2"}
+        title={provenance === "live" ? "Bridge · journal + SSE" : "OpenArm simulator v2"}
       >
-        {provenance === "live" ? "Live" : "Simulador"}
+        {provenance === "live" ? "Live" : "Simulator"}
       </StatusBadge>
     );
   }
 
   return (
     <StatusBadge tone="neutral" icon={<CircleHelp className="size-3.5" aria-hidden />}>
-      Desconocido
+      Unknown
     </StatusBadge>
   );
 }

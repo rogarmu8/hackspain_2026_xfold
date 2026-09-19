@@ -169,11 +169,11 @@ class LineDriver:
     def _capture_photo(self, run_id: str, line) -> str | None:
         got = self.session.render_photo("qc_cam")
         if not got:
-            line._observe("PHOTO_UNAVAILABLE", "foto de producto no disponible (sin GL)", level="warning")
+            line._observe("PHOTO_UNAVAILABLE", "product photo unavailable (no GL)", level="warning")
             return None
         payload, mime = got
         path = save_photo(run_id, payload, mime)
-        line._observe("PHOTO_SAVED", f"foto de producto · {path.name} · {len(payload) // 1024} kB")
+        line._observe("PHOTO_SAVED", f"product photo · {path.name} · {len(payload) // 1024} kB")
         return path.name
 
     # --- the cycle -------------------------------------------------------
@@ -226,10 +226,10 @@ class LineDriver:
             cfg = shirt_config()
             self._log(
                 run_id,
-                f"ciclo iniciado · {cfg.garment} ({cfg.mesh}) · "
-                f"{'prenda personalizada (recorte, dos caras)' if custom_tex else cfg.texture} · "
-                f"{'colocada torcida' if skewed else 'colocada a escuadra'} · "
-                f"seed {seed} ({'aplicada a entrada' if run.inputs.get('seedApplied') else 'entrada fija'}) · "
+                f"cycle started · {cfg.garment} ({cfg.mesh}) · "
+                f"{'custom garment (cut-out, both faces)' if custom_tex else cfg.texture} · "
+                f"{'placed skewed' if skewed else 'placed square'} · "
+                f"seed {seed} ({'applied to infeed' if run.inputs.get('seedApplied') else 'fixed infeed'}) · "
                 f"nq={session.model.nq} · timestep {dt:g}s",
             )
 
@@ -271,7 +271,7 @@ class LineDriver:
                 if t > _SIM_TIME_CAP_S:
                     self._log(
                         run_id,
-                        f"ciclo abandonado a los {t:.0f}s de simulación en {stage or '?'}",
+                        f"cycle abandoned after {t:.0f}s of simulation in {stage or '?'}",
                         level="error",
                     )
                     self.runtime.finish_failed(run_id, t, reason="cycle did not finish")
@@ -281,7 +281,7 @@ class LineDriver:
                 if now - last_event > _HEARTBEAT_S:
                     # Keep the console's stall watchdog quiet during a long,
                     # legitimate phase (steam dwell, belt run).
-                    self._log(run_id, f"{stage or '?'} en curso · t={t:.1f}s", level="debug")
+                    self._log(run_id, f"{stage or '?'} in progress · t={t:.1f}s", level="debug")
                     last_event = time.monotonic()
 
                 leftover = dt - (time.perf_counter() - started)
@@ -293,7 +293,7 @@ class LineDriver:
                 return
             with session.lock:
                 recorder.maybe_sample(t, line.phase, session.data.qpos)
-            self._log(run_id, f"ciclo completo · {t:.1f}s de simulación")
+            self._log(run_id, f"cycle complete · {t:.1f}s of simulation")
             self.runtime.finish_success(run_id, t)
         except Exception as exc:  # noqa: BLE001
             self._log(run_id, f"cycle failed: {exc}", level="error")

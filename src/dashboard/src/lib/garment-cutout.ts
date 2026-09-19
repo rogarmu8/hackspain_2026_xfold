@@ -22,7 +22,7 @@ function drawToCanvas(
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) throw new Error("No se pudo leer la imagen.");
+  if (!ctx) throw new Error("Could not read the image.");
   ctx.drawImage(source, 0, 0, width, height);
   return canvas;
 }
@@ -31,7 +31,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("No se pudo leer la imagen."));
+    img.onerror = () => reject(new Error("Could not read the image."));
     img.src = src;
   });
 }
@@ -169,7 +169,7 @@ function detectMask(image: ImageData): Uint8Array {
   const frac = count / fg.length;
   if (frac < 0.02) {
     throw new Error(
-      "No se ve una prenda; prueba con un fondo más liso y la ropa centrada.",
+      "No garment in view; try a plainer backdrop with the clothing centred.",
     );
   }
   if (frac > 0.94) {
@@ -263,7 +263,7 @@ function paintSquare(
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("No se pudo recortar la prenda.");
+  if (!ctx) throw new Error("Could not cut out the garment.");
   ctx.fillStyle = `rgb(${CLOTH.r}, ${CLOTH.g}, ${CLOTH.b})`;
   const scale = Math.min(size / Math.max(crop.w, 1), size / Math.max(crop.h, 1));
   const nw = Math.max(1, Math.round(crop.w * scale));
@@ -274,7 +274,7 @@ function paintSquare(
   maskCanvas.width = box.w;
   maskCanvas.height = box.h;
   const mctx = maskCanvas.getContext("2d");
-  if (!mctx) throw new Error("No se pudo recortar la prenda.");
+  if (!mctx) throw new Error("Could not cut out the garment.");
   const maskImage = mctx.createImageData(box.w, box.h);
   for (let y = 0; y < box.h; y++) {
     for (let x = 0; x < box.w; x++) {
@@ -308,13 +308,13 @@ export async function cutOutGarment(file: File): Promise<GarmentCutout> {
     );
     const detectCanvas = drawToCanvas(img, detectW, detectH);
     const ctx = detectCanvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) throw new Error("No se pudo leer la imagen.");
+    if (!ctx) throw new Error("Could not read the image.");
     const image = ctx.getImageData(0, 0, detectW, detectH);
     const mask = detectMask(image);
     const box = maskBBox(mask, detectW, detectH);
     if (!box) {
       throw new Error(
-        "No se ve una prenda; prueba con un fondo más liso y la ropa centrada.",
+        "No garment in view; try a plainer backdrop with the clothing centred.",
       );
     }
     const previewUrl = paintSquare(img, detectCanvas, mask, box);

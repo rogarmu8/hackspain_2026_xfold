@@ -50,10 +50,10 @@ export function DesignPreview({ src, outline, attached }: DesignPreviewProps) {
         </div>
       </div>
       <p className="px-3 py-2 text-[13px] text-muted-foreground">
-        Recorte
+          Cut-out
         {attached
-          ? " · listo: la malla sigue el contorno, estampado en las dos caras."
-          : " · pulsa Subir prenda para usarlo en la simulación."}
+          ? " · ready: the mesh follows the outline, print on both faces."
+          : " · press Upload garment to use it in the simulation."}
       </p>
     </div>
   );

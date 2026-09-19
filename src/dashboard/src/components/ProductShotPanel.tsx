@@ -56,7 +56,7 @@ export function ProductShotPanel({ run }: { run: RunDetail }) {
     } catch (err) {
       setPhase({
         state: "error",
-        message: err instanceof Error ? err.message : "Fallo de red",
+        message: err instanceof Error ? err.message : "Network error",
       });
     }
   }, [run.id]);
@@ -68,10 +68,10 @@ export function ProductShotPanel({ run }: { run: RunDetail }) {
       <header>
         <p className="eyebrow flex items-center gap-1.5">
           <Camera className="size-3.5" strokeWidth={1.75} aria-hidden />
-          Foto de producto
+          Product photo
         </p>
         <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-          cámara cenital · tras la prensa
+          overhead camera · after the press
         </p>
       </header>
 
@@ -80,10 +80,10 @@ export function ProductShotPanel({ run }: { run: RunDetail }) {
           {/* eslint-disable-next-line @next/next/no-img-element -- bridge file, not a Next asset */}
           <img
             src={`/api/bridge/runs/${encodeURIComponent(run.id)}/photo`}
-            alt={`Foto cenital de la prenda de ${run.id}`}
+            alt={`Overhead garment photo for ${run.id}`}
             className="aspect-square w-full border border-divider object-cover"
           />
-          <figcaption className="eyebrow">Capturada</figcaption>
+          <figcaption className="eyebrow">Captured</figcaption>
         </figure>
 
         <figure className="m-0 flex flex-col gap-1.5">
@@ -91,7 +91,7 @@ export function ProductShotPanel({ run }: { run: RunDetail }) {
             // eslint-disable-next-line @next/next/no-img-element -- data URI from OpenAI
             <img
               src={look}
-              alt={`Modelo con la prenda de ${run.id}`}
+              alt={`Model wearing the garment from ${run.id}`}
               className="aspect-square w-full border border-divider object-cover"
             />
           ) : (
@@ -104,13 +104,13 @@ export function ProductShotPanel({ run }: { run: RunDetail }) {
             </div>
           )}
           <figcaption className="eyebrow">
-            {look ? "Generada" : "Sin generar"}
+            {look ? "Generated" : "Not generated"}
           </figcaption>
         </figure>
       </div>
 
       <Button size="sm" onClick={generate} disabled={busy}>
-        {busy ? "Generando…" : look ? "Regenerar look" : "Generar look con modelo"}
+        {busy ? "Generating…" : look ? "Regenerate look" : "Generate look on a model"}
       </Button>
 
       {phase.state === "error" ? (
@@ -120,8 +120,8 @@ export function ProductShotPanel({ run }: { run: RunDetail }) {
       ) : (
         <p className="eyebrow">
           {busy
-            ? "OpenAI · puede tardar ~30 s"
-            : "Manda la foto a OpenAI y devuelve la prenda puesta"}
+            ? "OpenAI · can take ~30 s"
+            : "Sends the photo to OpenAI and returns the garment on a model"}
         </p>
       )}
     </aside>

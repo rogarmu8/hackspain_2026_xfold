@@ -26,12 +26,12 @@ export function StageStepper({
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="eyebrow">Ciclo · {items.length} etapas</h2>
+        <h2 className="eyebrow">Cycle · {items.length} stages</h2>
         <span className="font-mono text-[11px] tabular text-muted-foreground">
           {done}/{items.length}
         </span>
       </div>
-      <ol className="flex items-stretch overflow-x-auto" aria-label="Etapas del ciclo">
+      <ol className="flex items-stretch overflow-x-auto" aria-label="Cycle stages">
         {items.map((stage, index) => {
           const isSelected = selected === stage.state;
           const isLast = index === items.length - 1;
@@ -80,9 +80,9 @@ export function StageStepper({
                   {status === "completed"
                     ? formatSeconds(stage.durationSimS)
                     : status === "active"
-                      ? "en curso"
+                      ? "running"
                       : status === "failed"
-                        ? "fallida"
+                        ? "failed"
                         : "—"}
                 </span>
               </button>
@@ -103,10 +103,10 @@ export function StageStepper({
 }
 
 function statusLabel(stage: StageProgress): string {
-  if (stage.status === "completed") return `completada en ${formatSeconds(stage.durationSimS)}`;
-  if (stage.status === "active") return "en curso";
-  if (stage.status === "failed") return "fallida";
-  return "pendiente";
+  if (stage.status === "completed") return `completed in ${formatSeconds(stage.durationSimS)}`;
+  if (stage.status === "active") return "running";
+  if (stage.status === "failed") return "failed";
+  return "pending";
 }
 
 function Node({

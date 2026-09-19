@@ -2,11 +2,11 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "XFold · Centro de control",
+    name: "XFold · Control room",
     short_name: "XFold",
     description:
-      "Monitor de la celda OpenArm: prensa, pliegue ninja y tolva a bolsa",
-    lang: "es",
+      "OpenArm cell monitor: press, ninja fold, and bag chute",
+    lang: "en",
     start_url: "/",
     display: "standalone",
     background_color: "#FAF6EC",

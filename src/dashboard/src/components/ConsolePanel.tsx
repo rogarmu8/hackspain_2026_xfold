@@ -36,7 +36,7 @@ export function ConsolePanel({
   const [pinned, setPinned] = useState(true);
   const [now, setNow] = useState(() => Date.now());
   const bodyRef = useRef<HTMLOListElement | null>(null);
-  /** Line count when the operator last left the bottom; drives the "N nuevas" hint. */
+  /** Line count when the operator last left the bottom; drives the "N new" hint. */
   const [seenAt, setSeenAt] = useState(lines.length);
 
   const visible = onlyProblems ? lines.filter((l) => l.level === "warning" || l.level === "error") : lines;
@@ -72,15 +72,15 @@ export function ConsolePanel({
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-divider px-3">
         <h2 className="eyebrow flex items-center gap-1.5">
           <TerminalSquare className="size-3.5" strokeWidth={1.75} aria-hidden />
-          Consola
+          Console
         </h2>
         <span className="font-mono text-[11px] tabular text-muted-foreground">{lines.length}</span>
         {stalled ? (
-          <StatusBadge tone="danger" icon={<TriangleAlert className="size-3" aria-hidden />} title={`Sin eventos desde hace ${Math.round(silenceS)} s`}>
-            Sin señal · {Math.round(silenceS)} s
+          <StatusBadge tone="danger" icon={<TriangleAlert className="size-3" aria-hidden />} title={`No events for ${Math.round(silenceS)} s`}>
+            No signal · {Math.round(silenceS)} s
           </StatusBadge>
         ) : running ? (
-          <StatusBadge tone="active" pulse>en vivo</StatusBadge>
+          <StatusBadge tone="active" pulse>live</StatusBadge>
         ) : null}
         <button
           type="button"
@@ -89,9 +89,9 @@ export function ConsolePanel({
           className={`ml-auto rounded-[var(--radius-sm)] border px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.08em] ${
             onlyProblems ? "border-ink bg-canvas text-ink" : "border-divider text-muted-foreground hover:text-ink"
           }`}
-          title="Mostrar solo avisos y errores"
+          title="Show warnings and errors only"
         >
-          avisos {problems ? `· ${problems}` : ""}
+          alerts {problems ? `· ${problems}` : ""}
         </button>
       </header>
 
@@ -103,7 +103,7 @@ export function ConsolePanel({
       >
         {visible.length === 0 ? (
           <li className="text-muted-foreground">
-            {lines.length ? "Sin avisos ni errores." : running ? "Esperando eventos de la simulación…" : "Sin eventos registrados."}
+            {lines.length ? "No warnings or errors." : running ? "Waiting for simulation events…" : "No events recorded."}
           </li>
         ) : (
           visible.map((line) => (
@@ -114,7 +114,7 @@ export function ConsolePanel({
               <span className="min-w-0 break-words">
                 <span className="text-muted-foreground">
                   {[line.station ?? line.source, line.stage, line.operation].filter(Boolean).join(" · ")}
-                  {line.parallel ? " · paralelo" : ""}{" "}
+                  {line.parallel ? " · parallel" : ""}{" "}
                 </span>
                 {line.message}
               </span>
@@ -126,7 +126,7 @@ export function ConsolePanel({
             <span className="tabular">—</span>
             <span>
               <span className="opacity-70">watchdog </span>
-              sin eventos desde hace {Math.round(silenceS)} s · comprobar bridge o simulación
+              no events for {Math.round(silenceS)} s · check the bridge or simulation
             </span>
           </li>
         ) : null}
@@ -144,7 +144,7 @@ export function ConsolePanel({
             }}
           >
             <ArrowDownToLine className="size-3.5" aria-hidden />
-            Seguir en vivo{unread ? ` · ${unread} nuevas` : ""}
+            Follow live{unread ? ` · ${unread} new` : ""}
           </Button>
         </div>
       ) : null}

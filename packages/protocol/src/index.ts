@@ -51,16 +51,16 @@ export const PRODUCTIVE_CYCLE = [
   "BAG",
 ] as const satisfies readonly CellState[];
 
-/** Spanish labels for the OpenArm → ninja fold → bag chute cell. */
+/** Fallback labels for the OpenArm → ninja fold → bag chute cell. */
 export const CELL_STAGE_LABELS: Record<CellState, string> = {
-  PICK: "Recogida",
-  ORIENT: "Orientación",
-  SPREAD: "Tensado",
-  PRESS: "Prensado",
-  FOLD: "Plegado ninja",
-  CHUTE: "Tolva",
-  BAG: "Embolsado",
-  RESET: "Reinicio",
+  PICK: "Pick",
+  ORIENT: "Orient",
+  SPREAD: "Spread",
+  PRESS: "Press",
+  FOLD: "Ninja fold",
+  CHUTE: "Chute",
+  BAG: "Bag",
+  RESET: "Reset",
 };
 
 /** Shared snapshot the sim materializes and the bridge streams to the dashboard. */

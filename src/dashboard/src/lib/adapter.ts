@@ -96,7 +96,7 @@ export class DashboardAdapter {
         name: name || null,
         seed,
         scenario,
-        notes: "Demostración local, sin conexión al simulador.",
+        notes: "Local demo, not connected to the simulator.",
         garment,
         clothType,
         clothCondition,
@@ -105,7 +105,7 @@ export class DashboardAdapter {
       metrics: { cycleTimeSimS: null, cycleTimeWallS: null, flatnessPre: null, flatnessPost: null, shirtInBag: null },
       telemetry: { t: 0, state: "PICK", cycle: 1, flatness: null, shirt_in_bag: false },
       stages: PRODUCTIVE_CYCLE.map((state, i) => ({ state, status: i === 0 ? "active" : "pending", startedAtSimS: i === 0 ? 0 : null, durationSimS: null })),
-      events: [{ id: `${id}-start`, atSimS: 0, atWallIso: FIXTURE_CLOCK, stage: "PICK", message: "Ejemplo local creado; no se ha enviado al simulador.", level: "info" }],
+      events: [{ id: `${id}-start`, atSimS: 0, atWallIso: FIXTURE_CLOCK, stage: "PICK", message: "Local sample created; nothing was sent to the simulator.", level: "info" }],
     };
   }
 
@@ -155,7 +155,7 @@ export class DashboardAdapter {
         incident: {
           id: "no-bus",
           message:
-            "El simulador aún no publica telemetría en vivo ni acepta comandos. Solo existe SAMPLE_TELEMETRY en @xfold/protocol.",
+            "The simulator does not publish live telemetry or accept commands yet. Only SAMPLE_TELEMETRY exists in @xfold/protocol.",
           runId: null,
         },
       };
@@ -173,7 +173,7 @@ export class DashboardAdapter {
         activeBatch: this.fixtureBatch,
         incident: {
           id: "link-down",
-          message: "Sin conexión con el proceso de simulación",
+          message: "No connection to the simulation process",
           runId: this.fixtureRun?.id ?? null,
         },
       };
@@ -203,7 +203,7 @@ export class DashboardAdapter {
         this.fixtureRun?.lifecycle === "failed"
           ? {
               id: "run-fail",
-              message: this.fixtureRun.failReason ?? "Ejecución fallida",
+              message: this.fixtureRun.failReason ?? "Run failed",
               runId: this.fixtureRun.id,
             }
           : null,
@@ -240,7 +240,7 @@ export class DashboardAdapter {
     if (id === "B-007") {
       return {
         id: "B-007",
-        name: "Lote corto · semillas 10–14",
+        name: "Short batch · seeds 10–14",
         lifecycle: "succeeded",
         total: 5,
         finished: 5,
@@ -291,7 +291,7 @@ export class DashboardAdapter {
         ...this.fixtureRun,
         lifecycle: "cancelled",
         finishedAtIso: FIXTURE_CLOCK,
-        failReason: "Cancelada por el operador (fixture)",
+        failReason: "Cancelled by the operator (fixture)",
       };
     } else if (kind === "pause_batch" && this.fixtureBatch) {
       this.fixtureBatch = { ...this.fixtureBatch, lifecycle: "paused" };
@@ -317,7 +317,7 @@ export class DashboardAdapter {
     }
     const now = new Date().toISOString();
     if (this.fixtureRun) {
-      this.fixtureRun.events.push({ id: `${this.fixtureRun.id}-${kind}-${now}`, atSimS: this.fixtureRun.telemetry?.t ?? 0, atWallIso: now, stage: this.fixtureRun.currentState, message: `Comando de ejemplo confirmado: ${kind}`, level: "info" });
+      this.fixtureRun.events.push({ id: `${this.fixtureRun.id}-${kind}-${now}`, atSimS: this.fixtureRun.telemetry?.t ?? 0, atWallIso: now, stage: this.fixtureRun.currentState, message: `Sample command confirmed: ${kind}`, level: "info" });
       if (kind === "cancel_run" && this.fixtureBatch) this.fixtureBatch = { ...this.fixtureBatch, activeRunId: null };
     }
     if (kind === "cancel_batch" && this.fixtureBatch) {
@@ -338,16 +338,16 @@ export class DashboardAdapter {
     if (this.mode !== "fixture") {
       return {
         ok: false,
-        reason: "El simulador aún no expone un API de lanzamiento.",
+        reason: "The simulator does not expose a launch API yet.",
       };
     }
     if (!this.getControlSnapshot().capabilities.startRun) {
-      return { ok: false, reason: "Lanzamiento no disponible." };
+      return { ok: false, reason: "Launch is not available." };
     }
 
     const seed = request.mode === "individual" ? request.seed : request.baseSeed;
-    if (!Number.isSafeInteger(seed) || seed < 0 || seed > 2147483547) return { ok: false, reason: "La semilla debe ser un entero entre 0 y 2147483547." };
-    if (request.mode === "batch" && (!Number.isInteger(request.count) || request.count < 1 || request.count > 100 || request.seedStrategy !== "sequential")) return { ok: false, reason: "Elige entre 1 y 100 ejecuciones con semillas secuenciales." };
+    if (!Number.isSafeInteger(seed) || seed < 0 || seed > 2147483547) return { ok: false, reason: "Seed must be an integer between 0 and 2147483547." };
+    if (request.mode === "batch" && (!Number.isInteger(request.count) || request.count < 1 || request.count > 100 || request.seedStrategy !== "sequential")) return { ok: false, reason: "Choose between 1 and 100 runs with sequential seeds." };
     this.remember();
     if (request.mode === "individual") {
       const id = `RUN-${String(100 + this.launches.length).padStart(3, "0")}`;
@@ -355,7 +355,7 @@ export class DashboardAdapter {
         {
           kind: "run",
           id,
-          title: request.name || `Semilla ${request.seed}`,
+          title: request.name || `Seed ${request.seed}`,
           lifecycle: "running",
           seed: request.seed,
           startedAtIso: FIXTURE_CLOCK,

@@ -33,7 +33,7 @@ export function lineFromJournal(event: JournalEvent): ConsoleLine | null {
         atSimS: 0,
         level: "info",
         source: "bridge",
-        message: `ejecución iniciada · seed ${event.seed} · ${event.garment ?? event.scenario}${
+        message: `run started · seed ${event.seed} · ${event.garment ?? event.scenario}${
           event.clothCondition ? ` · ${event.clothCondition}` : ""
         }`,
       };

@@ -204,7 +204,7 @@ def _mix_choice(
     ws = [_weight_of(weights, key) for key in pool]
     total = sum(ws)
     if total <= 0:
-        raise ValueError("todos los pesos son cero; sube al menos uno")
+        raise ValueError("all weights are zero; raise at least one")
     return rng.choices(pool, weights=ws, k=1)[0]
 
 

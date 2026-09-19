@@ -88,19 +88,19 @@ from .steam import SteamField
 LINE_PATH = Path(__file__).resolve().parents[2] / "models" / "line.xml"
 
 LINE_PHASES = (
-    {"state": "LOAD", "label": "Carga", "station": "infeed"},
-    {"state": "ORIENT", "label": "Orientación", "station": "orient"},
-    {"state": "TO_PRESS", "label": "A prensa", "station": "belt"},
-    {"state": "PRESS", "label": "Prensado", "station": "press"},
-    {"state": "TO_QC", "label": "A cámara QC", "station": "belt"},
-    {"state": "PHOTO", "label": "Foto de producto", "station": "qc"},
-    {"state": "TO_FOLDER", "label": "A plegador", "station": "belt"},
-    {"state": "FOLD", "label": "Plegado de palas", "station": "folder"},
-    {"state": "INSERT", "label": "Inserción en bolsa", "station": "bagger"},
-    {"state": "TO_SEAL", "label": "A selladora", "station": "belt2"},
-    {"state": "SEAL", "label": "Sellado y etiqueta", "station": "sealer"},
-    {"state": "TO_CARTON", "label": "A cartón", "station": "belt2"},
-    {"state": "DONE", "label": "Fin de ciclo", "station": "outfeed"},
+    {"state": "LOAD", "label": "Load", "station": "infeed"},
+    {"state": "ORIENT", "label": "Orient", "station": "orient"},
+    {"state": "TO_PRESS", "label": "To press", "station": "belt"},
+    {"state": "PRESS", "label": "Press", "station": "press"},
+    {"state": "TO_QC", "label": "To QC camera", "station": "belt"},
+    {"state": "PHOTO", "label": "Product photo", "station": "qc"},
+    {"state": "TO_FOLDER", "label": "To folder", "station": "belt"},
+    {"state": "FOLD", "label": "Blade fold", "station": "folder"},
+    {"state": "INSERT", "label": "Bag insert", "station": "bagger"},
+    {"state": "TO_SEAL", "label": "To sealer", "station": "belt2"},
+    {"state": "SEAL", "label": "Seal and label", "station": "sealer"},
+    {"state": "TO_CARTON", "label": "To carton", "station": "belt2"},
+    {"state": "DONE", "label": "Cycle complete", "station": "outfeed"},
 )
 _PHASES = {phase["state"]: phase for phase in LINE_PHASES}
 

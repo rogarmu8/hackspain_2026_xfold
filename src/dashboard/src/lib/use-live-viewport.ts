@@ -173,8 +173,8 @@ export function useLiveViewport(opts: {
               status: s.src ? "stale" : "offline",
               error:
                 res.status === 503
-                  ? "Viewport aún no listo"
-                  : "Bridge inalcanzable",
+                  ? "Viewport not ready yet"
+                  : "Bridge unreachable",
             }));
             await sleep(Math.min(4000, 300 * failRef.current));
             continue;
@@ -218,7 +218,7 @@ export function useLiveViewport(opts: {
           setState((s) => ({
             ...s,
             status: s.src ? "stale" : "offline",
-            error: err instanceof Error ? err.message : "error de red",
+            error: err instanceof Error ? err.message : "network error",
           }));
           await sleep(Math.min(4000, 400 * failRef.current));
         }

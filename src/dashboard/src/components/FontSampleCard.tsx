@@ -41,19 +41,19 @@ export function FontSampleCard({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-[22px] font-semibold tracking-[-0.02em]">
-              Centro de control
+              Control room
             </h3>
             <p className="mt-0.5 text-[13px] text-muted-foreground">
-              Celda OpenArm · prensa · pliegue ninja · tolva → bolsa
+              OpenArm cell · press · ninja fold · chute → bag
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-[4px] bg-active-surface px-2 py-1 text-[13px] text-active-ink">
               <span className="size-2 rounded-full bg-active" aria-hidden />
-              Datos de ejemplo
+              Sample data
             </span>
             <Button type="button" tabIndex={-1}>
-              Nuevo experimento
+              New experiment
             </Button>
           </div>
         </div>
@@ -65,34 +65,34 @@ export function FontSampleCard({
               className={`text-sm font-semibold tabular ${monoClassName}`}
               style={monoStyle}
             >
-              RUN-014 · Semilla 42
+              RUN-014 · Seed 42
             </span>
             <span className="text-[11px] tracking-wide text-white/50 uppercase">
-              Telemetría sin imagen
+              Telemetry without image
             </span>
           </div>
           <dl className="grid grid-cols-2 gap-3 px-3 py-4 sm:grid-cols-5">
             <Metric
-              label="Fase"
-              value="Plegado ninja"
+              label="Stage"
+              value="Ninja fold"
               monoClassName={monoClassName}
               monoStyle={monoStyle}
               mono={false}
             />
             <Metric
-              label="Ciclo"
+              label="Cycle"
               value="14"
               monoClassName={monoClassName}
               monoStyle={monoStyle}
             />
             <Metric
-              label="Planitud"
-              value="0,002 m"
+              label="Flatness"
+              value="0.002 m"
               monoClassName={monoClassName}
               monoStyle={monoStyle}
             />
             <Metric
-              label="En bolsa"
+              label="In bag"
               value="no"
               monoClassName={monoClassName}
               monoStyle={monoStyle}
@@ -100,7 +100,7 @@ export function FontSampleCard({
             />
             <Metric
               label="t sim"
-              value="28,4 s"
+              value="28.4 s"
               monoClassName={monoClassName}
               monoStyle={monoStyle}
             />
@@ -109,7 +109,7 @@ export function FontSampleCard({
 
         {/* Stages + data row */}
         <div className="grid gap-3 sm:grid-cols-3">
-          {["Recogida", "Plegado ninja", "Embolsado"].map((stage, i) => (
+          {["Pick", "Ninja fold", "Bag"].map((stage, i) => (
             <div
               key={stage}
               className={`rounded-[4px] border px-3 py-2 ${
@@ -123,7 +123,7 @@ export function FontSampleCard({
                 className={`mt-0.5 text-[12px] text-muted-foreground tabular ${monoClassName}`}
                 style={monoStyle}
               >
-                {i === 1 ? "En curso" : i === 0 ? "6,4 s" : "Pendiente"}
+                {i === 1 ? "In progress" : i === 0 ? "6.4 s" : "Pending"}
               </p>
             </div>
           ))}
@@ -137,10 +137,10 @@ export function FontSampleCard({
             </span>
             <span className="text-muted-foreground">
               {" "}
-              · 12/20 finalizadas · éxito{" "}
+              · 12/20 finished · success{" "}
             </span>
             <span className={`tabular ${monoClassName}`} style={monoStyle}>
-              83,3 %
+              83.3 %
             </span>
           </p>
           <p

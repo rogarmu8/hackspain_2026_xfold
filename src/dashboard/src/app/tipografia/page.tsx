@@ -50,16 +50,16 @@ const PAIRS = [
   {
     id: "geist",
     name: "Geist + Geist Mono",
-    tag: "Anterior",
-    note: "Baseline previo. Limpio y de producto; menos “celda”.",
+    tag: "Previous",
+    note: "Previous baseline. Clean product look; less “cell”.",
     sans: geistSans,
     mono: geistMono,
   },
   {
     id: "plex",
     name: "IBM Plex Sans + Plex Mono",
-    tag: "Actual",
-    note: "Familia activa del dashboard. Industrial humano–máquina.",
+    tag: "Current",
+    note: "Active dashboard family. Industrial human–machine.",
     sans: plexSans,
     mono: plexMono,
   },
@@ -67,15 +67,15 @@ const PAIRS = [
     id: "space-jb",
     name: "Space Grotesk + JetBrains Mono",
     tag: "Digital",
-    note: "Más pantallazo de control contemporáneo; mono muy legible en datos.",
+    note: "More contemporary control-room screen; mono is very readable for data.",
     sans: spaceGrotesk,
     mono: jetbrainsMono,
   },
   {
     id: "space-pair",
     name: "Space Grotesk + Space Mono",
-    tag: "Familia única",
-    note: "Misma DNA tipográfica. El mono es más display / terminal.",
+    tag: "Single family",
+    note: "Same typographic DNA. The mono is more display / terminal.",
     sans: spaceGrotesk,
     mono: spaceMono,
   },
@@ -83,7 +83,7 @@ const PAIRS = [
     id: "b612",
     name: "B612 + B612 Mono",
     tag: "Cockpit",
-    note: "Tipografía Airbus para cabina. Máxima legibilidad; carácter más raro.",
+    note: "Airbus cockpit typeface. Maximum readability; rarer character.",
     sans: b612,
     mono: b612Mono,
   },
@@ -91,7 +91,7 @@ const PAIRS = [
     id: "recursive",
     name: "Recursive (sans ↔ mono)",
     tag: "Variable",
-    note: "Una familia; el mono usa el eje MONO. Muy UI/code, más compleja.",
+    note: "One family; the mono uses the MONO axis. Very UI/code, more complex.",
     sans: recursive,
     mono: recursive,
     monoAsRecursive: true,
@@ -99,8 +99,8 @@ const PAIRS = [
 ] as const;
 
 export const metadata = {
-  title: "Tipografía · XFOLD",
-  description: "Comparativa de familias tipográficas para el centro de control",
+  title: "Typography · XFOLD",
+  description: "Typeface comparison for the control room",
 };
 
 export default function TipografiaPage() {
@@ -110,21 +110,21 @@ export default function TipografiaPage() {
         <header className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-border pb-6">
           <div>
             <p className="text-[13px] font-semibold tracking-wide text-muted-foreground uppercase">
-              Laboratorio tipográfico
+              Type lab
             </p>
             <h1 className="mt-1 text-[28px] font-semibold tracking-tight">
-              Comparar fuentes
+              Compare typefaces
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Misma maqueta de control (título, badge, telemetría, IDs) en cada
-              pareja. No cambia el producto todavía — solo sirve para decidir.
+              Same control mock (title, badge, telemetry, IDs) in each pair.
+              The product is unchanged for now — this is only for deciding.
             </p>
           </div>
           <Link
             href="/"
             className="text-sm font-semibold underline-offset-4 hover:underline"
           >
-            ← Volver al control
+            ← Back to control
           </Link>
         </header>
 

@@ -64,10 +64,10 @@ export function BatchContextPanel({
       <header>
         <p className="eyebrow flex items-center gap-1.5">
           <Layers className="size-3.5" strokeWidth={1.75} aria-hidden />
-          {batch ? "Batch" : run ? "Ejecución" : "Inactivo"}
+          {batch ? "Batch" : run ? "Run" : "Idle"}
         </p>
         <h2 className="mt-1.5 truncate text-[17px] font-semibold leading-tight">
-          {batch?.name ?? run?.name ?? "Sin actividad"}
+          {batch?.name ?? run?.name ?? "No activity"}
         </h2>
         {(batch?.id ?? run?.id) ? (
           <p className="mt-0.5 font-mono text-xs text-muted-foreground">{batch?.id ?? run?.id}</p>
@@ -82,21 +82,21 @@ export function BatchContextPanel({
               <span className="text-base font-normal text-muted-foreground"> / {batch.total}</span>
             </strong>
             <span className="font-mono text-[11px] tabular text-muted-foreground">
-              {batch.failed} err · {batch.pending} cola
+              {batch.failed} err · {batch.pending} queued
             </span>
           </div>
           <Progress
-            aria-label="Ejecuciones finalizadas"
+            aria-label="Finished runs"
             value={batch.total ? (batch.finished / batch.total) * 100 : 0}
             className="mt-3"
           />
           <div className="mt-4 flex items-center justify-between">
-            <h3 className="eyebrow">Cola</h3>
+            <h3 className="eyebrow">Queue</h3>
             <Link
               href={`/experimentos/${batch.id}`}
               className="inline-flex items-center gap-1 text-xs font-semibold text-ink"
             >
-              Todas <ArrowUpRight className="size-3.5" aria-hidden />
+              All <ArrowUpRight className="size-3.5" aria-hidden />
             </Link>
           </div>
           {batch.queuePreview.length ? (
@@ -109,7 +109,7 @@ export function BatchContextPanel({
               ))}
             </ul>
           ) : (
-            <p className="mt-2 text-xs text-muted-foreground">Cola vacía.</p>
+            <p className="mt-2 text-xs text-muted-foreground">Queue empty.</p>
           )}
         </div>
       )}
@@ -137,21 +137,21 @@ export function BatchContextPanel({
                 size="sm"
                 variant="outline"
                 disabled={disabled(pauseRun)}
-                onClick={() => onCommand(pauseRun, `ejecución ${run.id}`)}
+                onClick={() => onCommand(pauseRun, `run ${run.id}`)}
               >
                 <ActionIcon busy={pending(pauseRun)} Icon={run.lifecycle === "paused" ? Play : Pause} />
-                {run.lifecycle === "paused" ? "Reanudar" : "Pausar"}
+                {run.lifecycle === "paused" ? "Resume" : "Pause"}
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
                 disabled={disabled("cancel_run")}
                 onClick={() => confirmCancel("run")}
-                aria-label="Cancelar ejecución"
-                title="Cancelar ejecución"
+                aria-label="Cancel run"
+                title="Cancel run"
               >
                 <ActionIcon busy={pending("cancel_run")} Icon={Square} />
-                Cancelar
+                Cancel
               </Button>
             </div>
           )}
@@ -160,17 +160,17 @@ export function BatchContextPanel({
 
       {batchActive && (
         <details className="border-t border-divider pt-3">
-          <summary className="eyebrow cursor-pointer">Gestionar cola</summary>
+          <summary className="eyebrow cursor-pointer">Manage queue</summary>
           <div className="mt-3 flex gap-2">
             <Button
               className="flex-1"
               size="sm"
               variant="outline"
               disabled={disabled(pauseBatch)}
-              onClick={() => onCommand(pauseBatch, `cola ${batch.id}`)}
+              onClick={() => onCommand(pauseBatch, `queue ${batch.id}`)}
             >
               <ActionIcon busy={pending(pauseBatch)} Icon={batch.lifecycle === "paused" ? Play : Pause} />
-              {batch.lifecycle === "paused" ? "Reanudar cola" : "Pausar cola"}
+              {batch.lifecycle === "paused" ? "Resume queue" : "Pause queue"}
             </Button>
             <Button
               size="sm"
@@ -182,33 +182,33 @@ export function BatchContextPanel({
               Batch
             </Button>
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">Pausar la cola conserva la ejecución actual.</p>
+          <p className="mt-2 text-xs text-muted-foreground">Pausing the queue keeps the current run.</p>
         </details>
       )}
 
       <AlertDialog open={Boolean(confirm)} onOpenChange={(open) => { if (!open) setConfirm(null); }}>
         <AlertDialogContent onCloseAutoFocus={(event) => { event.preventDefault(); cancelTrigger.current?.focus(); }}>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Cancelar {confirm === "batch" ? "el batch" : "la ejecución"}?</AlertDialogTitle>
+            <AlertDialogTitle>Cancel {confirm === "batch" ? "the batch" : "the run"}?</AlertDialogTitle>
             <AlertDialogDescription>
               {confirm === "batch"
-                ? "Se cancelarán la ejecución actual y todas las pendientes de este batch."
-                : "Se cancelará solo esta ejecución. El resto del batch se conserva."}
+                ? "The current run and every pending run in this batch will be cancelled."
+                : "Only this run will be cancelled. The rest of the batch is kept."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogCancel>Back</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={disconnected || Boolean(pendingCommand)}
               onClick={() => {
                 onCommand(
                   confirm === "batch" ? "cancel_batch" : "cancel_run",
-                  confirm === "batch" ? `batch ${batch?.id}` : `ejecución ${run?.id}`,
+                  confirm === "batch" ? `batch ${batch?.id}` : `run ${run?.id}`,
                 );
               }}
             >
-              Cancelar {confirm === "batch" ? "batch" : "ejecución"}
+              Cancel {confirm === "batch" ? "batch" : "run"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -217,18 +217,18 @@ export function BatchContextPanel({
       {pendingCommand && (
         <p role="status" className="flex items-center gap-2 text-xs text-active-ink">
           <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-          Enviando · {pendingCommand.scopeLabel}
+          Sending · {pendingCommand.scopeLabel}
         </p>
       )}
       {disconnected && (
         <p className="flex items-center gap-2 text-xs text-danger">
           <Plug className="size-3.5" aria-hidden />
-          Sin conexión · controles bloqueados
+          Offline · controls locked
         </p>
       )}
       {!run && !batch && (
         <p className="text-xs text-muted-foreground">
-          Lanza un experimento o batch desde «Nuevo experimento».
+          Launch an experiment or batch from “New experiment”.
         </p>
       )}
     </aside>

@@ -5,6 +5,7 @@ alwaysApply: true
 
 # XFOLD team rules
 
+- Operator-facing UI, logs, and errors are **English** (see `AGENTS.md` Language).
 - Source of truth: `SOLUTION.md`. Team schedule: `PLAN.md`. Progress: `TRACKING.md`.
 - **Sim↔dashboard:** binding contract is `docs/INTEGRATION_CONTRACT.md` (detail `docs/BRIDGE.md`). Do not invent another bus.
 - Stack only: MuJoCo 3, mink, mujoco-menagerie, NumPy. No ROS / Isaac / RL until scripted cycle works.

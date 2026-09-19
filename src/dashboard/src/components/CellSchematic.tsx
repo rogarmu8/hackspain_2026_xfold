@@ -4,11 +4,11 @@ import type { PhaseId, PhaseDefinition } from "@xfold/protocol";
 export function CellSchematic({ stage, stages }: { stage: PhaseId | null; stages?: PhaseDefinition[] }) {
   if (stages?.some((s) => s.label)) {
     return <div className="flex max-w-2xl flex-col gap-4 text-center font-mono text-xs">
-      <p>Sin imagen reconstruible · fases registradas por la simulación</p>
+      <p>No reconstructable image · phases recorded by the simulation</p>
       <ol className="flex flex-wrap justify-center gap-3">{stages.map((s) => <li key={s.state} className={s.state === stage ? "text-hud" : "text-hud-dim"}>{s.label ?? s.state}</li>)}</ol>
     </div>;
   }
-  return <svg viewBox="0 0 800 340" className="w-full max-h-[330px]" role="img" aria-label="Esquema de la celda: entrada, dos brazos OpenArm, prensa y tolva hacia la bolsa. No representa posiciones reales.">
+  return <svg viewBox="0 0 800 340" className="w-full max-h-[330px]" role="img" aria-label="Cell schematic: infeed, two OpenArm arms, press, and chute into the bag. Not real robot poses.">
     <defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="#faf6ec" strokeOpacity=".045" /></pattern></defs>
     <rect width="800" height="340" fill="url(#grid)" />
     <g stroke="#777b72" strokeWidth="1" fill="none">
@@ -25,7 +25,7 @@ export function CellSchematic({ stage, stages }: { stage: PhaseId | null; stages
     <path d={stage === "FOLD" || stage === "CHUTE" || stage === "BAG" ? "M362 139h78v78h-78z" : "M357 119l-35 19 15 33 20-9v66h86v-66l20 9 15-33-35-19-25 12h-36z"} fill="#35858a" fillOpacity=".4" stroke="#83bbb6" strokeWidth="1.5" />
     <path d="M365 143l70 68m-70 0 70-68" stroke="#83bbb6" strokeOpacity=".3" />
     <g fontFamily="monospace" fontSize="11" fill="#c5c7bc" letterSpacing="2">
-      <text x="84" y="263">01 / ENTRADA</text><text x="316" y="292">02 / PRENSA + PLEGADO</text><text x="621" y="292">03 / EMBOLSADO</text>
+      <text x="84" y="263">01 / INFEED</text><text x="316" y="292">02 / PRESS + FOLD</text><text x="621" y="292">03 / BAG</text>
       <text x="330" y="35" fill="#83bbb6">OPENARM · L + R</text>
     </g>
   </svg>;

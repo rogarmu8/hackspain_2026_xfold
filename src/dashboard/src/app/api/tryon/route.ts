@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
   if (!key) {
     return fail(
       "missing_key",
-      "Falta OPENAI_API_KEY. Añádela a src/dashboard/.env.local y reinicia el dashboard.",
+      "OPENAI_API_KEY is missing. Add it to src/dashboard/.env.local and restart the dashboard.",
       501,
     );
   }
@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
   } catch {
     /* handled by the guard below */
   }
-  if (!runId) return fail("bad_request", "Falta runId.", 400);
+  if (!runId) return fail("bad_request", "Missing runId.", 400);
 
   // 1. The QC shot, straight from the bridge.
   let photo: Response;
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
   if (!photo.ok) {
     return fail(
       "no_photo",
-      `El bridge no tiene foto de producto para ${runId} (HTTP ${photo.status}).`,
+      `The bridge has no product photo for ${runId} (HTTP ${photo.status}).`,
       404,
     );
   }
@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
 
   const url = pickImage(payload);
   if (!url) {
-    return fail("no_image", `${model} respondió sin imagen: ${text.slice(0, 300)}`, 502);
+    return fail("no_image", `${model} returned no image: ${text.slice(0, 300)}`, 502);
   }
   return Response.json({ ok: true, url, model });
 }

@@ -50,13 +50,13 @@ function stagesThrough(active: CellState, failed?: CellState): StageProgress[] {
 
 function eventsFor(runId: string, upTo: CellState): RunEvent[] {
   const messages: Partial<Record<CellState, string>> = {
-    PICK: "Agarre bimanual en el contenedor de entrada",
-    ORIENT: "Cintas duales cuadran la camisa (collar aguas abajo)",
-    SPREAD: "Tensado sobre la platina (OpenArm L+R)",
-    PRESS: "Platina inferior fija; platen superior en descenso",
-    FOLD: "Pliegue ninja: línea de pliegue + bajo",
-    CHUTE: "Cama basculante; paquete en tolva",
-    BAG: "Paquete en bolsa abierta",
+    PICK: "Bimanual grasp in the infeed bin",
+    ORIENT: "Dual belts square the shirt (collar downstream)",
+    SPREAD: "Spread on the platen (OpenArm L+R)",
+    PRESS: "Lower bed fixed; upper platen descending",
+    FOLD: "Ninja fold: crease line + hem",
+    CHUTE: "Tilting bed; pack in the chute",
+    BAG: "Pack in the open bag",
   };
   const idx = PRODUCTIVE_CYCLE.indexOf(upTo as (typeof PRODUCTIVE_CYCLE)[number]);
   return PRODUCTIVE_CYCLE.slice(0, idx + 1).map((stage, i) => ({
@@ -82,7 +82,7 @@ export const FIXTURE_ACTIVE_RUN: RunDetail = {
   batchId: "B-008",
   lifecycle: "running",
   seed: 42,
-  name: "Pliegue estándar",
+  name: "Standard fold",
   currentState: "FOLD",
   startedAtIso: "2026-09-18T22:13:26.000Z",
   finishedAtIso: null,
@@ -95,10 +95,10 @@ export const FIXTURE_ACTIVE_RUN: RunDetail = {
     shirtInBag: false,
   },
   config: {
-    name: "Pliegue estándar",
+    name: "Standard fold",
     seed: 42,
     scenario: "openarm-ninja-bag",
-    notes: "Fixture coherente con PICK→BAG; no es telemetría del sim.",
+    notes: "Fixture consistent with PICK→BAG; not live sim telemetry.",
   },
   stages: stagesThrough("FOLD"),
   events: eventsFor("RUN-014", "FOLD"),
@@ -107,7 +107,7 @@ export const FIXTURE_ACTIVE_RUN: RunDetail = {
 
 export const FIXTURE_BATCH: BatchSummary = {
   id: "B-008",
-  name: "Lote camisetas · semillas 42–61",
+  name: "T-shirt batch · seeds 42–61",
   lifecycle: "running",
   total: 20,
   finished: 12,
@@ -134,7 +134,7 @@ export const FIXTURE_FAILED_RUN: RunDetail = {
   currentState: "SPREAD",
   startedAtIso: "2026-09-18T22:08:01.000Z",
   finishedAtIso: "2026-09-18T22:08:19.000Z",
-  failReason: "Pérdida de agarre derecho durante el tensado",
+  failReason: "Lost right-hand grasp during spread",
   metrics: {
     cycleTimeSimS: 18.2,
     cycleTimeWallS: 19.1,
@@ -156,7 +156,7 @@ export const FIXTURE_FAILED_RUN: RunDetail = {
       atSimS: 9.4,
       atWallIso: "2026-09-18T22:08:19.000Z",
       stage: "SPREAD",
-      message: "Pérdida de agarre derecho durante el tensado",
+      message: "Lost right-hand grasp during spread",
       level: "error",
     },
   ],
@@ -229,11 +229,11 @@ export const FIXTURE_HISTORY: RunSummary[] = [
     batchId: null,
     lifecycle: "cancelled",
     seed: 7,
-    name: "Prueba cancelación",
+    name: "Cancellation test",
     currentState: "PRESS",
     startedAtIso: "2026-09-18T21:40:00.000Z",
     finishedAtIso: "2026-09-18T21:40:18.000Z",
-    failReason: "Cancelada por el operador",
+    failReason: "Cancelled by the operator",
     metrics: {
       cycleTimeSimS: null,
       cycleTimeWallS: 18,
@@ -259,7 +259,7 @@ export const FIXTURE_EXPERIMENTS: ExperimentListItem[] = [
   {
     kind: "batch",
     id: "B-007",
-    title: "Lote corto · semillas 10–14",
+    title: "Short batch · seeds 10–14",
     lifecycle: "succeeded",
     total: 5,
     finished: 5,
@@ -279,7 +279,7 @@ export const FIXTURE_EXPERIMENTS: ExperimentListItem[] = [
   {
     kind: "run",
     id: "RUN-009",
-    title: "Prueba cancelación",
+    title: "Cancellation test",
     lifecycle: "cancelled",
     seed: 7,
     startedAtIso: "2026-09-18T21:40:00.000Z",
@@ -309,11 +309,11 @@ export const FIXTURE_RUNS_BY_ID: Record<string, RunDetail> = {
     batchId: null,
     lifecycle: "cancelled",
     seed: 7,
-    name: "Prueba cancelación",
+    name: "Cancellation test",
     currentState: "PRESS",
     startedAtIso: "2026-09-18T21:40:00.000Z",
     finishedAtIso: "2026-09-18T21:40:18.000Z",
-    failReason: "Cancelada por el operador",
+    failReason: "Cancelled by the operator",
     metrics: {
       cycleTimeSimS: null,
       cycleTimeWallS: 18,
@@ -322,7 +322,7 @@ export const FIXTURE_RUNS_BY_ID: Record<string, RunDetail> = {
       shirtInBag: false,
     },
     config: {
-      name: "Prueba cancelación",
+      name: "Cancellation test",
       seed: 7,
       scenario: "openarm-ninja-bag",
       notes: null,

@@ -161,7 +161,7 @@ class PressBridgeDriver:
             self.session.reset_shirt(seed)
             self._log(
                 run_id,
-                f"ciclo iniciado · seed {seed} · timestep {self.session.model.opt.timestep:g}s · nq={self.session.model.nq}",
+                f"cycle started · seed {seed} · timestep {self.session.model.opt.timestep:g}s · nq={self.session.model.nq}",
             )
 
             press = PressCycle(self.session.model, self.session.data)
@@ -282,7 +282,7 @@ class PressBridgeDriver:
         if run.lifecycle == "running":
             self._log(
                 run_id,
-                f"ciclo interrumpido en {run.currentState or '?'} · t={self.session.sim_time():.2f}s",
+                f"cycle interrupted in {run.currentState or '?'} · t={self.session.sim_time():.2f}s",
                 level="warning",
             )
             self.runtime.finish_failed(

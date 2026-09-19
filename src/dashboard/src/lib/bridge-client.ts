@@ -251,7 +251,7 @@ export class BridgeClient {
       activeBatch: null,
       incident: {
         id: "bridge-down",
-        message: "Sin conexión con el bridge XFOLD",
+        message: "No connection to the XFOLD bridge",
         runId: null,
       },
     };
@@ -331,7 +331,7 @@ export class BridgeClient {
     } catch (err) {
       return {
         ok: false,
-        reason: err instanceof Error ? err.message : "Error de red",
+        reason: err instanceof Error ? err.message : "Network error",
       };
     }
   }
@@ -342,7 +342,7 @@ export class BridgeClient {
     batchId?: string | null,
   ): Promise<{ ok: true; clientCommandId: string } | { ok: false; reason: string }> {
     if (this._pendingCommandId) {
-      return { ok: false, reason: "Ya hay un comando pendiente" };
+      return { ok: false, reason: "A command is already pending" };
     }
     const clientCommandId =
       typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -372,7 +372,7 @@ export class BridgeClient {
         this._pendingCommandId = null;
         this._pendingKind = null;
         this.notify();
-        return { ok: false, reason: data.reason ?? "Comando rechazado" };
+        return { ok: false, reason: data.reason ?? "Command rejected" };
       }
       if (!res.ok) {
         this._pendingCommandId = null;
@@ -392,7 +392,7 @@ export class BridgeClient {
       this.notify();
       return {
         ok: false,
-        reason: err instanceof Error ? err.message : "Error de red",
+        reason: err instanceof Error ? err.message : "Network error",
       };
     }
   }

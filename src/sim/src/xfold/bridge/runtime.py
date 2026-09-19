@@ -325,7 +325,7 @@ class Runtime:
                     {
                         "kind": "run",
                         "id": run.id,
-                        "title": run.name or f"Semilla {run.seed}",
+                        "title": run.name or f"Seed {run.seed}",
                         "lifecycle": run.lifecycle,
                         "seed": run.seed,
                         "startedAtIso": run.startedAtIso,
@@ -342,7 +342,7 @@ class Runtime:
         if cloth != "custom":
             return None
         if payload is None or not (payload.data or "").strip():
-            raise ValueError("la prenda personalizada necesita una foto")
+            raise ValueError("custom garment needs a photo")
         from xfold.custom_design import CUSTOM_TEXTURE, bake_custom_design, decode_payload
 
         blob = decode_payload(payload.data, payload.mime)
@@ -378,7 +378,7 @@ class Runtime:
         custom_tex = self._bake_custom_design(custom_design, cloth)
         with self._lock:
             if self.active_run_id and self.runs[self.active_run_id].lifecycle in {"running", "paused"}:
-                raise ValueError("Ya hay una ejecución activa")
+                raise ValueError("A run is already active")
             run = self._create_run(
                 name=name or None,
                 seed=seed,
@@ -415,9 +415,9 @@ class Runtime:
         types = list(cloth_types or [])
         conds = list(conditions or [])
         if cloth_mix == "list" and not types:
-            raise ValueError("Selecciona al menos un tipo de prenda")
+            raise ValueError("Select at least one garment type")
         if condition_mix == "list" and not conds:
-            raise ValueError("Selecciona al menos una condición")
+            raise ValueError("Select at least one condition")
         wants_custom = (
             (cloth_mix == "same" and (types[:1] == ["custom"]))
             or (cloth_mix == "list" and "custom" in types)
@@ -427,7 +427,7 @@ class Runtime:
         )
         with self._lock:
             if self.active_run_id and self.runs[self.active_run_id].lifecycle in {"running", "paused"}:
-                raise ValueError("Ya hay una ejecución activa")
+                raise ValueError("A run is already active")
             batch_id = self._next_batch_id()
             batch = BatchRecord(
                 id=batch_id,
@@ -527,7 +527,7 @@ class Runtime:
             stage.status = "pending"
             stage.startedAtSimS = None
             stage.durationSimS = None
-        self._ui_event(run, "Ejecución iniciada en el bridge")
+        self._ui_event(run, "Run started on the bridge")
         self.journal.append(
             "run_started",
             run_id=run.id,
@@ -565,12 +565,12 @@ class Runtime:
                     batch_id=req.batchId,
                     clientCommandId=req.clientCommandId,
                     kind=req.kind,
-                    reason="Comando no soportado",
+                    reason="Command not supported",
                 )
                 return {
                     "clientCommandId": req.clientCommandId,
                     "status": "rejected",
-                    "reason": "Comando no soportado",
+                    "reason": "Command not supported",
                 }
 
             reason = self._validate_command(req)
@@ -624,24 +624,24 @@ class Runtime:
             run_id = req.runId or self.active_run_id
             run = self.runs.get(run_id) if run_id else None
             if not run:
-                return "No hay ejecución objetivo"
+                return "No target run"
             if kind == "pause_run" and run.lifecycle != "running":
-                return "La ejecución no está en running"
+                return "The run is not running"
             if kind == "resume_run" and run.lifecycle != "paused":
-                return "La ejecución no está en paused"
+                return "The run is not paused"
             if kind == "cancel_run" and run.lifecycle not in {"running", "paused", "queued"}:
-                return "La ejecución no se puede cancelar"
+                return "The run cannot be cancelled"
         else:
             batch_id = req.batchId or self.active_batch_id
             batch = self.batches.get(batch_id) if batch_id else None
             if not batch:
-                return "No hay batch objetivo"
+                return "No target batch"
             if kind == "pause_batch" and batch.lifecycle != "running":
-                return "El batch no está en running"
+                return "The batch is not running"
             if kind == "resume_batch" and batch.lifecycle != "paused":
-                return "El batch no está en paused"
+                return "The batch is not paused"
             if kind == "cancel_batch" and batch.lifecycle not in {"running", "paused", "queued"}:
-                return "El batch no se puede cancelar"
+                return "The batch cannot be cancelled"
         return None
 
     def _apply_command_locked(self, kind: CommandKind, run_id: str | None, batch_id: str | None) -> None:
@@ -649,14 +649,14 @@ class Runtime:
             run = self.runs[run_id]
             run.lifecycle = "paused"
             run.paused = True
-            self._ui_event(run, "Pausa aplicada")
+            self._ui_event(run, "Pause applied")
         elif kind == "resume_run" and run_id and run_id in self.runs:
             run = self.runs[run_id]
             run.lifecycle = "running"
             run.paused = False
-            self._ui_event(run, "Reanudación aplicada")
+            self._ui_event(run, "Resume applied")
         elif kind == "cancel_run" and run_id and run_id in self.runs:
-            self._finish_run_locked(self.runs[run_id], "cancelled", "Cancelada por el operador")
+            self._finish_run_locked(self.runs[run_id], "cancelled", "Cancelled by the operator")
         elif kind == "pause_batch" and batch_id and batch_id in self.batches:
             batch = self.batches[batch_id]
             batch.lifecycle = "paused"
@@ -683,7 +683,7 @@ class Runtime:
             for rid in batch.run_ids:
                 run = self.runs[rid]
                 if run.lifecycle in {"queued", "running", "paused"}:
-                    self._finish_run_locked(run, "cancelled", "Batch cancelado", emit_batch=False)
+                    self._finish_run_locked(run, "cancelled", "Batch cancelled", emit_batch=False)
             batch.activeRunId = None
             batch.pending = 0
             if self.active_batch_id == batch_id:
@@ -728,7 +728,7 @@ class Runtime:
             run.t = t
             target.status = "active"
             target.startedAtSimS = t
-            self._ui_event(run, f"Fase {target.label or state}", source="fsm")
+            self._ui_event(run, f"Phase {target.label or state}", source="fsm")
             self.journal.append(
                 "state_changed", run_id=run.id, batch_id=run.batchId,
                 state=state, label=target.label, station=target.station,
@@ -853,7 +853,7 @@ class Runtime:
         run.finishedAtIso = _iso_now()
         run.failReason = reason
         run.paused = False
-        self._ui_event(run, reason or f"Ejecución {lifecycle}", "warning" if lifecycle != "succeeded" else "info")
+        self._ui_event(run, reason or f"Run {lifecycle}", "warning" if lifecycle != "succeeded" else "info")
         self.journal.append(
             "run_finished",
             run_id=run.id,

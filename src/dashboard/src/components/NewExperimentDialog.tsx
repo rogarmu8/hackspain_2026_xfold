@@ -78,7 +78,7 @@ function readDesignFile(file: File): Promise<CustomDesignPayload> {
         data: comma >= 0 ? text.slice(comma + 1) : text,
       });
     };
-    reader.onerror = () => reject(new Error("No se pudo leer la imagen."));
+    reader.onerror = () => reject(new Error("Could not read the image."));
     reader.readAsDataURL(file);
   });
 }
@@ -97,7 +97,7 @@ export type NewExperimentDefaults = {
 };
 
 type NewExperimentDialogProps = {
-  /** Trigger button content. Defaults to “Nuevo experimento”. */
+  /** Trigger button content. Defaults to “New experiment”. */
   trigger?: ReactNode;
   triggerVariant?: React.ComponentProps<typeof Button>["variant"];
   triggerClassName?: string;
@@ -138,7 +138,7 @@ export function NewExperimentDialog({
           {trigger ?? (
             <Button variant={triggerVariant} className={triggerClassName}>
               <PlusIcon data-icon="inline-start" />
-              Nuevo experimento
+              New experiment
             </Button>
           )}
         </DialogTrigger>
@@ -281,9 +281,9 @@ function NewExperimentDialogBody({
     labelOf: (key: string) => string,
     allLabel: string,
   ): string {
-    if (mix === "random") return `aleatoria (${allLabel}, semilla)`;
+    if (mix === "random") return `random (${allLabel}, seed)`;
     if (mix === "list") {
-      if (!selected.length) return "selección vacía";
+      if (!selected.length) return "empty selection";
       return selected.map(labelOf).join(", ");
     }
     return labelOf(selected[0] ?? "tee");
@@ -320,7 +320,7 @@ function NewExperimentDialogBody({
       setDesignPreview(null);
       setDesignFile(null);
       setDesignInputKey((key) => key + 1);
-      setError(err instanceof Error ? err.message : "No se pudo recortar la prenda.");
+      setError(err instanceof Error ? err.message : "Could not cut out the garment.");
     } finally {
       setDetecting(false);
     }
@@ -328,11 +328,11 @@ function NewExperimentDialogBody({
 
   async function attachDesign() {
     if (!designFile) {
-      setError("Elige una imagen primero.");
+      setError("Choose an image first.");
       return;
     }
     if (!customGarment) {
-      setError("Elige Personalizada para usar una foto como prenda.");
+      setError("Choose Custom to use a photo as the garment.");
       return;
     }
     setAttaching(true);
@@ -341,7 +341,7 @@ function NewExperimentDialogBody({
       setDesignPayload(await readDesignFile(designFile));
       setDesignAttached(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo leer la imagen.");
+      setError(err instanceof Error ? err.message : "Could not read the image.");
     } finally {
       setAttaching(false);
     }
@@ -352,47 +352,47 @@ function NewExperimentDialogBody({
     setError(null);
 
     if (!canLaunch) {
-      setError("El simulador aún no expone un API de lanzamiento.");
+      setError("The simulator does not expose a launch API yet.");
       return;
     }
     if (!Number.isInteger(count) || count < 1 || count > 100) {
-      setError("La fila debe tener entre 1 y 100 camisas.");
+      setError("The row must have between 1 and 100 shirts.");
       return;
     }
     if (!Number.isSafeInteger(seed) || seed < 0) {
-      setError("La semilla debe ser un entero ≥ 0.");
+      setError("Seed must be an integer ≥ 0.");
       return;
     }
     if (clothMix === "same" && !clothTypes[0]) {
-      setError("Elige un tipo de prenda.");
+      setError("Choose a garment type.");
       return;
     }
     if (clothMix === "list" && clothTypes.length < 1) {
-      setError("Selecciona al menos un tipo de prenda para la fila.");
+      setError("Select at least one garment type for the row.");
       return;
     }
     if (conditionMix === "same" && !conditions[0]) {
-      setError("Elige una condición.");
+      setError("Choose a condition.");
       return;
     }
     if (conditionMix === "list" && conditions.length < 1) {
-      setError("Selecciona al menos una condición para la fila.");
+      setError("Select at least one condition for the row.");
       return;
     }
     if (clothMix === "random" && weightTotal(clothWeights, catalogPool) <= 0) {
-      setError("Sube el peso de al menos un tipo de prenda.");
+      setError("Raise the weight of at least one garment type.");
       return;
     }
     if (conditionMix === "random" && weightTotal(conditionWeights, condPool) <= 0) {
-      setError("Sube el peso de al menos una condición.");
+      setError("Raise the weight of at least one condition.");
       return;
     }
     if (customGarment && !designAttached) {
-      setError("Sube la foto de la prenda (o elige otro tipo) antes de lanzar.");
+      setError("Upload the garment photo (or pick another type) before launching.");
       return;
     }
     if (designAttached && !customGarment) {
-      setError("Elige Personalizada para usar una foto como prenda.");
+      setError("Choose Custom to use a photo as the garment.");
       return;
     }
 
@@ -458,35 +458,35 @@ function NewExperimentDialogBody({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Nuevo experimento</DialogTitle>
+        <DialogTitle>New experiment</DialogTitle>
         <DialogDescription>
-          Prenda, condición y cuántas camisas van en fila · {process?.scenario ?? "configuración activa del simulador"}
+          Garment, condition, and how many shirts in the row · {process?.scenario ?? "active simulator process"}
         </DialogDescription>
       </DialogHeader>
 
       {snapshot.provenance === "fixture" ? (
         <p className="rounded-[var(--radius-sm)] bg-muted/50 px-3 py-2 text-[13px] text-muted-foreground">
-          <span className="font-semibold text-foreground">Datos de ejemplo.</span>{" "}
-          El lanzamiento solo muta el adaptador local; no se envía nada a MuJoCo.
+          <span className="font-semibold text-foreground">Sample data.</span>{" "}
+          Launch only mutates the local adapter; nothing is sent to MuJoCo.
         </p>
       ) : null}
 
       <form id={formId} onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor={`${formId}-name`}>Nombre (opcional)</FieldLabel>
+            <FieldLabel htmlFor={`${formId}-name`}>Name (optional)</FieldLabel>
             <Input
               id={`${formId}-name`}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="p. ej. Comprobación de ciclo"
+              placeholder="e.g. Cycle check"
             />
-            <FieldDescription>Visible en Experimentos e Historial.</FieldDescription>
+            <FieldDescription>Shown on Runs and History.</FieldDescription>
           </Field>
 
           <Field>
             <FieldLabel htmlFor={`${formId}-seed`}>
-              {batch ? "Semilla base" : "Semilla"}
+              {batch ? "Base seed" : "Seed"}
             </FieldLabel>
             <Input
               id={`${formId}-seed`}
@@ -498,13 +498,14 @@ function NewExperimentDialogBody({
               required
             />
             <FieldDescription>
-              Entero ≥ 0. Sortea prenda y condición al azar, y si va torcida
-              el rumbo inicial (sigue plana). Con prenda y condición fija limpia, no varía la entrada.
+              Integer ≥ 0. Draws random garment and condition, and if skewed
+              the initial heading (still flat). A fixed clean garment and
+              condition does not change the input.
             </FieldDescription>
           </Field>
 
           <Field>
-            <FieldLabel htmlFor={`${formId}-count`}>Camisas en fila</FieldLabel>
+            <FieldLabel htmlFor={`${formId}-count`}>Shirts in a row</FieldLabel>
             <Input
               id={`${formId}-count`}
               type="number"
@@ -522,14 +523,14 @@ function NewExperimentDialogBody({
               required
             />
             <FieldDescription>
-              1 camisa = una ejecución. Más de una = batch en cola, sin
-              paralelismo.
+              1 shirt = one run. More than one = a queued batch, no
+              parallelism.
             </FieldDescription>
           </Field>
 
           <MixField
             formId={formId}
-            axis="prenda"
+            axis="garment"
             batch={batch}
             mix={clothMix}
             onMixChange={(mix) => {
@@ -546,9 +547,9 @@ function NewExperimentDialogBody({
               if (next[0] !== "custom") clearDesign();
             }}
             labelOf={clothTypeLabel}
-            pickHint="Una sola prenda para toda la fila. Personalizada = recorte del contorno de la foto."
-            randomHint="Cada camisa sale del catálogo según los pesos y la semilla."
-            listHint="Cada camisa sale de los tipos marcados."
+            pickHint="One garment for the whole row. Custom = cut-out from the photo outline."
+            randomHint="Each shirt is drawn from the catalogue by the weights and the seed."
+            listHint="Each shirt is drawn from the types you mark."
             weights={clothWeights}
             onWeightChange={(key, value) =>
               setClothWeights((prev) => ({ ...prev, [key]: value }))
@@ -557,7 +558,7 @@ function NewExperimentDialogBody({
 
           {customGarment ? (
           <Field>
-            <FieldLabel htmlFor={`${formId}-design`}>Foto de la prenda</FieldLabel>
+            <FieldLabel htmlFor={`${formId}-design`}>Garment photo</FieldLabel>
             <Input
               key={designInputKey}
               id={`${formId}-design`}
@@ -567,8 +568,8 @@ function NewExperimentDialogBody({
             />
             <FieldDescription>
               {detecting
-                ? "Detectando el recorte…"
-                : "Fondo liso, prenda centrada. Recortamos el contorno y lo convertimos en la prenda (las dos caras)."}
+                ? "Detecting the cut-out…"
+                : "Plain backdrop, garment centred. We trace the outline and turn it into the cloth (both faces)."}
             </FieldDescription>
             {designPreview ? (
               <div className="mt-2 flex flex-col gap-2">
@@ -585,13 +586,13 @@ function NewExperimentDialogBody({
                     onClick={() => void attachDesign()}
                   >
                     {attaching
-                      ? "Subiendo…"
+                      ? "Uploading…"
                       : designAttached
-                        ? "Prenda subida"
-                        : "Subir prenda"}
+                        ? "Garment uploaded"
+                        : "Upload garment"}
                   </Button>
                   <Button type="button" size="sm" variant="outline" onClick={clearDesign}>
-                    Quitar
+                    Remove
                   </Button>
                 </div>
               </div>
@@ -601,7 +602,7 @@ function NewExperimentDialogBody({
 
           <MixField
             formId={`${formId}-cond`}
-            axis="condición"
+            axis="condition"
             batch={batch}
             mix={conditionMix}
             onMixChange={setConditionMix}
@@ -609,9 +610,9 @@ function NewExperimentDialogBody({
             selected={conditions}
             onSelectedChange={setConditions}
             labelOf={clothConditionLabel}
-            pickHint="La misma condición en toda la fila."
-            randomHint="Cada camisa sortea condición con los pesos. Torcida = plana, rotada con la semilla."
-            listHint="Cada camisa sale de las condiciones marcadas."
+            pickHint="The same condition for the whole row."
+            randomHint="Each shirt draws a condition from the weights. Skewed = flat, rotated with the seed."
+            listHint="Each shirt is drawn from the conditions you mark."
             weights={conditionWeights}
             onWeightChange={(key, value) =>
               setConditionWeights((prev) => ({ ...prev, [key]: value }))
@@ -620,26 +621,26 @@ function NewExperimentDialogBody({
 
           <details className="border-t border-border pt-3">
             <summary className="cursor-pointer text-sm font-semibold">
-              Opciones avanzadas
+              Advanced options
             </summary>
             <p className="mt-2 text-sm text-muted-foreground">
-              {process?.stages.map((s) => s.label ?? s.state).join(" → ") ?? "Las fases y los parámetros los determina el simulador activo."}
+              {process?.stages.map((s) => s.label ?? s.state).join(" → ") ?? "Phases and parameters come from the active simulator."}
             </p>
           </details>
         </FieldGroup>
 
         <div className="rounded-[var(--radius-sm)] bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-          <p className="font-semibold text-foreground">Resumen</p>
+          <p className="font-semibold text-foreground">Summary</p>
           <p className="mt-1">
-            {batch ? `Fila ×${count}` : "1 camisa"} · semilla {seed} · {scenario}
+            {batch ? `Row ×${count}` : "1 shirt"} · seed {seed} · {scenario}
             {" · "}
-            {summarizeMix(clothMix, clothTypes, clothTypeLabel, "catálogo")}
+            {summarizeMix(clothMix, clothTypes, clothTypeLabel, "catalogue")}
             {" · "}
             {summarizeMix(
               conditionMix,
               conditions,
               clothConditionLabel,
-              "todas",
+              "all",
             )}
           </p>
         </div>
@@ -652,8 +653,7 @@ function NewExperimentDialogBody({
 
         {!canLaunch ? (
           <p className="text-[13px] text-muted-foreground">
-            Lanzamiento deshabilitado: sin API de simulación. Usa el adaptador
-            de ejemplo en Control para probar el flujo.
+            Launch disabled: no simulation API. Use the sample adapter in Control to try the flow.
           </p>
         ) : null}
       </form>
@@ -661,7 +661,7 @@ function NewExperimentDialogBody({
       <DialogFooter>
         <DialogClose asChild>
           <Button type="button" variant="outline">
-            Cancelar
+            Cancel
           </Button>
         </DialogClose>
         <Button
@@ -669,7 +669,7 @@ function NewExperimentDialogBody({
           form={formId}
           disabled={submitting || !canLaunch}
         >
-          {submitting ? "Lanzando…" : "Lanzar"}
+          {submitting ? "Launching…" : "Launch"}
         </Button>
       </DialogFooter>
     </>
@@ -707,7 +707,7 @@ function MixField<T extends string>({
   weights: Record<string, number>;
   onWeightChange: (key: T, value: number) => void;
 }) {
-  const title = axis === "prenda" ? "Tipo de prenda" : "Condición";
+  const title = axis === "garment" ? "Garment type" : "Condition";
 
   function toggle(key: T) {
     onSelectedChange(
@@ -733,11 +733,11 @@ function MixField<T extends string>({
         className="flex-wrap"
       >
         <ToggleGroupItem value="same">
-          {batch ? "Misma" : "Elegir"}
+          {batch ? "Same" : "Pick"}
         </ToggleGroupItem>
-        <ToggleGroupItem value="random">Aleatoria</ToggleGroupItem>
+        <ToggleGroupItem value="random">Random</ToggleGroupItem>
         {batch ? (
-          <ToggleGroupItem value="list">Seleccionar</ToggleGroupItem>
+          <ToggleGroupItem value="list">Select</ToggleGroupItem>
         ) : null}
       </ToggleGroup>
 
@@ -777,7 +777,7 @@ function MixField<T extends string>({
                       max={WEIGHT_MAX}
                       step={1}
                       value={value}
-                      aria-label={`Peso ${labelOf(key)}`}
+                      aria-label={`Weight ${labelOf(key)}`}
                       onChange={(event) =>
                         onWeightChange(key, Number(event.target.value))
                       }
@@ -792,7 +792,7 @@ function MixField<T extends string>({
             })}
           </div>
           <FieldDescription>
-            {randomHint} 0 = nunca.
+            {randomHint} 0 = never.
           </FieldDescription>
         </>
       ) : null}

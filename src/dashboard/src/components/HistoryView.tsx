@@ -15,13 +15,13 @@ import { formatIso, formatSeconds, lifecycleLabel } from "@/lib/format";
 import type { RunLifecycle, RunSummary } from "@/lib/types";
 
 const LIFECYCLES: [RunLifecycle | "all", string][] = [
-  ["all", "Todos"],
-  ["running", "En curso"],
-  ["succeeded", "Correctas"],
-  ["failed", "Fallidas"],
-  ["cancelled", "Canceladas"],
-  ["paused", "En pausa"],
-  ["queued", "En cola"],
+  ["all", "All"],
+  ["running", "Running"],
+  ["succeeded", "Succeeded"],
+  ["failed", "Failed"],
+  ["cancelled", "Cancelled"],
+  ["paused", "Paused"],
+  ["queued", "Queued"],
 ];
 
 const tone = (lifecycle: RunLifecycle) =>
@@ -60,8 +60,8 @@ export function HistoryView() {
 
   return (
     <AppShell
-      title="Ejecuciones"
-      eyebrow="individuales · batches"
+      title="Runs"
+      eyebrow="individual · batches"
       actions={
         <>
           <ConnectionBadge
@@ -74,7 +74,7 @@ export function HistoryView() {
       }
     >
       {snapshot.provenance === "fixture" ? (
-        <p className="eyebrow mb-4">Datos de ejemplo</p>
+        <p className="eyebrow mb-4">Sample data</p>
       ) : null}
 
       {active ? (
@@ -86,24 +86,24 @@ export function HistoryView() {
           <span className="font-mono font-semibold tabular">{active.id}</span>
           {active.name ? <span className="text-sm text-muted-foreground">{active.name}</span> : null}
           <span className="ml-auto inline-flex items-center gap-1 text-sm font-semibold">
-            Abrir control <ArrowUpRight className="size-3.5" aria-hidden />
+            Open control <ArrowUpRight className="size-3.5" aria-hidden />
           </span>
         </Link>
       ) : null}
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div>
-          <label htmlFor="history-q" className="text-[13px] font-semibold">Buscar</label>
+          <label htmlFor="history-q" className="text-[13px] font-semibold">Search</label>
           <input
             id="history-q"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="RUN-014, semilla, batch…"
+            placeholder="RUN-014, seed, batch…"
             className="mt-1 block h-10 w-64 rounded-[var(--radius-sm)] border border-input bg-surface px-3 text-sm"
           />
         </div>
         <div>
-          <label htmlFor="history-life" className="text-[13px] font-semibold">Estado</label>
+          <label htmlFor="history-life" className="text-[13px] font-semibold">Status</label>
           <select
             id="history-life"
             value={lifecycle}
@@ -121,11 +121,11 @@ export function HistoryView() {
       {rows.length === 0 ? (
         <div className="border border-divider bg-surface px-6 py-10">
           <FoldMark size={32} className="mb-4 opacity-40" />
-          <h2 className="text-lg font-semibold">Sin ejecuciones</h2>
+          <h2 className="text-lg font-semibold">No runs</h2>
           <p className="mt-2 max-w-lg text-sm text-muted-foreground">
             {history.length
-              ? "No hay filas con este filtro."
-              : "Todavía no hay corridas registradas. Lanza la primera desde «Nuevo experimento»."}
+              ? "No rows match this filter."
+              : "No runs recorded yet. Launch the first from “New experiment”."}
           </p>
         </div>
       ) : (
@@ -133,12 +133,12 @@ export function HistoryView() {
           <Table className="w-full min-w-[720px] border-collapse text-left text-sm">
             <TableHeader>
               <TableRow className="border-b border-divider text-[13px] text-muted-foreground">
-                <TableHead className="px-4 py-3 font-semibold">Ejecución</TableHead>
-                <TableHead className="px-4 py-3 font-semibold">Estado</TableHead>
+                <TableHead className="px-4 py-3 font-semibold">Run</TableHead>
+                <TableHead className="px-4 py-3 font-semibold">Status</TableHead>
                 <TableHead className="px-4 py-3 font-semibold">Batch</TableHead>
-                <TableHead className="px-4 py-3 font-semibold">Semilla</TableHead>
-                <TableHead className="px-4 py-3 text-right font-semibold">t ciclo (sim)</TableHead>
-                <TableHead className="px-4 py-3 font-semibold">Inicio</TableHead>
+                <TableHead className="px-4 py-3 font-semibold">Seed</TableHead>
+                <TableHead className="px-4 py-3 text-right font-semibold">cycle t (sim)</TableHead>
+                <TableHead className="px-4 py-3 font-semibold">Started</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

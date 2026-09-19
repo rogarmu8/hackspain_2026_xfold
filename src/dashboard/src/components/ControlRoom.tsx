@@ -26,11 +26,11 @@ import { lifecycleLabel } from "@/lib/format";
 import { NewExperimentDialog } from "@/components/NewExperimentDialog";
 
 const SCENARIOS: { id: FixtureScenario; label: string }[] = [
-  { id: "active", label: "Activo" },
-  { id: "empty", label: "Vacío" },
-  { id: "disconnected", label: "Desconectado" },
-  { id: "failed", label: "Fallido" },
-  { id: "finished", label: "Finalizado" },
+  { id: "active", label: "Active" },
+  { id: "empty", label: "Empty" },
+  { id: "disconnected", label: "Disconnected" },
+  { id: "failed", label: "Failed" },
+  { id: "finished", label: "Finished" },
 ];
 
 const INSPECTOR_KEY = "xfold.inspectorWidth";
@@ -153,7 +153,7 @@ export function ControlRoom({ runId }: { runId: string }) {
     <AppShell
       title={run?.id ?? runId}
       eyebrow={run ? (run.name ?? undefined) : undefined}
-      back={{ href: "/", label: "Ejecuciones" }}
+      back={{ href: "/", label: "Runs" }}
       fit
       actions={
         <>
@@ -165,7 +165,7 @@ export function ControlRoom({ runId }: { runId: string }) {
           {!isActive && snapshot.activeRun ? (
             <Button asChild variant="outline" size="sm">
               <Link href={`/historial/${snapshot.activeRun.id}`}>
-                Ver activa <ArrowUpRight className="size-3.5" aria-hidden />
+                View live <ArrowUpRight className="size-3.5" aria-hidden />
               </Link>
             </Button>
           ) : null}
@@ -175,11 +175,11 @@ export function ControlRoom({ runId }: { runId: string }) {
     >
       {notFound ? (
         <Alert className="mb-3 py-2">
-          <AlertTitle>Ejecución no encontrada</AlertTitle>
+          <AlertTitle>Run not found</AlertTitle>
           <AlertDescription>
-            No hay datos para <span className="font-mono">{runId}</span>.
+            No data for <span className="font-mono">{runId}</span>.
             <Link href="/" className="inline-flex items-center gap-1">
-              Ver ejecuciones <ArrowUpRight className="size-3.5" aria-hidden />
+              View runs <ArrowUpRight className="size-3.5" aria-hidden />
             </Link>
           </AlertDescription>
         </Alert>
@@ -188,12 +188,12 @@ export function ControlRoom({ runId }: { runId: string }) {
       {snapshot.incident ? (
         <Alert variant="destructive" className="mb-3 py-2">
           <TriangleAlert className="size-4" />
-          <AlertTitle>Incidencia</AlertTitle>
+          <AlertTitle>Incident</AlertTitle>
           <AlertDescription>
             {snapshot.incident.message}
             {snapshot.incident.runId && (
               <Link href={`/historial/${snapshot.incident.runId}`} className="inline-flex items-center gap-1">
-                Ver ejecución <ArrowUpRight className="size-3.5" aria-hidden />
+                View run <ArrowUpRight className="size-3.5" aria-hidden />
               </Link>
             )}
           </AlertDescription>
@@ -222,16 +222,16 @@ export function ControlRoom({ runId }: { runId: string }) {
             <Sheet open={Boolean(selectedStage && run && !finished)} onOpenChange={(open) => { if (!open) setSelectedStage(null); }}>
               <SheetContent onCloseAutoFocus={(event) => { event.preventDefault(); stageTrigger.current?.focus(); }}>
                 <SheetHeader>
-                  <SheetTitle>{selectedStage ? stageLabel(selectedStage, run?.stages) : "Detalle de etapa"}</SheetTitle>
-                  <SheetDescription>{run?.id} · Trazabilidad de la etapa</SheetDescription>
+                  <SheetTitle>{selectedStage ? stageLabel(selectedStage, run?.stages) : "Stage detail"}</SheetTitle>
+                  <SheetDescription>{run?.id} · Stage trace</SheetDescription>
                 </SheetHeader>
                 <div className="flex flex-col gap-6 overflow-y-auto px-4 pb-6">
                   <dl className="grid grid-cols-2 gap-4 text-sm">
-                    <div><dt className="text-muted-foreground">Estado</dt><dd className="mt-1 font-medium">{stageDetail ? lifecycleLabel(stageDetail.status) : "Pendiente"}</dd></div>
-                    <div><dt className="text-muted-foreground">Duración simulada</dt><dd className="mt-1 font-mono">{formatSeconds(stageDetail?.durationSimS ?? null)}</dd></div>
+                    <div><dt className="text-muted-foreground">Status</dt><dd className="mt-1 font-medium">{stageDetail ? lifecycleLabel(stageDetail.status) : "Pending"}</dd></div>
+                    <div><dt className="text-muted-foreground">Simulated duration</dt><dd className="mt-1 font-mono">{formatSeconds(stageDetail?.durationSimS ?? null)}</dd></div>
                   </dl>
-                  <div><h3 className="mb-4 font-semibold">Eventos · {stageEvents.length}</h3>
-                    {stageEvents.length ? <ol className="flex flex-col gap-4">{stageEvents.map(event => <li key={event.id} className="border-l-2 border-border pl-3"><p className="font-mono text-xs text-muted-foreground">t={formatSeconds(event.atSimS)}</p><p className="mt-1 text-sm">{event.message}</p></li>)}</ol> : <p className="text-sm text-muted-foreground">Esta etapa todavía no tiene eventos registrados.</p>}
+                  <div><h3 className="mb-4 font-semibold">Events · {stageEvents.length}</h3>
+                    {stageEvents.length ? <ol className="flex flex-col gap-4">{stageEvents.map(event => <li key={event.id} className="border-l-2 border-border pl-3"><p className="font-mono text-xs text-muted-foreground">t={formatSeconds(event.atSimS)}</p><p className="mt-1 text-sm">{event.message}</p></li>)}</ol> : <p className="text-sm text-muted-foreground">This stage has no events yet.</p>}
                   </div>
                 </div>
               </SheetContent>
@@ -242,7 +242,7 @@ export function ControlRoom({ runId }: { runId: string }) {
         <div
           role="separator"
           aria-orientation="vertical"
-          aria-label="Ancho del panel lateral"
+          aria-label="Side panel width"
           aria-valuemin={INSPECTOR_MIN}
           aria-valuemax={INSPECTOR_MAX}
           aria-valuenow={inspector.width}
@@ -285,8 +285,8 @@ export function ControlRoom({ runId }: { runId: string }) {
         </p>
       ) : snapshot.provenance === "fixture" || snapshot.provenance === "stale" ? (
         <details className="mt-3 shrink-0">
-          <summary className="eyebrow cursor-pointer">Escenarios de demostración · fixtures</summary>
-          <ToggleGroup type="single" value={scenario} onValueChange={(value) => { if (value) setScenario(value as FixtureScenario); }} variant="outline" size="sm" className="mt-2 flex-wrap" aria-label="Escenario de demostración">
+          <summary className="eyebrow cursor-pointer">Demo scenarios · fixtures</summary>
+          <ToggleGroup type="single" value={scenario} onValueChange={(value) => { if (value) setScenario(value as FixtureScenario); }} variant="outline" size="sm" className="mt-2 flex-wrap" aria-label="Demo scenario">
             {SCENARIOS.map(item => <ToggleGroupItem key={item.id} value={item.id}>{item.label}</ToggleGroupItem>)}
           </ToggleGroup>
         </details>
