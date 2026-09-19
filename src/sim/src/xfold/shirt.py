@@ -171,6 +171,47 @@ def shirt_footprint_polygons() -> list[np.ndarray]:
     return [local[face] for face in faces]
 
 
+def tiled_surface_xml(
+    name: str,
+    center_xy: tuple[float, float],
+    half_xy: tuple[float, float],
+    top_z: float,
+    half_z: float,
+    tiles: tuple[int, int] = (4, 5),
+    geom_attrs: str = "",
+    body_attrs: str = "",
+) -> str:
+    """Support surface as a grid of THICK box geoms, ONE <body> PER TILE.
+
+    MuJoCo keeps at most mjMAXCONPAIR (50) contacts per (body, flex) pair —
+    per BODY, not per geom. Geoms sharing one body share a single
+    50-contact budget, so a cloth support surface must be split into one
+    <body> per tile (~50 contact points per tile at ~35 mm spacing ->
+    tile size ~0.14-0.15 m). Tiles may touch; no overlap needed.
+
+    Emits `<body name="{name}_{i}_{j}">` elements; nest them inside the
+    parent body (e.g. a tilting bed or sliding platen) or in worldbody.
+    ``geom_attrs``/``body_attrs`` are spliced verbatim into each element.
+    ``top_z``/``center_xy`` are in the PARENT body's frame.
+    """
+    hx, hy = half_xy
+    tx, ty = tiles
+    sx, sy = hx / tx, hy / ty
+    cx, cy = center_xy
+    out = []
+    for i in range(tx):
+        for j in range(ty):
+            x = cx - hx + sx * (2 * i + 1)
+            y = cy - hy + sy * (2 * j + 1)
+            out.append(
+                f'<body name="{name}_{i}_{j}" pos="{x:.4f} {y:.4f} '
+                f'{top_z - half_z:.4f}"{body_attrs}>'
+                f'<geom type="box" size="{sx:.4f} {sy:.4f} {half_z}"{geom_attrs}/>'
+                f"</body>"
+            )
+    return "\n      ".join(out)
+
+
 def shirt_vertex_qposadr(model) -> np.ndarray:
     """qpos address of the first slide joint of each flex vertex."""
     bodies = np.asarray(model.flex_vertbodyid)
