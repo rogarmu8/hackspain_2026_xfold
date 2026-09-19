@@ -17,11 +17,10 @@ import math
 import numpy as np
 
 from .scene import (
-    ARM_SEED_Q,
     EMPTY_CLOSE_MARGIN,
     HAND_OPEN,
     HAND_SHUT,
-    PINCH_SITE,
+    ArmKit,
     Cell,
 )
 from .shirt import PinchHold
@@ -61,23 +60,24 @@ def _polar(offset: np.ndarray) -> tuple[float, float]:
 
 
 class Arm:
-    def __init__(self, cell: Cell, data) -> None:
+    def __init__(self, cell: Cell, data, kit: ArmKit | None = None) -> None:
         import mink
 
         self._mink = mink
         self.cell = cell
         self.data = data
-        self.configuration = mink.Configuration(cell.ik_model)
+        self.kit = kit or cell.picker
+        self.configuration = mink.Configuration(self.kit.ik_model)
         self.frame_task = mink.FrameTask(
-            PINCH_SITE,
+            self.kit.pinch_site_name,
             "site",
             position_cost=POSITION_COST,
             orientation_cost=ORIENTATION_COST,
             lm_damping=1e-2,
         )
-        self.posture_task = mink.PostureTask(cell.ik_model, cost=POSTURE_COST)
-        self.posture_task.set_target(ARM_SEED_Q)
-        self.configuration.update(ARM_SEED_Q)
+        self.posture_task = mink.PostureTask(self.kit.ik_model, cost=POSTURE_COST)
+        self.posture_task.set_target(self.kit.seed_q)
+        self.configuration.update(self.kit.seed_q)
         self.target_pos = self.solved_pinch_position()
         self.target_yaw = 0.0
         self.cloth = PinchHold(cell.model, data)
@@ -86,16 +86,18 @@ class Arm:
 
     def solved_pinch_position(self) -> np.ndarray:
         """Where IK thinks the pinch point is."""
-        transform = self.configuration.get_transform_frame_to_world(PINCH_SITE, "site")
+        transform = self.configuration.get_transform_frame_to_world(
+            self.kit.pinch_site_name, "site"
+        )
         return np.asarray(transform.translation(), dtype=float)
 
     def pinch_position(self) -> np.ndarray:
         """Where the pinch point actually is in the simulation."""
-        return self.data.site_xpos[self.cell.pinch_site].copy()
+        return self.data.site_xpos[self.kit.pinch_site].copy()
 
     @property
     def grip_command(self) -> float:
-        return float(self.data.ctrl[self.cell.hand_actuator])
+        return float(self.data.ctrl[self.kit.hand_actuator])
 
     @property
     def holding(self) -> bool:
@@ -106,36 +108,43 @@ class Arm:
         """
         if self.cloth.active:
             return True
-        driver = float(self.data.qpos[self.cell.hand_qposadr])
+        driver = float(self.data.qpos[self.kit.hand_qposadr])
         return (
             self.grip_command > 0.7 * HAND_SHUT
-            and driver < self.cell.empty_close - EMPTY_CLOSE_MARGIN
+            and driver < self.kit.empty_close - EMPTY_CLOSE_MARGIN
         )
 
     # --- fingers ------------------------------------------------------------
 
     def set_grip(self, value: float) -> None:
-        self.data.ctrl[self.cell.hand_actuator] = value
+        self.data.ctrl[self.kit.hand_actuator] = value
 
-    def grip(self, loop, value: float, seconds: float = 0.7, settle: float = 0.3) -> bool:
+    def grip(
+        self,
+        loop,
+        value: float,
+        seconds: float = 0.7,
+        settle: float = 0.3,
+        hold=(),
+    ) -> bool:
         """Ease the fingers to a command and give them time to seat."""
         start = self.grip_command
         steps = loop.steps_for(seconds)
         for index in range(steps):
             self.set_grip(start + (value - start) * smoothstep((index + 1) / steps))
             self._solve(self.target_pos, self.target_yaw, loop.model.opt.timestep)
-            self.write_ctrl()
+            self.write_ctrl(hold)
             if not loop.step():
                 return False
-        return self.track(loop, settle) if settle > 0 else loop.running
+        return self.track(loop, settle, hold) if settle > 0 else loop.running
 
-    def close_hand(self, loop, seconds: float = 0.8) -> bool:
-        self.cloth.grab(self.pinch_position())
-        return self.grip(loop, HAND_SHUT, seconds, settle=0.4)
+    def close_hand(self, loop, seconds: float = 0.8, hold=(), anchor: int | None = None) -> bool:
+        self.cloth.grab(self.pinch_position(), anchor)
+        return self.grip(loop, HAND_SHUT, seconds, settle=0.4, hold=hold)
 
-    def open_hand(self, loop, seconds: float = 0.5) -> bool:
+    def open_hand(self, loop, seconds: float = 0.5, hold=()) -> bool:
         self.cloth.release()
-        return self.grip(loop, HAND_OPEN, seconds, settle=0.2)
+        return self.grip(loop, HAND_OPEN, seconds, settle=0.2, hold=hold)
 
     # --- motion -------------------------------------------------------------
 
@@ -145,21 +154,29 @@ class Arm:
         Without this, a stale solution commands a joint leap and the stiff
         UR5e actuators whip the arm through whatever is in the way.
         """
-        self.configuration.update(self.data.qpos[self.cell.arm_qposadr])
+        self.configuration.update(self.data.qpos[self.kit.qposadr])
         self.target_pos = self.solved_pinch_position()
 
     def park(self, position, yaw: float = 0.0, grip: float = HAND_OPEN) -> None:
         """Solve for a pose and place the arm there without simulating."""
-        self.configuration.update(ARM_SEED_Q)
+        self.configuration.update(self.kit.seed_q)
         position = np.asarray(position, dtype=float)
         for _ in range(SETTLE_ITERATIONS):
             self._solve(position, yaw, SETTLE_DT)
-        self.data.qpos[self.cell.arm_qposadr] = self.configuration.q
-        self.data.qvel[:] = 0.0
+        self.data.qpos[self.kit.qposadr] = self.configuration.q
+        self.data.qvel[self.kit.qposadr] = 0.0
         self.set_grip(grip)
         self.write_ctrl()
 
-    def move(self, loop, position, yaw: float, seconds: float, settle: float = 0.25) -> bool:
+    def move(
+        self,
+        loop,
+        position,
+        yaw: float,
+        seconds: float,
+        settle: float = 0.25,
+        hold=(),
+    ) -> bool:
         """Sweep the pinch point to a pose along an eased straight line."""
         self.sync()
         start_pos = self.target_pos.copy()
@@ -174,13 +191,19 @@ class Arm:
             heading = start_yaw + (end_yaw - start_yaw) * blend
             for _ in range(IK_ITERS):
                 self._solve(pose, heading, SETTLE_DT)
-            self.write_ctrl()
+            self.write_ctrl(hold)
             if not loop.step():
                 return False
-        return self.track(loop, settle) if settle > 0 else loop.running
+        return self.track(loop, settle, hold) if settle > 0 else loop.running
 
     def follow_waypoints(
-        self, loop, points, yaw: float, seconds: float, settle: float = 0.25
+        self,
+        loop,
+        points,
+        yaw: float,
+        seconds: float,
+        settle: float = 0.25,
+        hold=(),
     ) -> bool:
         """Walk a Cartesian polyline from the live configuration.
 
@@ -197,7 +220,7 @@ class Arm:
                 remaining.append(point)
                 here = point
         if not remaining:
-            return self.track(loop, settle) if settle > 0 else loop.running
+            return self.track(loop, settle, hold) if settle > 0 else loop.running
 
         lengths = []
         prev = self.target_pos
@@ -206,12 +229,25 @@ class Arm:
             prev = point
         total = sum(lengths)
         for point, length in zip(remaining, lengths):
-            if not self.move(loop, point, yaw, max(seconds * length / total, 0.5), settle=0.0):
+            if not self.move(
+                loop,
+                point,
+                yaw,
+                max(seconds * length / total, 0.5),
+                settle=0.0,
+                hold=hold,
+            ):
                 return False
-        return self.track(loop, settle) if settle > 0 else loop.running
+        return self.track(loop, settle, hold) if settle > 0 else loop.running
 
     def swing(
-        self, loop, position, yaw: float, seconds: float, settle: float = 0.25
+        self,
+        loop,
+        position,
+        yaw: float,
+        seconds: float,
+        settle: float = 0.25,
+        hold=(),
     ) -> bool:
         """Transfer between stations along an arc about the arm's own base.
 
@@ -221,7 +257,7 @@ class Arm:
         waypoint first; this method itself always takes the short turn.
         """
         self.sync()
-        base = self.cell.arm_base
+        base = self.kit.base
         start = self.target_pos.copy()
         finish = np.asarray(position, dtype=float)
         start_radius, start_angle = _polar(start[:2] - base)
@@ -242,25 +278,27 @@ class Arm:
             heading = start_yaw + (end_yaw - start_yaw) * blend
             for _ in range(IK_ITERS):
                 self._solve(pose, heading, SETTLE_DT)
-            self.write_ctrl()
+            self.write_ctrl(hold)
             if not loop.step():
                 return False
-        return self.track(loop, settle) if settle > 0 else loop.running
+        return self.track(loop, settle, hold) if settle > 0 else loop.running
 
-    def track(self, loop, seconds: float) -> bool:
+    def track(self, loop, seconds: float, hold=()) -> bool:
         """Hold the current target so the arm can catch up with the solution."""
         for _ in range(loop.steps_for(seconds)):
             for _ in range(IK_ITERS):
                 self._solve(self.target_pos, self.target_yaw, SETTLE_DT)
-            self.write_ctrl()
+            self.write_ctrl(hold)
             if not loop.step():
                 return False
         return loop.running
 
-    def write_ctrl(self) -> None:
-        self.data.ctrl[self.cell.arm_actuators] = self.configuration.q
+    def write_ctrl(self, hold=()) -> None:
+        self.data.ctrl[self.kit.actuators] = self.configuration.q
         if self.cloth.active:
             self.cloth.pull(self.pinch_position())
+        for other in hold:
+            other.write_ctrl()
 
     def _solve(self, position, yaw: float, dt: float) -> None:
         target = self._mink.SE3.from_rotation_and_translation(
@@ -278,3 +316,48 @@ class Arm:
         self.configuration.integrate_inplace(velocity, dt)
         self.target_pos = np.asarray(position, dtype=float)
         self.target_yaw = yaw
+
+
+def hold_together(loop, *arms, seconds: float) -> bool:
+    """Keep every pinch spring alive while the cloth hangs or settles."""
+    for _ in range(loop.steps_for(seconds)):
+        for arm in arms:
+            arm.write_ctrl()
+        if not loop.step():
+            return False
+    return loop.running
+
+
+def move_together(
+    loop,
+    first: Arm,
+    first_pos,
+    first_yaw: float,
+    second: Arm,
+    second_pos,
+    second_yaw: float,
+    seconds: float,
+    settle: float = 0.25,
+) -> bool:
+    """Walk both pinch points at the same time so a two-handed hold stays taut."""
+    first.sync()
+    second.sync()
+    start_a, start_b = first.target_pos.copy(), second.target_pos.copy()
+    end_a = np.asarray(first_pos, dtype=float)
+    end_b = np.asarray(second_pos, dtype=float)
+    yaw_a0, yaw_b0 = first.target_yaw, second.target_yaw
+    yaw_a1 = shortest_turn(yaw_a0, first_yaw)
+    yaw_b1 = shortest_turn(yaw_b0, second_yaw)
+    steps = loop.steps_for(seconds)
+    for index in range(steps):
+        blend = smoothstep((index + 1) / steps)
+        for _ in range(IK_ITERS):
+            first._solve(start_a + (end_a - start_a) * blend, yaw_a0 + (yaw_a1 - yaw_a0) * blend, SETTLE_DT)
+            second._solve(start_b + (end_b - start_b) * blend, yaw_b0 + (yaw_b1 - yaw_b0) * blend, SETTLE_DT)
+        first.write_ctrl()
+        second.write_ctrl()
+        if not loop.step():
+            return False
+    if settle <= 0:
+        return loop.running
+    return hold_together(loop, first, second, seconds=settle)

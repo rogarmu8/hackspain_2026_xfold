@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { PlusIcon } from "lucide-react";
 import {
-  useEffect,
   useId,
   useState,
   type FormEvent,
@@ -102,13 +101,19 @@ function NewExperimentDialogBody({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
+  // Reopening the dialog with different defaults refills the form. Adjusting
+  // state during render rather than in an effect: an effect would render the
+  // stale values once first, then cascade a second render to replace them.
+  const defaultsKey = `${defaults?.mode ?? ""}|${defaults?.name ?? ""}|${defaults?.seed ?? ""}|${defaults?.count ?? ""}`;
+  const [appliedKey, setAppliedKey] = useState(defaultsKey);
+  if (appliedKey !== defaultsKey) {
+    setAppliedKey(defaultsKey);
     setMode(defaults?.mode ?? "individual");
     setName(defaults?.name ?? "");
     setSeed(defaults?.seed ?? 42);
     setCount(defaults?.count ?? 5);
     setError(null);
-  }, [defaults?.mode, defaults?.name, defaults?.seed, defaults?.count]);
+  }
 
   const canLaunch =
     mode === "individual"

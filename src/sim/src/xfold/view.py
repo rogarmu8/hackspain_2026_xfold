@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .platform import reexec_under_mjpython
-from .shirt import load_mujoco_plugins
+from .shirt import load_mjcf
 from .sim_loop import Loop
 
 MODEL_PATH = Path(__file__).resolve().parents[2] / "models" / "cell.xml"
@@ -22,13 +22,11 @@ def main() -> None:
         )
 
     reexec_under_mjpython("xfold.view")
-    load_mujoco_plugins()
 
     if not MODEL_PATH.is_file():
         raise SystemExit(f"Missing scene: {MODEL_PATH}")
 
-    model = mujoco.MjModel.from_xml_path(MODEL_PATH.as_posix())
-    data = mujoco.MjData(model)
+    model, data = load_mjcf(MODEL_PATH, claws=False)
     print(f"XFOLD cell  {MODEL_PATH}", flush=True)
     print(
         "Flex shirt drops crumpled onto the press. "

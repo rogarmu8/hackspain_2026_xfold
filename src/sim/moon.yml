@@ -30,27 +30,26 @@ tasks:
       cache: false
       persistent: true
       runFromWorkspaceRoot: true
+  # The shared plant stub (models/cell.xml): floor, bin, flex shirt. For
+  # eyeballing shirt.xml on its own — the full line is `sim:run`.
   view:
-    script: |
-      . ./scripts/pixi-path.sh
-      if [ "$(uname -s)" = Darwin ]; then
-        pixi run --environment mujoco mjpython -P -m xfold.view
-      else
-        pixi run --environment mujoco python -P -m xfold.view
-      fi
+    command: bash
+    args:
+      - ./scripts/run-mjpython.sh
+      - -m
+      - xfold.view
     options:
       cache: false
       persistent: true
       runFromWorkspaceRoot: true
-  # The cell: pick from the crate, place, camera check, press, dump.
+  # The line: belt, press, folder, bagger (bag magazine + picker, mouth opener, tilting peel, seal station + label), belt 2, carton.
+  # `command` (not `script`) so `moon run sim:run -- --garment tank` reaches Python.
   run:
-    script: |
-      . ./scripts/pixi-path.sh
-      if [ "$(uname -s)" = Darwin ]; then
-        pixi run --environment mujoco mjpython -P -m xfold.load_press
-      else
-        pixi run --environment mujoco python -P -m xfold.load_press
-      fi
+    command: bash
+    args:
+      - ./scripts/run-mjpython.sh
+      - -m
+      - xfold.line
     options:
       cache: false
       persistent: true
@@ -63,45 +62,23 @@ tasks:
       cache: false
       runFromWorkspaceRoot: true
   shirt-play:
-    script: |
-      . ./scripts/pixi-path.sh
-      if [ "$(uname -s)" = Darwin ]; then
-        pixi run --environment mujoco mjpython -P -m xfold.shirt_play
-      else
-        pixi run --environment mujoco python -P -m xfold.shirt_play
-      fi
+    command: bash
+    args:
+      - ./scripts/run-mjpython.sh
+      - -m
+      - xfold.shirt_play
     options:
       cache: false
       persistent: true
       runFromWorkspaceRoot: true
   shirt-shot:
-    script: |
-      . ./scripts/pixi-path.sh
-      pixi run --environment mujoco python -P -m xfold.shirt_shot --out shots
+    command: bash
+    args:
+      - ./scripts/run-mjpython.sh
+      - -m
+      - xfold.shirt_shot
+      - --out
+      - shots
     options:
       cache: false
-      runFromWorkspaceRoot: true
-  shirt-play-hi:
-    script: |
-      . ./scripts/pixi-path.sh
-      if [ "$(uname -s)" = Darwin ]; then
-        pixi run --environment mujoco mjpython -P -m xfold.shirt_play --hi
-      else
-        pixi run --environment mujoco python -P -m xfold.shirt_play --hi
-      fi
-    options:
-      cache: false
-      persistent: true
-      runFromWorkspaceRoot: true
-  shirt-play-poncho:
-    script: |
-      . ./scripts/pixi-path.sh
-      if [ "$(uname -s)" = Darwin ]; then
-        pixi run --environment mujoco mjpython -P -m xfold.shirt_play --poncho
-      else
-        pixi run --environment mujoco python -P -m xfold.shirt_play --poncho
-      fi
-    options:
-      cache: false
-      persistent: true
       runFromWorkspaceRoot: true

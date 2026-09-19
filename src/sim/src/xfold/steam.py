@@ -12,8 +12,8 @@ import math
 import numpy as np
 
 ALPHA = 0.44
-PLATEN_HALF_X = 0.24
-PLATEN_HALF_Y = 0.29
+PLATEN_HALF_X = 0.34
+PLATEN_HALF_Y = 0.37
 
 HOSE_RADIUS = 0.016
 HOSE_RIB = 0.021
@@ -107,17 +107,19 @@ class SteamField:
         """Emit puffs that seep out, billow, and fade."""
         steps = loop.steps_for(seconds)
         for step_index in range(steps):
-            elapsed = step_index * loop.model.opt.timestep
-            attack = min(1.0, elapsed / 0.45)
-            release = min(1.0, max(0.0, (seconds - elapsed) / 1.1))
-            envelope = attack * release
             self.follow(loop.data)
-            self._update(elapsed, envelope)
+            self.puff(step_index * loop.model.opt.timestep, seconds)
             if not loop.step():
                 self.reset()
                 return False
         self.reset()
         return loop.running
+
+    def puff(self, elapsed: float, seconds: float) -> None:
+        """One frame of a pulse ``seconds`` long, ``elapsed`` into it."""
+        attack = min(1.0, elapsed / 0.45)
+        release = min(1.0, max(0.0, (seconds - elapsed) / 1.1))
+        self._update(elapsed, attack * release)
 
     def _update(self, elapsed: float, envelope: float) -> None:
         for index, geom_id in enumerate(self.ids):

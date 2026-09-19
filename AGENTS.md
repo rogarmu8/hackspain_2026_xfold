@@ -17,7 +17,7 @@ Bridge + dashboard work does **not** own arm IK or `flexcomp` physics. Integrate
 | Your track | Own these paths | How to talk to the dashboard |
 |------------|-----------------|------------------------------|
 | **Arm / FSM sequence** | controller Python, Menagerie overlays, arm MJCF | After each **stage change**, call `runtime.emit_state(run_id, CellState.…, t=data.time)`. Copy [`mock_driver.py`](src/sim/src/xfold/bridge/mock_driver.py). Respect `runtime.driver_active_run()` pause/cancel. |
-| **Press / line (rama `press`)** | `xfold/line.py`, `line.xml`, `shirt.*` | **Pendiente de integrar:** sigue [`docs/TODO_PRESS_INTEGRATION.md`](docs/TODO_PRESS_INTEGRATION.md). La `Line` debe vivir en un Driver (no en el renderer) y loguear con `runtime.emit_log(...)`. |
+| **Press / line** | `xfold/line.py`, `line.xml`, `shirt.*` | **Ya integrado:** la `Line` vive en [`line_driver.py`](src/sim/src/xfold/bridge/line_driver.py) y loguea con `runtime.emit_log(...)`. ¿Añades una etapa a `Line`? Añádela también a `_STAGE_STATE`. |
 | **Cloth / shirt physics** | `flexcomp` MJCF, cloth params, mesh later | Keep cloth stable in **your** model. When ready for Control 3D, either merge into the scene that [`viewport_mujoco.py`](src/sim/src/xfold/bridge/viewport_mujoco.py) loads (`MODEL_PATH`) **or** point `MODEL_PATH` at your XML. Do **not** put cloth verts in the journal. |
 | **Shared plant stub** | [`src/sim/models/cell.xml`](src/sim/models/cell.xml) | Small shared file. Keep `camera name="overview"` and prefer additive bodies. If you replace `shirt_proxy`, update viewport pose map or stop using the proxy. Note merges in `TRACKING.md`. |
 
@@ -49,7 +49,7 @@ Do **not** origami-fold cloth with fingers. Machines do geometry; the arm handle
 docs/
   INTEGRATION_CONTRACT.md   # binding sim↔UI contract (agents start here)
   BRIDGE.md                 # routes, events, invariants
-src/sim/src/xfold/bridge/   # journal + runtime + HTTP + MockDriver
+src/sim/src/xfold/bridge/   # journal + runtime + HTTP + Line/Press/Mock drivers
 src/dashboard/src/lib/      # bridge-client + fixtures fallback
 packages/protocol/          # shared wire types
 models/                     # MJCF assets

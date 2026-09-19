@@ -12,7 +12,7 @@ If you change the contract, you **must** update: protocol TS → Python schema �
 
 > The **physics / FSM driver** emits **journal facts** into **Runtime**; the **bridge HTTP** exposes that journal (SSE) and accepts commands (REST); the **dashboard** renders snapshots and never talks to MuJoCo directly.
 
-Live default: `PressBridgeDriver` on a shared `SimSession` (PressCycle + cloth). Fallback: `MockDriver` when MuJoCo / press_cell is unavailable.
+Live default: `LineDriver` on a shared `SimSession` (the belt/press/folder/bagger line). Fallbacks, in order: `PressBridgeDriver` (older arm cell), then `MockDriver` when MuJoCo is unavailable. `GET /capabilities` reports the winner as `scene` + `driver`.
 
 ---
 
@@ -149,7 +149,7 @@ Bridge/dashboard owners ship the **bus + Control UI + MJPEG viewport**. Other tr
 ### Cloth / flexcomp (shirt physics)
 
 - **Do:** iterate `flexcomp` (grid first) in your MJCF / scripts until stable 10s+; metrics → CSV when ready.
-- **Do:** when the shirt should appear in Control’s 3D view, put it in the scene built by `scene.build()` / `SimSession` (press_cell). Viewport is render-only on that session.
+- **Do:** when the shirt should appear in Control’s 3D view, put it in the scene `SimSession` compiles (`xfold.line.build()`, else `scene.build()`). Viewport is render-only on that session.
 - **Do not:** stream flex vertices over SSE; do not block the cloth solver on dashboard I/O.
 - **Do not:** add a second independent MuJoCo loop for MJPEG — share `SimSession`.
 
@@ -157,7 +157,7 @@ Bridge/dashboard owners ship the **bus + Control UI + MJPEG viewport**. Other tr
 
 - Preserve `<camera name="overview"/>` (live viewport depends on it).
 - Prefer **additive** bodies/geoms over renaming plant frames used by others.
-- Live driver: `PressBridgeDriver` (fallback `MockDriver` if MuJoCo/press_cell unavailable).
+- Live driver: `LineDriver` (fallbacks `PressBridgeDriver`, then `MockDriver`).
 - Arm teammates: emit into the same `Runtime`; extend the press cycle or replace driver — do not fight the viewport render thread.
 
 ### Viewport vs journal vs recording

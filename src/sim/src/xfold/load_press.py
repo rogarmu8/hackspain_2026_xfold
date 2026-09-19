@@ -1,12 +1,26 @@
 """Load the press with a shirt, check the placement, then press it.
 
-One cycle: the arm takes a shirt out of the crate the way a person would - two
-fingers on the neckband - and lays it on the heated bed. OpenCV then measures
-where the garment actually landed. If it is off centre or crooked the hand does
-not pick it up again; it presses its fingertips on whichever corner is furthest
-from where it belongs and drags that corner into place, then looks again. Only
-once the camera signs off does the arm leave the press and the platen come down.
-The bed then tilts and the shirt slides out.
+One cycle, the way two people spread a sheet. Every grasp is made on cloth
+lying still on a surface, never on a swinging one:
+
+1. The picker pinches the sleeve on top of the crate pack, draws the shirt
+   out over the crate's low lip, drags it onto the plate and lets go.
+2. The helper picks up that sleeve where it now lies and tows it toward its
+   own side, which pulls the rest of the shirt out of the crate.
+3. The picker picks the other sleeve off the plate.
+4. Both hands lift to sleeve-to-sleeve width in front of the press. The
+   sleeves run straight along the top edge; the torso hangs like a curtain.
+5. The hands carry the curtain in under the platen and drag it back across
+   the plate. Friction on the trailing torso pulls every fold straight, so
+   the shirt lies as a flat T: collar at the back, hem on the dump edge.
+
+The platen leaves too little height to lower the full curtain straight down,
+which is why the lay is a drag and not a drop. Fingertips always stay above
+whatever the cloth rests on: shut fingers driven into steel by stiff position
+servos is what made the old set-down blow up.
+
+OpenCV then checks the result; leftover error is walked out with corner
+tugs. Both arms clear, the platen comes down, and the bed dumps.
 
 With a window:  moon run sim:run
 Headless:       pixi run -e mujoco python -m xfold.load_press --headless --cycles 1
@@ -22,29 +36,63 @@ from pathlib import Path
 import numpy as np
 
 from . import scene, tug, vision
-from .arm import Arm
+from .arm import Arm, move_together
 from .platform import reexec_under_mjpython
 from .press_cycle import PressCycle
-from .scene import HAND_OPEN, HAND_SHUT
+from .scene import HAND_OPEN
+from .shirt import shirt_vertex_positions
 from .sim_loop import Loop
+
+# The flat T on the plate: collar toward the back (+y), hem on the dump edge,
+# left sleeve on the picker's side (-x).
+LAY_YAW = 0.5 * math.pi
+
+# Grasp points on the rest mesh (collar = +x, left sleeve = +y): each sleeve
+# one vertex in from the cuff and one below the shoulder line, which keeps
+# the crate pick clear of the front wall. The pinch patch still takes the
+# shoulder line with it.
+SLEEVE_LOCAL = np.array([0.224, 0.364])
 
 # Heights for the pinch point, all in metres.
 CARRY_Z = 0.85
 LOOK_Z = 1.12
+# Out of the crate over its low lip and low onto the plate; lifted straight
+# out, the shirt hooks on a crate wall. Low enough to pass under the platen.
+# The last point is where the sleeve is set down: mid-plate, where both arms
+# reach down to the bed without their links meeting.
+DRAW_OUT = (np.array([-0.30, -0.12, 0.80]), np.array([0.02, -0.15, 0.72]))
+# The helper tows its sleeve here, so the 0.85 m of shirt behind it comes
+# clear of the crate and the other sleeve lands on the plate.
+TOW_XY = np.array([0.30, -0.15])
+# Both sleeves held here: in front of the bed lip and clear of the platen.
+CURTAIN_Y = -0.56
+CURTAIN_Z = 1.10
+CURTAIN_SETTLE = 1.2
+# First point under the platen. The wrist stack is ~0.3 m tall, so the
+# pinch stays under ~1.0 m anywhere over the bed.
+ENTER_Y = -0.05
+ENTER_Z = 0.76
+# Fingertips this far above the laid cloth during the drag. Never zero.
+DRAG_CLEARANCE = 0.02
+# Fingertips this far above a vertex when pinching cloth off a surface.
+PICK_CLEARANCE = 0.004
+LIFT_OFF = 0.12
+
 # Pinch offset so the wrist camera, not the fingers, sits over the bed centre.
 LOOK_OFFSET = np.array([-0.06, 0.0])
 HOVER_ABOVE_GRASP = 0.18
-LAY_CLEARANCE = 0.002  # how hard the shirt is set down before the jaws open
+# Fingertips stop this far above the crate floor when reaching into the pile.
+FLOOR_CLEARANCE = 0.006
 
 MAX_PICK_TRIES = 3
 
-# A tug: fingertips pressed this far into the garment, dragged, then lifted.
-TUG_PRESS = 0.003
+# A tug: pinch a corner with the fingertips this far above the cloth, drag.
+TUG_CLEARANCE = 0.004
 TUG_HOVER = 0.09
 
 MAX_CORRECTIONS = 6
 
-# Stand-in for the crate camera that will estimate the pose of the next shirt.
+# Stand-in for the crate camera that finds the sleeve corner on the pile.
 PICK_POSITION_NOISE = 0.008
 PICK_YAW_NOISE = math.radians(4.0)
 
@@ -59,6 +107,7 @@ class Runtime:
     data: object
     loop: Loop
     arm: Arm
+    helper: Arm
     press: PressCycle
     camera: vision.PlacementCamera
     rng: np.random.Generator
@@ -96,14 +145,15 @@ def build_runtime(seed: int, headless: bool, frames: str = "") -> Runtime:
         cell=cell,
         data=data,
         loop=Loop(cell.model, data, viewer=viewer, realtime=not headless),
-        arm=Arm(cell, data),
+        arm=Arm(cell, data, cell.picker),
+        helper=Arm(cell, data, cell.helper),
         press=PressCycle(cell.model, data),
         camera=vision.PlacementCamera(
             cell.model,
             plane_z=cell.bed_surface_z + cell.shirt_half_thickness,
             target_center=cell.bed_center,
-            target_yaw=cell.press_yaw,
-            roi_half=(0.33, 0.27),
+            target_yaw=LAY_YAW,
+            roi_half=(0.41, 0.37),
             shape_gate=False,
         ),
         rng=np.random.default_rng(seed),
@@ -113,8 +163,10 @@ def build_runtime(seed: int, headless: bool, frames: str = "") -> Runtime:
 
 
 def run_cycle(run: Runtime, cycle: int) -> CycleResult:
-    """Pick, place, verify, tug straight, press, dump."""
-    cell, loop, arm = run.cell, run.loop, run.arm
+    """Pick, draw out, take both sleeves, spread, drag-lay, check, press, dump."""
+    cell, loop, arm, helper = run.cell, run.loop, run.arm, run.helper
+    top_id, under_id = _sleeve_ids(cell)
+    left_xy, right_xy = _lay_target(cell, under_id), _lay_target(cell, top_id)
 
     scene.spawn_shirt_in_bin(cell, run.data, run.rng)
     run.press.park()
@@ -122,41 +174,60 @@ def run_cycle(run: Runtime, cycle: int) -> CycleResult:
     # Home over the crate first: the tossed-in shirt needs to settle before the
     # crate camera reads it, or the jaws close where the shirt no longer is.
     arm.park([*cell.bin_center, CARRY_Z], 0.0, grip=HAND_OPEN)
+    helper.park(_helper_park(), math.pi, grip=HAND_OPEN)
     if not loop.hold(1.0):
         return CycleResult(False, 0, False)
     arm.sync()
+    helper.sync()
 
     for attempt in range(1, MAX_PICK_TRIES + 1):
-        band, band_yaw = _crate_estimate(run)
-        _log(cycle, "PICK", f"crate reports the neckband at {band[0]:+.3f} "
-                            f"{band[1]:+.3f} m, {math.degrees(band_yaw):+.1f} deg")
-        if not _pinch(arm, loop, cell, band, band_yaw):
+        grasp, yaw = _crate_estimate(run, top_id)
+        _log(cycle, "PICK", f"top sleeve at {grasp[0]:+.3f} {grasp[1]:+.3f} m")
+        if not _pinch(arm, loop, cell, grasp, yaw, top_id):
             return CycleResult(False, 0, False)
-        if arm.holding:
+        if arm.cloth.active:
             break
-        _log(cycle, "PICK", f"jaws closed on air, try {attempt} of {MAX_PICK_TRIES}")
+        _log(cycle, "PICK", f"missed the sleeve, try {attempt} of {MAX_PICK_TRIES}")
         if attempt == MAX_PICK_TRIES or not arm.open_hand(loop):
             return CycleResult(False, 0, False)
     else:
         return CycleResult(False, 0, False)
 
-    # The cloth hangs from the pinched neck, so the hand lays over the bed
-    # centre and the garment drapes onto the plate. A rigid-shirt collar
-    # offset would drop the pile off the dump edge.
-    lay_yaw = cell.press_yaw
-    lay_band = cell.bed_center
-    _log(cycle, "CARRY", "in through the press opening")
-    if not arm.follow_waypoints(
-        loop, _approach_path(cell, lay_band, CARRY_Z), lay_yaw, 3.8, settle=0.5
-    ):
+    _log(cycle, "DRAW", "draw the shirt over the lip and across the plate")
+    if not _draw_out(arm, loop, cell):
         return CycleResult(False, 0, False)
 
-    _log(cycle, "LAY", "shirt down on the heated bed")
-    if not _lay(arm, loop, cell, lay_band, lay_yaw):
+    _log(cycle, "HAND", "helper picks that sleeve up and tows the shirt out")
+    if not _pick_lying(helper, loop, cell, top_id, math.pi, hold=(arm,)):
+        _log(cycle, "HAND", "helper missed the sleeve")
+        return CycleResult(False, 0, False)
+    tow = [*TOW_XY, _pinch_z_over(cell, cell.shirt_rest_z, helper) + 0.03]
+    if not helper.move(loop, tow, math.pi, 2.0, settle=0.3, hold=(arm,)):
+        return CycleResult(False, 0, False)
+
+    _log(cycle, "FETCH", "picker picks the other sleeve off the plate")
+    if not _pick_lying(arm, loop, cell, under_id, 0.0, hold=(helper,)):
+        _log(cycle, "FETCH", "picker missed the sleeve")
+        return CycleResult(False, 0, False)
+
+    _log(cycle, "SPREAD", "open the shirt to sleeve width, torso hangs")
+    if not _spread(arm, helper, loop, left_xy, right_xy):
+        return CycleResult(False, 0, False)
+
+    _log(cycle, "LAY", "carry under the platen and drag the shirt flat")
+    if not _drag_lay(arm, helper, loop, cell, left_xy, right_xy):
+        return CycleResult(False, 0, False)
+
+    if not _release(arm, helper, loop):
+        return CycleResult(False, 0, False)
+    if not helper.follow_waypoints(loop, [_helper_park()], math.pi, 2.0, settle=0.2):
+        return CycleResult(False, 0, False)
+    if not _look(arm, loop, cell):
         return CycleResult(False, 0, False)
 
     placement = _check(run, cycle, 0)
     corrections = 0
+    target = cell.bed_center
     while not placement.ok and corrections < MAX_CORRECTIONS:
         if not placement.found:
             _log(cycle, "CHECK", "nothing on the bed, giving up on this shirt")
@@ -166,9 +237,9 @@ def run_cycle(run: Runtime, cycle: int) -> CycleResult:
             cell.shirt_torso_half,
             placement.center,
             placement.yaw,
-            cell.bed_center,
+            target,
             cell.arm_base,
-            target_yaw=cell.press_yaw,
+            target_yaw=LAY_YAW,
         )
         if pull is None:
             _log(cycle, "TUG", "no reachable corner left to pull")
@@ -184,7 +255,7 @@ def run_cycle(run: Runtime, cycle: int) -> CycleResult:
         _log(cycle, "CHECK", "still out of tolerance, not pressing")
         return CycleResult(False, corrections, False)
 
-    _log(cycle, "CLEAR", "placement accepted, arm leaves the press")
+    _log(cycle, "CLEAR", "placement accepted, arms leave the press")
     if not arm.follow_waypoints(
         loop, [_aisle_point(CARRY_Z), [*cell.bin_center, CARRY_Z]], 0.0, 2.6, settle=0.3
     ):
@@ -205,40 +276,50 @@ def _aisle_point(height: float) -> np.ndarray:
     return np.array([-0.58, -0.22, height])
 
 
-def _approach_path(cell, lay_band, height: float) -> list[np.ndarray]:
-    """Crate aisle → C-frame mouth → collar pose. Stays on the open -x side."""
-    finish = np.array([float(lay_band[0]), float(lay_band[1]), height])
-    return [_aisle_point(height), np.array([-0.28, -0.16, height]), finish]
+def _helper_park() -> np.ndarray:
+    """Out to the side of the press, clear of the picker. Parked right over
+    its own pedestal the helper is near-singular and folds into the plate."""
+    return np.array([0.80, -0.30, 0.95])
 
 
-def _crate_estimate(run: Runtime):
-    """Where an upstream crate camera would say the neckband is.
+def _sleeve_ids(cell) -> tuple[int, int]:
+    """Rest-mesh indices of the sleeve on top of the crate pack (the right
+    one, see ``scene.spawn_shirt_in_bin``), then the other."""
+    local = cell.shirt_rest_local[:, :2]
+    ids = []
+    for side in (-1.0, 1.0):
+        point = SLEEVE_LOCAL * np.array([1.0, side])
+        ids.append(int(np.argmin(np.linalg.norm(local - point, axis=1))))
+    return ids[0], ids[1]
 
-    Ground truth plus noise, standing in for a camera over the crate. Nothing
-    downstream sees the true pose: the hand grabs what the camera reports and
-    the press camera judges the result.
-    """
+
+def _lay_target(cell, vertex: int) -> np.ndarray:
+    """World xy where a rest-mesh vertex belongs once the T lies on the plate."""
+    return cell.bed_center + _rotate(cell.shirt_rest_local[vertex, :2], LAY_YAW)
+
+
+def _crate_estimate(run: Runtime, vertex: int):
+    """Where the crate camera sees the sleeve corner, with its usual error."""
     cell = run.cell
-    collar = scene.shirt_collar(cell, run.data)
+    live = shirt_vertex_positions(cell.model, run.data)
     _, yaw = scene.shirt_pose(cell, run.data)
-    band = collar[:2] + run.rng.normal(0.0, PICK_POSITION_NOISE, 2)
-    return (
-        np.array([band[0], band[1], float(collar[2])]),
-        float(yaw + run.rng.normal(0.0, PICK_YAW_NOISE)),
-    )
+    grasp = live[vertex].copy()
+    grasp[:2] += run.rng.normal(0.0, PICK_POSITION_NOISE, 2)
+    return grasp, float(yaw + run.rng.normal(0.0, PICK_YAW_NOISE))
 
 
-def _pinch(arm: Arm, loop, cell, band, yaw: float) -> bool:
-    """Close the fingers on the neckband and lift the garment clear."""
-    band = np.asarray(band, dtype=float).copy()
-    band[:2] = np.clip(
-        band[:2], cell.bin_center - BIN_PICK_MARGIN, cell.bin_center + BIN_PICK_MARGIN
+def _pinch(arm: Arm, loop, cell, grasp, yaw: float, vertex: int) -> bool:
+    """Close the fingers on the sleeve corner and lift the garment clear."""
+    grasp = np.asarray(grasp, dtype=float).copy()
+    grasp[:2] = np.clip(
+        grasp[:2], cell.bin_center - BIN_PICK_MARGIN, cell.bin_center + BIN_PICK_MARGIN
     )
+    grasp[2] = max(grasp[2], cell.bin_surface_z + arm.kit.finger_reach + FLOOR_CLEARANCE)
     return (
-        arm.move(loop, [band[0], band[1], band[2] + HOVER_ABOVE_GRASP], yaw, 1.4)
-        and arm.move(loop, band, yaw, 1.6, settle=0.5)
-        and arm.close_hand(loop)
-        and arm.move(loop, [band[0], band[1], CARRY_Z], yaw, 2.0, settle=0.6)
+        arm.move(loop, [grasp[0], grasp[1], grasp[2] + HOVER_ABOVE_GRASP], yaw, 1.4)
+        and arm.move(loop, grasp, yaw, 1.6, settle=0.5)
+        and arm.close_hand(loop, anchor=vertex)
+        and arm.move(loop, [grasp[0], grasp[1], CARRY_Z], yaw, 2.0, settle=0.6)
     )
 
 
@@ -248,42 +329,127 @@ def _look_pose(cell) -> np.ndarray:
 
 def _look(arm: Arm, loop, cell) -> bool:
     """Hold the wrist camera over the bed so it can judge the shirt."""
-    return arm.move(loop, _look_pose(cell), cell.press_yaw, 1.6, settle=0.5)
+    return arm.move(loop, _look_pose(cell), LAY_YAW, 1.6, settle=0.5)
 
 
-def _lay(arm: Arm, loop, cell, band_xy, yaw: float) -> bool:
-    """Set the shirt on the bed, let go, and lift to the look pose.
-
-    The hand leaves straight up and only then sideways: sliding away at garment
-    height grazes the shirt and shoves it off target by centimetres. It also
-    shuts the fingers on the way out, ready to tug a corner.
-    """
-    band_z = cell.shirt_rest_z + cell.shirt_band_local[2]
+def _draw_out(arm: Arm, loop, cell) -> bool:
+    """Drag the shirt out of the crate onto the plate, set the sleeve down,
+    and back off to the aisle so the helper has the plate to itself."""
+    end = DRAW_OUT[-1]
+    down = [end[0], end[1], _pinch_z_over(cell, cell.shirt_rest_z, arm)]
     return (
-        arm.move(loop, [*band_xy, band_z + LAY_CLEARANCE], yaw, 1.8, settle=0.6)
+        arm.follow_waypoints(loop, list(DRAW_OUT), 0.0, 2.8, settle=0.2)
+        and arm.move(loop, down, 0.0, 0.8, settle=0.3)
         and arm.open_hand(loop)
-        and arm.move(loop, [*band_xy, CARRY_Z], yaw, 1.4)
-        and arm.grip(loop, HAND_SHUT, 0.5, settle=0.0)
-        and _look(arm, loop, cell)
+        and arm.follow_waypoints(
+            loop, [[end[0], end[1], CARRY_Z], _aisle_point(CARRY_Z)], 0.0, 2.0, settle=0.1
+        )
+    )
+
+
+def _pick_lying(arm: Arm, loop, cell, vertex: int, yaw: float, hold=()) -> bool:
+    """Pinch one corner of cloth lying on a surface and lift it a little.
+
+    The corner has not moved since it was put down, so one look is enough.
+    The fingertips stop just above it, never on the steel or wood beneath.
+    """
+    corner = shirt_vertex_positions(arm.cell.model, loop.data)[vertex]
+    grasp = np.array([corner[0], corner[1], _pinch_z_over(cell, corner, arm)])
+    above = grasp + np.array([0.0, 0.0, HOVER_ABOVE_GRASP])
+    if not (
+        arm.follow_waypoints(loop, [above], yaw, 1.8, settle=0.1, hold=hold)
+        and arm.move(loop, grasp, yaw, 1.0, settle=0.3, hold=hold)
+        and arm.close_hand(loop, hold=hold, anchor=vertex)
+    ):
+        return False
+    if not arm.cloth.active:
+        return False
+    lifted = grasp + np.array([0.0, 0.0, 0.08])
+    return arm.move(loop, lifted, yaw, 0.8, settle=0.1, hold=hold)
+
+
+def _pinch_z_over(cell, cloth, arm: Arm) -> float:
+    """Pinch height that leaves the shut fingertips just above a cloth vertex.
+
+    ``cloth`` is a vertex position or just its height. Over the plate the
+    height is floored at the resting cloth: the flex sinks a few millimetres
+    into the heater, and following it down would drive the fingers into it.
+    """
+    cloth = np.atleast_1d(np.asarray(cloth, dtype=float))
+    z = float(cloth[-1])
+    if cloth.size == 3 and np.all(np.abs(cloth[:2] - cell.bed_center) <= cell.bed_half):
+        z = max(z, cell.shirt_rest_z)
+    return z + arm.kit.finger_reach + PICK_CLEARANCE
+
+
+def _spread(picker: Arm, helper: Arm, loop, left_xy, right_xy) -> bool:
+    """Lift both sleeves to their width on the plate, in front of the press."""
+    return move_together(
+        loop,
+        picker, [left_xy[0], CURTAIN_Y, CURTAIN_Z], 0.5 * math.pi,
+        helper, [right_xy[0], CURTAIN_Y, CURTAIN_Z], -0.5 * math.pi,
+        2.6,
+        settle=CURTAIN_SETTLE,
+    )
+
+
+def _drag_lay(picker: Arm, helper: Arm, loop, cell, left_xy, right_xy) -> bool:
+    """Bring the curtain in under the platen, then drag it back to the T pose.
+
+    Jaws close along y so that, opening at the end, they do not swing out
+    over the side rails.
+    """
+    drag_z = cell.shirt_top_z + picker.kit.finger_reach + DRAG_CLEARANCE
+    yaw_l, yaw_r = 0.5 * math.pi, -0.5 * math.pi
+    return move_together(
+        loop,
+        picker, [left_xy[0], ENTER_Y, ENTER_Z], yaw_l,
+        helper, [right_xy[0], ENTER_Y, ENTER_Z], yaw_r,
+        2.4,
+        settle=0.2,
+    ) and move_together(
+        loop,
+        picker, [*left_xy, drag_z], yaw_l,
+        helper, [*right_xy, drag_z], yaw_r,
+        3.6,
+        settle=0.6,
+    )
+
+
+def _release(picker: Arm, helper: Arm, loop) -> bool:
+    """Let go with both hands, then lift straight up off the cloth."""
+    if not picker.open_hand(loop, hold=(helper,)) or not helper.open_hand(loop, hold=(picker,)):
+        return False
+    up = np.array([0.0, 0.0, LIFT_OFF])
+    return move_together(
+        loop,
+        picker, picker.target_pos + up, picker.target_yaw,
+        helper, helper.target_pos + up, helper.target_yaw,
+        1.0,
+        settle=0.2,
     )
 
 
 def _tug(arm: Arm, loop, cell, pull: tug.Tug) -> bool:
-    """Press the shut fingertips on a corner, drag it, and stand off again.
+    """Pinch the fabric at a corner, drag it to where it belongs, let go.
 
-    The jaws are held across the direction of travel, so the two pads sweep the
-    corner like a squeegee instead of letting it spin between them.
+    The pinch point stays high enough that the shut fingertips clear the
+    plate; the held patch is lifted a couple of centimetres and slides.
     """
     hover_z = cell.bed_surface_z + TUG_HOVER
-    press_z = cell.shirt_top_z + cell.finger_reach - TUG_PRESS
+    pinch_z = cell.shirt_top_z + cell.finger_reach + TUG_CLEARANCE
     yaw = pull.heading + math.pi / 2.0
-    arm.set_grip(HAND_SHUT)
+    if not (
+        arm.follow_waypoints(loop, [_aisle_point(hover_z), [*pull.start, hover_z]], yaw, 2.2)
+        and arm.move(loop, [*pull.start, pinch_z], yaw, 0.9, settle=0.3)
+    ):
+        return False
+    live = shirt_vertex_positions(cell.model, loop.data)
+    corner = int(np.argmin(np.linalg.norm(live[:, :2] - pull.start, axis=1)))
     return (
-        arm.follow_waypoints(
-            loop, [_aisle_point(hover_z), [*pull.start, hover_z]], yaw, 2.2
-        )
-        and arm.move(loop, [*pull.start, press_z], yaw, 0.9, settle=0.3)
-        and arm.move(loop, [*pull.finish, press_z], yaw, 1.5, settle=0.4)
+        arm.close_hand(loop, anchor=corner)
+        and arm.move(loop, [*pull.finish, pinch_z], yaw, 1.5, settle=0.4)
+        and arm.open_hand(loop)
         and arm.move(loop, [*pull.finish, hover_z], yaw, 0.9)
         and _look(arm, loop, cell)
     )
@@ -338,7 +504,7 @@ def main() -> None:
     run = build_runtime(args.seed, args.headless, args.frames)
     print(f"XFOLD press loading cell  {scene.CELL_PATH}", flush=True)
     print(
-        "UR5e with a Robotiq 2F-85 hand; placement checked from the wrist camera within "
+        "Two UR5e + 2F-85: draw out, take both sleeves, spread, drag-lay. Wrist camera within "
         f"{run.camera.position_tolerance * 1000:.0f} mm and "
         f"{math.degrees(run.camera.yaw_tolerance):.0f} deg, corrected by corner tugs.",
         flush=True,
