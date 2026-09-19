@@ -11,9 +11,10 @@
    off a magazine of flat, pre-made bags (three sides welded) and lays it on
    belt 2, mouth toward the folder. A suction cup lifts the top lip, an air
    knife blows the bag open and two spreader fingers hold the mouth square.
-6. The plate the pack sits on is a peel. Its side guides rise, it slides into
-   the bag like a pizza into an oven, tips its nose down so the pack's front
-   lands on the bag floor, and slides back out from under it.
+6. The plate the pack sits on is a peel. It runs out of the folder like a
+   drawer on telescopic slides, into the bag like a pizza into an oven. Two
+   lifters push its back end up, so it tips on its nose and the pack's front
+   lands on the bag floor, and it slides back out from under the pack.
 7. The opener lets go and the film settles on the pack. Belt 2 indexes the
    bag to the seal station, where a seal bar presses the mouth flat and
    welds it while a stamp puts the label on the top.
@@ -155,13 +156,19 @@ FINGER_DOWN_Z = 0.556
 FINGER_IN_Y = 0.19
 FINGER_OUT_Y = 0.232
 
-# Peel: how far its side guides rise, and how far its nose tips down in the
-# bag to put the pack's front on the bag floor. It tips about the bottom of
-# its front edge, which is PEEL_HALF ahead of and PEEL_UNDER below its origin.
-GUIDE_RISE = 0.037
+# Peel: how far its nose tips down in the bag to put the pack's front on the
+# bag floor. It tips about the bottom of its front edge, which is PEEL_HALF
+# ahead of and PEEL_UNDER below its origin. On the way out it levels off
+# before its back end is back in the folder.
 PEEL_TILT = math.radians(4.0)
 PEEL_HALF = 0.16875
 PEEL_UNDER = 0.006
+PEEL_LEVEL_AT = 0.35  # m out, fully level again
+# The lifters under the hinge rails' ends: x, and the rods' bottom and top
+# at rest (the middle slide's underside).
+LIFTER_X = 0.965
+LIFTER_BASE_Z = 0.498
+LIFTER_REST_Z = 0.543
 
 # Seal bar and stamp hover heights. Their pressed heights come from where
 # the bag is.
@@ -354,20 +361,13 @@ class Line:
         self._carriage = mocap["picker_carriage"]
         self._mouth_cup = mocap["mouth_cup"]
         self._fingers = ((mocap["finger_l"], 1.0), (mocap["finger_r"], -1.0))
+        self._slide = int(model.body("peel_slide").mocapid[0])
         self._peel_home = model.body("peel").pos.copy()
+        self._slide_home = model.body("peel_slide").pos.copy()
         self._peel_pivot = self._peel_home + (PEEL_HALF, 0.0, -PEEL_UNDER)
         self._peel_shift = 0.0
         self._peel_tilt = 0.0
-        self._guides = [
-            model.geom(name).id
-            for name in (
-                "peel_guide_l",
-                "peel_guide_r",
-                "peel_guide_foot_l",
-                "peel_guide_foot_r",
-            )
-        ]
-        self._guide_z0 = model.geom_pos[self._guides, 2].copy()  # lowered
+        self._lifter_rods = [model.geom(name).id for name in ("peel_lifter_rod_l", "peel_lifter_rod_r")]
         bag = model.body("bag")
         joint = int(bag.jntadr[0])
         self._bag = bag.id
@@ -571,26 +571,17 @@ class Line:
             while not self._bag_ready:
                 yield
 
-        self._enter("BAG", "side guides rise on the peel")
-        for blend in self._tween(0.4):
-            self._set_guides(blend)
-            yield
-        self._enter("BAG", "peel carries the pack between its guides into the open bag")
+        self._enter("BAG", "peel runs out on its slides and carries the pack into the open bag")
         travel = BAG_X + BAG_HALF_LENGTH - BAG_END_MARGIN - float(pos[:, 0].max())
         yield from self._move_peel(travel, 0.0, 2.4, carry=True)
         self._enter(
             "TILT",
-            f"peel tips its nose down {math.degrees(PEEL_TILT):.0f} deg, "
-            "the pack's front lands on the bag floor",
+            f"lifters push the drawer's back end up, the peel tips {math.degrees(PEEL_TILT):.0f} deg "
+            "on its nose and the pack's front lands on the bag floor",
         )
-        yield from self._move_peel(travel, PEEL_TILT, 0.6, carry=True)
-        self._enter("PEEL", "peel slides back out, still tipped, from under the pack")
-        yield from self._move_peel(0.0, PEEL_TILT, 2.0, carry=False)
-        self._enter("PEEL", "peel levels off at home, guides drop")
-        for blend in self._tween(0.5):
-            self._set_peel(0.0, PEEL_TILT * (1.0 - blend))
-            self._set_guides(1.0 - blend)
-            yield
+        yield from self._move_peel(travel, PEEL_TILT, 0.8, carry=True)
+        self._enter("PEEL", "peel slides back out from under the pack, levelling off on the way")
+        yield from self._withdraw_peel(travel, 2.2)
         yield from self._hold("PEEL", "", 0.5, quiet=True)
         # The shirt lies still in the bag now. Fix it there: it cannot sag while
         # the bag closes, and it goes wherever the bag goes.
@@ -635,9 +626,7 @@ class Line:
         self._bag_held = np.array([BAG_X, MAG_Y, MAG_BAG_Z])
         self._hold_bag()
         self._shape_bag(BAG_FLAT, 0.0)
-        self._peel_shift = 0.0
-        self._peel_tilt = 0.0
-        self._set_guides(0.0)
+        self._set_peel(0.0, 0.0)
         mujoco.mj_forward(self.model, self.data)
 
     def _enter(self, stage: str, message: str) -> None:
@@ -696,13 +685,26 @@ class Line:
     def _set_peel(self, shift: float, tilt: float) -> None:
         """Put the peel ``shift`` metres downstream, nose down by ``tilt``.
 
-        It tips about the bottom of its front edge, so the nose stays on
-        whatever it rests on and the back end rises.
+        The drawer is rigid: the middle slide is out half as far, and both
+        tip about the bottom of the peel's front edge, so the nose stays on
+        whatever it rests on and the back end rises. The lifters' rods reach
+        up to the middle slide's underside.
         """
+        data = self.data
         pivot = self._peel_pivot + (shift, 0.0, 0.0)
-        arm = self._peel_home - self._peel_pivot
-        self.data.mocap_pos[self._peel] = pivot + _pitch(arm[None, :], tilt)[0]
-        self.data.mocap_quat[self._peel] = _pitch_quat(tilt)
+        quat = _pitch_quat(tilt)
+        for mocap, home, out in (
+            (self._peel, self._peel_home, shift),
+            (self._slide, self._slide_home, 0.5 * shift),
+        ):
+            arm = home + (out, 0.0, 0.0) - pivot
+            data.mocap_pos[mocap] = pivot + _pitch(arm[None, :], tilt)[0]
+            data.mocap_quat[mocap] = quat
+        # Rise of the drawer's underside above the lifters, behind the nose.
+        top = LIFTER_REST_Z + max(0.0, (pivot[0] - LIFTER_X) * math.tan(tilt))
+        half = 0.5 * (top - LIFTER_BASE_Z)
+        self.model.geom_size[self._lifter_rods, 1] = half
+        self.model.geom_pos[self._lifter_rods, 2] = LIFTER_BASE_Z + half
         self._peel_shift, self._peel_tilt = shift, tilt
 
     def _move_peel(self, shift: float, tilt: float, seconds: float, carry: bool):
@@ -730,9 +732,19 @@ class Line:
                 previous = world
             yield
 
-    def _set_guides(self, up: float) -> None:
-        """Raise the peel's side guides, 0 down in their slots, 1 up."""
-        self.model.geom_pos[self._guides, 2] = self._guide_z0 + GUIDE_RISE * up
+    def _withdraw_peel(self, travel: float, seconds: float):
+        """Slide the peel home from ``travel``, tipped while it leaves the pack.
+
+        It stays tipped for the first part, then the lifters let it down so it
+        is level by PEEL_LEVEL_AT, before its back end is in the folder again.
+        Nothing drags the shirt: it stays on the bag floor.
+        """
+        high = max(PEEL_LEVEL_AT + 0.05, 0.6 * travel)
+        for blend in self._tween(seconds):
+            shift = travel * (1.0 - blend)
+            up = min(1.0, max(0.0, (shift - PEEL_LEVEL_AT) / (high - PEEL_LEVEL_AT)))
+            self._set_peel(shift, PEEL_TILT * smoothstep(up))
+            yield
 
     # --- the bagger ----------------------------------------------------
 

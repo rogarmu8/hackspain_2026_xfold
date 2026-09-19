@@ -12,9 +12,10 @@
   folded, a vacuum pick-and-place on a portal lays the top bag on belt 2 at
   the load station, mouth toward the folder. There a suction cup lifts the
   top lip, an air knife blows the bag open and two spreader fingers drop into
-  the mouth's corners and hold it square. The peel raises its side guides,
-  carries the pack between them into the bag, tips its nose down onto the
-  bag floor and slides back out from under it. The opener lets go, the film
+  the mouth's corners and hold it square. The peel runs out of the folder
+  like a drawer on telescopic slides, carries the pack into the bag, is
+  tipped nose down onto the bag floor by two lifters pushing its back end
+  up, and slides back out from under the pack. The opener lets go, the film
   settles on the pack, and belt 2 indexes the bag to the seal station: a
   heat-seal bar presses the mouth flat and welds it while a stamp puts the
   label on the top. Then belt 2 runs it off its end into a carton.
@@ -221,15 +222,17 @@
 
     <!--
       Pizza peel: carries the folded shirt into the bag, tips its nose down
-      onto the bag floor, then slides back out. It runs between the two hinge
-      rails, which guide it out of the folder.
+      onto the bag floor, then slides back out.
 
-      Side guides: two walls just outboard of the pack (it is 0.32 m wide, the
-      plate 0.278 m). While the folder works they sit down in slots beside
-      the hinge rails, below the flaps' top; xfold.line raises them 37 mm
-      before the peel moves, so the pack cannot slew on its way in. Each
-      wall's foot runs under the plate's edge, hidden inside the hinge rail
-      while the peel is in the folder.
+      It runs out of the folder like a drawer on two telescopic slides, one
+      per side. The folder's hinge rails are the slides' fixed outer members,
+      the peel carries the inner rails along its edges, and a middle member
+      (peel_slide) runs between them, going out half as far as the peel. At
+      home all of it sits inside the hinge rails, out of sight.
+
+      To tip the peel, two lifters under the hinge rails' ends push the
+      drawer's back end up, and it pivots on its nose on the bag floor.
+      xfold.line poses the peel, the middle slide and the lifters' rods.
     -->
     <body name="peel" mocap="true" pos="0.81125 0 0.556">
       <geom name="peel_slab" size="0.16875 0.139 0.02" pos="0 0 -0.014" type="box"
@@ -237,10 +240,22 @@
       <geom name="peel_plate" class="deco" type="box" size="0.16875 0.139 0.006" material="plate"/>
       <geom name="peel_edge_l" class="deco" type="box" size="0.16875 0.002 0.004" pos="0 0.137 0.003" material="chrome"/>
       <geom name="peel_edge_r" class="deco" type="box" size="0.16875 0.002 0.004" pos="0 -0.137 0.003" material="chrome"/>
-      <geom name="peel_guide_l" class="deco" type="box" size="0.16875 0.002 0.025" pos="0 0.172 -0.026" material="chrome"/>
-      <geom name="peel_guide_r" class="deco" type="box" size="0.16875 0.002 0.025" pos="0 -0.172 -0.026" material="chrome"/>
-      <geom name="peel_guide_foot_l" class="deco" type="box" size="0.16875 0.0165 0.004" pos="0 0.1555 -0.047" material="steel"/>
-      <geom name="peel_guide_foot_r" class="deco" type="box" size="0.16875 0.0165 0.004" pos="0 -0.1555 -0.047" material="steel"/>
+      <geom name="peel_rail_l" class="deco" type="box" size="0.16875 0.004 0.005" pos="0 0.143 -0.005" material="chrome"/>
+      <geom name="peel_rail_r" class="deco" type="box" size="0.16875 0.004 0.005" pos="0 -0.143 -0.005" material="chrome"/>
+    </body>
+    <body name="peel_slide" mocap="true" pos="0.81125 0 0.550">
+      <geom name="peel_slide_l" class="deco" type="box" size="0.16875 0.005 0.007" pos="0 0.152 0" material="steel"/>
+      <geom name="peel_slide_r" class="deco" type="box" size="0.16875 0.005 0.007" pos="0 -0.152 0" material="steel"/>
+      <!-- Stops at the slide's front end, where it rides on the peel's rails. -->
+      <geom name="peel_slide_stop_l" class="deco" type="box" size="0.006 0.009 0.008" pos="0.16275 0.148 0" material="panel_grey"/>
+      <geom name="peel_slide_stop_r" class="deco" type="box" size="0.006 0.009 0.008" pos="0.16275 -0.148 0" material="panel_grey"/>
+    </body>
+    <!-- Lifters: an air cylinder under each hinge rail's end; xfold.line sets the rods' length. -->
+    <body name="peel_lifters">
+      <geom name="peel_lifter_l" class="deco" type="cylinder" size="0.012 0.025" pos="0.965 0.152 0.475" material="panel_grey"/>
+      <geom name="peel_lifter_r" class="deco" type="cylinder" size="0.012 0.025" pos="0.965 -0.152 0.475" material="panel_grey"/>
+      <geom name="peel_lifter_rod_l" class="deco" type="cylinder" size="0.005 0.045" pos="0.965 0.152 0.543" material="chrome"/>
+      <geom name="peel_lifter_rod_r" class="deco" type="cylinder" size="0.005 0.045" pos="0.965 -0.152 0.543" material="chrome"/>
     </body>
 
     <!--
