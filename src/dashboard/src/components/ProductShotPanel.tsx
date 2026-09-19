@@ -10,7 +10,7 @@ import type { RunDetail } from "@/lib/types";
  *
  * The shot is a file on the bridge (never a journal event), fetched through
  * the same-origin /api/bridge proxy. The try-on call goes to /api/tryon so the
- * fal.ai key stays server-side.
+ * OpenAI key stays server-side.
  *
  * Generated URLs are remembered per run for the life of the tab, so stepping
  * between runs does not spend another call and another twenty seconds. The
@@ -88,7 +88,7 @@ export function ProductShotPanel({ run }: { run: RunDetail }) {
 
         <figure className="m-0 flex flex-col gap-1.5">
           {look ? (
-            // eslint-disable-next-line @next/next/no-img-element -- remote fal.ai URL
+            // eslint-disable-next-line @next/next/no-img-element -- data URI from OpenAI
             <img
               src={look}
               alt={`Modelo con la prenda de ${run.id}`}
@@ -120,8 +120,8 @@ export function ProductShotPanel({ run }: { run: RunDetail }) {
       ) : (
         <p className="eyebrow">
           {busy
-            ? "fal.ai · puede tardar ~20 s"
-            : "Sube la foto a fal.ai y devuelve la prenda puesta"}
+            ? "OpenAI · puede tardar ~30 s"
+            : "Manda la foto a OpenAI y devuelve la prenda puesta"}
         </p>
       )}
     </aside>
