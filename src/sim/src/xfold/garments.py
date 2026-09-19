@@ -273,12 +273,12 @@ def add_garment_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--pick",
         action="store_true",
-        help="two-step list: cloth type, then condition",
+        help="three-step list: cloth type, condition, then square vs skewed place",
     )
     parser.add_argument(
         "--skewed",
         action="store_true",
-        help="random heading on the belt (any yaw); dual belts square it",
+        help="random heading and crumple on any SKU; dual belts square it, press irons it",
     )
     parser.add_argument(
         "--list-garments",
@@ -371,7 +371,7 @@ def _arrow_pick(
 
 
 def prompt_garment(current: str = "tee", *, skewed: bool = False) -> GarmentPick:
-    """Two-step arrow list: cloth type, then good / damaged / notGood / skewed."""
+    """Three-step list: cloth type, condition, then square vs skewed place."""
     import random
     import termios
     import tty
@@ -384,14 +384,13 @@ def prompt_garment(current: str = "tee", *, skewed: bool = False) -> GarmentPick
         current_base = "tee"
         current_item = CATALOG["tee"]
     type_idx = next((i for i, (k, _) in enumerate(types) if k == current_base), 0)
-    if skewed:
-        cond_idx = 3
-    elif current_item.key.endswith("_damaged"):
+    if current_item.key.endswith("_damaged"):
         cond_idx = 1
     elif "_notgood" in current_item.key:
         cond_idx = 2
     else:
         cond_idx = 0
+    pose_idx = 1 if skewed else 0
 
     stream = _tty_in()
     if stream is None:
@@ -402,14 +401,18 @@ def prompt_garment(current: str = "tee", *, skewed: bool = False) -> GarmentPick
     sys.stderr.write("\033[?25l")
     try:
         tty.setcbreak(fd)
-        type_idx = _arrow_pick("1/2  Cloth type", types, type_idx, fd)
+        type_idx = _arrow_pick("1/3  Cloth type", types, type_idx, fd)
         conds = (
-            ("good", "clean, square on the belt"),
+            ("good", "clean"),
             ("damaged", "hole / torn hem"),
             ("notgood", "stain (random 1–3)"),
-            ("skewed", "any heading (dual belts square it)"),
         )
-        cond_idx = _arrow_pick("2/2  Condition", list(conds), cond_idx, fd)
+        cond_idx = _arrow_pick("2/3  Condition", list(conds), cond_idx, fd)
+        poses = (
+            ("square", "laid straight on the belt"),
+            ("skewed", "any heading, a bit wrinkled (press irons it)"),
+        )
+        pose_idx = _arrow_pick("3/3  Place on the belt", list(poses), pose_idx, fd)
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
         sys.stderr.write("\033[?25h")
@@ -419,18 +422,15 @@ def prompt_garment(current: str = "tee", *, skewed: bool = False) -> GarmentPick
 
     base_key = types[type_idx][0]
     cond = conds[cond_idx][0]
-    pose = False
+    pose = poses[pose_idx][0] == "skewed"
     if cond == "damaged":
         chosen = f"{base_key}_damaged"
     elif cond == "notgood":
         chosen = f"{base_key}_notgood{random.randint(1, 3)}"
-    elif cond == "skewed":
-        chosen = base_key
-        pose = True
     else:
         chosen = base_key
     item = CATALOG[chosen]
-    extra = "  any heading, conveyor will square" if pose else ""
+    extra = "  any heading + wrinkles, press irons" if pose else ""
     print(f"garment: {chosen}  ({item.label}){extra}", flush=True)
     return GarmentPick(chosen, skewed=pose)
 

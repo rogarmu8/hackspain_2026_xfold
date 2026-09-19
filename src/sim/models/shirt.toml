@@ -8,13 +8,14 @@
 #
 # Override path:  XFOLD_SHIRT_CONFIG=/path/to/other.toml
 # Garment (CLI wins over env over this file):
-#   moon run sim:run                 # type, then good / damaged / notGood / skewed
+#   moon run sim:run                 # type, condition, then square / skewed
 #   moon run sim:run -- -g tee
-#   moon run sim:run -- -g tee --skewed
+#   moon run sim:run -- -g jersey --skewed
+#   moon run sim:run -- -g dress_damaged --skewed
 #   moon run sim:run -- -g dress     # skip the list
 #   moon run sim:run -- --pick
 #   moon run sim:run -- --list-garments
-#   XFOLD_GARMENT=jersey moon run sim:run
+#   XFOLD_GARMENT=jersey XFOLD_SKEWED=1 moon run sim:run
 
 [garment]
 # Foldable 2D sheets (same three FlipFold creases):

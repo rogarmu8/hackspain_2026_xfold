@@ -113,8 +113,9 @@ On macOS the windowed tasks run under `mjpython` (Cocoa main thread) via `script
 
 ### What goes down the line
 
-`moon run sim:run` asks for the cloth type, then its condition; `-g` skips the
-list and `--list-garments` prints all 30 SKUs.
+`moon run sim:run` asks for the cloth type, its condition, then whether
+it is laid square or skewed; `-g` skips the list and `--list-garments`
+prints all 30 SKUs.
 
 | Condition | What it is | Example |
 |---|---|---|

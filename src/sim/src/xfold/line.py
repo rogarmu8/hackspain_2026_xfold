@@ -1,11 +1,11 @@
 """The line: dual-belt turner -> belt -> press -> flap folder -> bagger -> carton.
 
-1. A shirt is laid on the infeed. If the selector's "skewed" condition is
-   on, it is dropped at a random heading. A dual conveyor product turner
-   yaws it until the collar leads downstream (one belt speeds up, the
-   other slows, then they resync), then the linear belt takes it.
+1. A garment is laid on the infeed. If the selector's "skewed" place is
+   on, any cloth type is dropped at a random heading and a bit crumpled. A dual conveyor
+   product turner yaws it until the collar leads downstream (one belt speeds
+   up, the other slows, then they resync). Wrinkles stay until the press.
 2. The belt carries it under the press and stops. The platen comes down on
-   the belt itself, steams, and lifts.
+   the belt itself, steams the wrinkles out, and lifts.
 3. The belt runs on. The shirt leaves the belt's end onto the folder, and
    stops there with its hem on the folder's upstream edge.
 4. The folder flips its flaps, FlipFold style: left side, right side, then
@@ -43,9 +43,10 @@ real flap's friction does, and lets go at the top of the swing. The cloth
 does not collide with itself in MuJoCo, so ClothLayers keeps the folded
 layers apart from then on.
 
-With a window:  moon run sim:run              # type, then good / damaged / notGood / skewed
+With a window:  moon run sim:run              # type, condition, then square / skewed
                 moon run sim:run -- -g tee
-                moon run sim:run -- -g tee --skewed  # any heading; dual belts square it
+                moon run sim:run -- -g jersey --skewed  # any cloth, any heading + wrinkles
+                moon run sim:run -- -g dress_damaged --skewed
 Headless:       pixi run -e mujoco python -P -m xfold.line --headless --cycles 1 -g jersey
 Catalogue:      moon run sim:run -- --list-garments
 """
@@ -68,7 +69,7 @@ from .garments import (
 )
 from .platform import reexec_under_mjpython
 from .self_collide import ClothLayers
-from .spread import SpreadStation
+from .spread import SpreadStation, _heading
 from .shirt import (
     SHIRT_RADIUS,
     apply_shirt_config,
@@ -106,6 +107,8 @@ _PHASES = {phase["state"]: phase for phase in LINE_PHASES}
 # Belt top and folder plates, from line.xml.
 SURFACE_Z = 0.562
 BELT_X = (-2.00, 0.30)
+# Visual slats ride only the linear deck (belt_top), not the dual-belt turner.
+BELT_SLAT_X = (-1.02, 0.30)
 # The folder's boards, hem edge to collar edge.
 FOLDER_X = (0.305, 0.98)
 # The hem stops this far onto the folder, not hanging off its edge.
@@ -116,11 +119,10 @@ BELT_ACCEL = 0.6  # m/s^2, both speeding up and braking
 ON_BELT = 0.03
 
 # Operator place (selector "skewed"): a T on the belt, pose drawn each cycle.
-# Yaw is any heading. A 45° T is wider than the belt; we centre it and let
-# a sleeve hang, then the dual belts yaw it collar-downstream.
+# Yaw is any heading, plus visible crumple. Dual belts square the heading;
+# the press irons the wrinkles out.
 SKEW_X_MAX = 0.05
 SKEW_Y_MAX = 0.05
-SKEW_WRINKLE = 0.004
 BELT_HALF_Y = 0.475
 # QC station: where the belt stops the pressed shirt for its product shot.
 # Downstream of the press and far enough from the belt's end (0.30) that the
@@ -379,28 +381,82 @@ def _slide_onto_belt(world: np.ndarray) -> np.ndarray:
     return out
 
 
-def operator_shirt(center_x: float, rng: np.random.Generator) -> OperatorPlace:
-    """Random operator lay: any heading, a shift, light wrinkles.
+def _crumple_shirt(
+    world: np.ndarray, rng: np.random.Generator, *, amount: float | None = None
+) -> np.ndarray:
+    """A new random fold pattern every call. Always a little crumple, never a heap.
 
-    Drawn again every cycle. The dual-belt turner then yaws it onto the
-    square T, collar downstream.
+    ``amount`` 0.4 is a square lay that still looks handled; 1.0 is a messy dump.
+    Drawn from the rng when omitted.
+    """
+    if amount is None:
+        amount = float(rng.uniform(0.55, 1.15))
+    amount = float(np.clip(amount, 0.25, 1.4))
+    out = world.copy()
+    mid = out.mean(axis=0)
+    rel = out - mid
+    z0 = SURFACE_Z + SHIRT_RADIUS
+    nfold = int(rng.integers(2, 6) if amount >= 0.7 else rng.integers(1, 4))
+    for _ in range(nfold):
+        ang = float(rng.uniform(0.0, math.pi))
+        nx, ny = math.cos(ang), math.sin(ang)
+        off = float(rng.uniform(-0.22, 0.22))
+        freq = float(rng.uniform(8.0, 34.0))
+        phase = float(rng.uniform(0.0, 2.0 * math.pi))
+        amp_z = float(rng.uniform(0.006, 0.018)) * amount
+        amp_xy = float(rng.uniform(0.004, 0.014)) * amount
+        width = float(rng.uniform(0.18, 0.42))
+        axis = rel[:, 0] * nx + rel[:, 1] * ny - off
+        wave = np.sin(freq * axis + phase)
+        envelope = np.exp(-((axis / width) ** 2))
+        ridge = 0.25 + 0.75 * np.abs(wave) if rng.random() < 0.6 else 0.5 + 0.5 * wave
+        out[:, 2] += amp_z * ridge * envelope
+        out[:, 0] += amp_xy * wave * envelope * nx
+        out[:, 1] += amp_xy * wave * envelope * ny
+    ndimple = int(rng.integers(1, 5))
+    for _ in range(ndimple):
+        cx = float(rng.uniform(-0.22, 0.22))
+        cy = float(rng.uniform(-0.28, 0.28))
+        sigma = float(rng.uniform(0.05, 0.16))
+        amp = float(rng.uniform(0.005, 0.014)) * amount
+        bump = np.exp(-((rel[:, 0] - cx) ** 2 + (rel[:, 1] - cy) ** 2) / (2.0 * sigma**2))
+        out[:, 2] += amp * bump
+        if rng.random() < 0.5:
+            out[:, 0] += 0.35 * amp * bump * np.sign(rel[:, 0] - cx + 1e-9)
+            out[:, 1] += 0.35 * amp * bump * np.sign(rel[:, 1] - cy + 1e-9)
+    ncorner = int(rng.integers(0, 3))
+    for _ in range(ncorner):
+        sx = float(rng.choice((-1.0, 1.0)))
+        sy = float(rng.choice((-1.0, 1.0)))
+        lift = float(rng.uniform(0.006, 0.016)) * amount
+        corner = np.clip(sx * rel[:, 0] + sy * rel[:, 1], 0.0, None)
+        scale = float(np.max(corner)) + 1e-9
+        out[:, 2] += lift * (corner / scale) ** 2
+    out[:, 2] = np.maximum(out[:, 2], z0)
+    span = float(out[:, 2].max() - z0)
+    lo, hi = 0.010 + 0.006 * amount, 0.026 + 0.020 * amount
+    if span < lo:
+        out[:, 2] = z0 + (out[:, 2] - z0) * (lo / max(span, 1e-6))
+    elif span > hi:
+        out[:, 2] = z0 + (out[:, 2] - z0) * (hi / span)
+    return out
+
+
+def operator_shirt(center_x: float, rng: np.random.Generator) -> OperatorPlace:
+    """Random operator lay: any heading, a shift, visible wrinkles.
+
+    Drawn again every cycle. The dual-belt turner yaws it collar-downstream;
+    the press irons the crumple out.
     """
     yaw = float(rng.uniform(-math.pi, math.pi))
     dy = float(rng.uniform(-SKEW_Y_MAX, SKEW_Y_MAX))
     dx = float(rng.uniform(-SKEW_X_MAX, SKEW_X_MAX))
     world = _slide_onto_belt(flat_shirt(center_x + dx, yaw=yaw, y=dy))
+    world = _slide_onto_belt(
+        _crumple_shirt(world, rng, amount=float(rng.uniform(0.75, 1.25)))
+    )
     dx = float(world[:, 0].mean() - center_x)
     dy = float(world[:, 1].mean())
-    rel = world - world.mean(axis=0)
-    wrinkle = SKEW_WRINKLE * float(rng.uniform(0.35, 1.0))
-    side = float(rng.choice((-1.0, 1.0)))
-    world[rel[:, 1] * side > 0.0, 2] += wrinkle
-    world[:, 2] += (
-        0.5
-        * wrinkle
-        * np.sin(float(rng.uniform(4.0, 9.0)) * rel[:, 0] + float(rng.uniform(0.0, 6.0)))
-    )
-    world[:, 2] = np.maximum(world[:, 2], SURFACE_Z + SHIRT_RADIUS)
     return OperatorPlace(world, yaw, dx, dy)
 
 
@@ -571,6 +627,10 @@ class Line:
                 next(self._bagger)
             except StopIteration:
                 self._bagger = None
+        if self.belt_speed != 0.0 and self._spread._world is not None:
+            dx = self.belt_speed * self.dt
+            self._spread._world[:, 0] += dx
+            self._spread._center[0] += dx
         self._spread.apply()
         self._drive_belt()
         self._drive_belt2()
@@ -595,10 +655,12 @@ class Line:
         if self.belt_speed == 0.0:
             return
         self._belt_travel += self.belt_speed * self.dt
-        span = BELT_X[1] - BELT_X[0]
+        span = BELT_SLAT_X[1] - BELT_SLAT_X[0]
         self.model.geom_pos[self._slats, 0] = (
-            BELT_X[0] + (self._slat_x0 - BELT_X[0] + self._belt_travel) % span
+            BELT_SLAT_X[0] + (self._slat_x0 - BELT_SLAT_X[0] + self._belt_travel) % span
         )
+        if self._spread._world is not None:
+            return
         pos = self.positions()
         riding = (
             (pos[:, 0] >= BELT_X[0])
@@ -672,18 +734,20 @@ class Line:
 
     def _cycle(self):
         self._load()
+        self.phase = "LOAD"
         if self.skewed and not self.flat:
             place = self._place
             if place is not None:
+                wrinkle_mm = (
+                    float(place.world[:, 2].max() - place.world[:, 2].min()) * 1000.0
+                )
                 load_msg = (
                     f"operator place  {math.degrees(place.yaw):+.0f} deg, "
-                    f"{place.dy * 100:+.1f} cm aside, {place.dx * 100:+.1f} cm along"
+                    f"{place.dy * 100:+.1f} cm aside, {place.dx * 100:+.1f} cm along, "
+                    f"{wrinkle_mm:.0f} mm crumple"
                 )
             else:
-                load_msg = (
-                    f"skewed shirt on the belt ({math.degrees(self._skew_yaw):.0f}°)"
-                )
-            self.phase = "LOAD"
+                load_msg = "operator placed the shirt a bit off"
             yield from self._hold(
                 "LOAD",
                 load_msg,
@@ -693,27 +757,33 @@ class Line:
                     "spawnOffsetYM": self._skew_y,
                 },
             )
-            square = flat_shirt(SPAWN_X)
             self._enter(
                 "ORIENT",
-                "dual belts square the shirt",
+                "dual belts square the heading",
                 phase="ORIENT",
             )
-            yield from self._spread.cycle(self, square)
+            yield from self._spread.cycle(self)
             pos = self.positions()
             span = pos.max(axis=0) - pos.min(axis=0)
-            err = float(np.linalg.norm((pos[:, :2] - square[:, :2]).mean(axis=0)))
+            z_span = float(span[2])
+            heading = math.degrees(_heading(pos, self._spread._rest_local))
             self._enter(
                 "ORIENT",
-                f"squared {span[0] * 100:.0f} x {span[1] * 100:.0f} cm, "
-                f"centre error {err * 1000:.0f} mm",
+                f"collar downstream ({heading:+.0f} deg), still wrinkled "
+                f"({span[0] * 100:.0f} x {span[1] * 100:.0f} cm, "
+                f"{z_span * 1000:.0f} mm crumple)",
             )
             yield from self._hold("ORIENT", "", 0.4, quiet=True)
-            self._spread.release()
         else:
+            wrinkle_mm = 0.0
+            if self._place is not None:
+                wrinkle_mm = (
+                    float(self._place.world[:, 2].max() - self._place.world[:, 2].min())
+                    * 1000.0
+                )
             yield from self._hold(
                 "LOAD",
-                "shirt square on the belt",
+                f"shirt square on the belt, {wrinkle_mm:.0f} mm crumple",
                 0.6,
                 measurements={
                     "spawnYawRad": self._skew_yaw,
@@ -722,7 +792,7 @@ class Line:
             )
             yield from self._hold(
                 "ORIENT",
-                "turner idle, shirt already square",
+                "turner idle, heading already square",
                 0.3,
                 phase="ORIENT",
             )
@@ -732,11 +802,12 @@ class Line:
 
         self._enter("PRESS", "platen down on the belt", phase="PRESS",
                     measurements={"flatnessPreM": float(np.std(self.positions()[:, 2]))})
-        yield from self._ramp_stroke(STROKE_PRESSED, 2.5)
-        self._enter("STEAM", "steam under the platen")
-        yield from self._steam_for(3.0)
+        yield from self._press_down(2.5)
+        self._enter("STEAM", "steam irons the wrinkles out")
+        yield from self._iron_to_flat(3.0)
         self._enter("LIFT", "platen up")
         yield from self._ramp_stroke(STROKE_OPEN, 2.0)
+        self._spread.release()
 
         self._enter("BELT", "carry the pressed shirt to the inspection station", phase="TO_QC",
                     measurements={"flatnessPostM": float(np.std(self.positions()[:, 2]))})
@@ -858,17 +929,21 @@ class Line:
         self.data.ctrl[self._stroke] = STROKE_OPEN
         self._spread.reset()
         self._place = None
-        yaw = 0.0
-        y = 0.0
         if self.skewed:
             place = operator_shirt(SPAWN_X, self._rng)
-            self._place = place
-            world = place.world
-            yaw, y = place.yaw, place.dy
         else:
-            world = flat_shirt(SPAWN_X)
-        self._skew_yaw = yaw
-        self._skew_y = y
+            world = _crumple_shirt(
+                flat_shirt(SPAWN_X),
+                self._rng,
+                amount=float(self._rng.uniform(0.35, 0.60)),
+            )
+            place = OperatorPlace(_slide_onto_belt(world), 0.0, 0.0, 0.0)
+        self._place = place
+        world = place.world
+        self._skew_yaw = place.yaw
+        self._skew_y = place.dy
+        self._spread._world = world.copy()
+        self._spread._prev = world.copy()
         ids = np.arange(len(world))
         self._pin(ids, world, None)
         for name, gid in self._g.items():
@@ -925,7 +1000,12 @@ class Line:
         a line stops a part at a station.
         """
         while True:
-            left = remaining(self.positions())
+            pos = (
+                self._spread._world
+                if self._spread._world is not None
+                else self.positions()
+            )
+            left = remaining(pos)
             if left <= 0.002:
                 break
             self.belt_speed = min(
@@ -943,6 +1023,50 @@ class Line:
             blend = smoothstep((index + 1) / steps)
             self.data.ctrl[self._stroke] = start + (target - start) * blend
             yield
+
+    def _press_down(self, seconds: float):
+        """Close the platen; squash Z folds under it, keep the XY crumple."""
+        start = np.asarray(self.positions(), dtype=float)
+        z0 = SURFACE_Z + SHIRT_RADIUS
+        start_stroke = float(self.data.ctrl[self._stroke])
+        steps = self._steps(seconds)
+        pin = self._spread._world is not None or self.skewed
+        for index in range(steps):
+            blend = smoothstep((index + 1) / steps)
+            self.data.ctrl[self._stroke] = start_stroke + (
+                STROKE_PRESSED - start_stroke
+            ) * blend
+            if pin:
+                world = start.copy()
+                world[:, 2] = start[:, 2] + blend * (z0 - start[:, 2])
+                self._spread._world = world
+            yield
+
+    def _iron_to_flat(self, seconds: float):
+        """Steam + morph the crumpled sheet onto the square T under the press."""
+        start = np.asarray(self.positions(), dtype=float)
+        target = flat_shirt(PRESS_X)
+        set_steam(self.model, True)
+        steps = self._steps(seconds)
+        ids = np.arange(len(start))
+        for index in range(steps):
+            blend = smoothstep((index + 1) / steps)
+            world = start + blend * (target - start)
+            self._spread._world = world
+            vel = (target - start) / max(seconds, self.dt)
+            self._pin(ids, world, vel)
+            self._steam.puff(index * self.dt, seconds)
+            yield
+        self._spread._world = target.copy()
+        self._pin(ids, target, None)
+        z_span = float(target[:, 2].max() - target[:, 2].min())
+        self._enter(
+            "STEAM",
+            f"pressed flat, {z_span * 1000:.0f} mm thick",
+        )
+        yield from self._hold("STEAM", "", 0.2, quiet=True)
+        self._steam.reset()
+        set_steam(self.model, False)
 
     def _steam_for(self, seconds: float):
         set_steam(self.model, True)

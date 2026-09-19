@@ -16,7 +16,7 @@ import math
 
 import numpy as np
 
-from .shirt import SHIRT_RADIUS, shirt_rest_local, shirt_rigid_pose
+from .shirt import SHIRT_RADIUS, shirt_rest_local
 from .sim_loop import smoothstep
 
 SURFACE_Z = 0.562
@@ -31,17 +31,28 @@ def _wrap(angle: float) -> float:
     return float((angle + math.pi) % (2.0 * math.pi) - math.pi)
 
 
+def _heading(pos: np.ndarray, rest: np.ndarray | None = None) -> float:
+    """Live heading: 0 when the neck/collar side leads downstream (+X).
+
+    Uses rest-mesh bands (collar vs hem), not a rigid-fit yaw. A tank or
+    pinafore is close to square, so SVD often locks onto the wrong axis.
+    """
+    if rest is None:
+        rest = shirt_rest_local()
+    axis = rest[:, 0]
+    hi = float(np.quantile(axis, 0.88))
+    lo = float(np.quantile(axis, 0.12))
+    collar = pos[axis >= hi, :2].mean(axis=0)
+    hem = pos[axis <= lo, :2].mean(axis=0)
+    vec = collar - hem
+    if float(np.linalg.norm(vec)) < 1e-6:
+        return 0.0
+    return _wrap(math.atan2(float(vec[1]), float(vec[0])))
+
+
 def _yaw_of(pos: np.ndarray) -> float:
-    """Heading of the live T: 0 when the collar leads downstream (+X)."""
-    rest = shirt_rest_local()
-    _, yaw = shirt_rigid_pose(pos, rest)
-    collar = int(np.argmax(rest[:, 0]))
-    hem = int(np.argmin(rest[:, 0]))
-    vec = pos[collar, :2] - pos[hem, :2]
-    hem_yaw = math.atan2(float(vec[1]), float(vec[0]))
-    if abs(_wrap(yaw - hem_yaw)) > abs(_wrap(yaw + math.pi - hem_yaw)):
-        yaw = yaw + math.pi
-    return _wrap(yaw)
+    """Back-compat alias: collar-downstream heading in radians."""
+    return _heading(pos)
 
 
 class SpreadStation:
@@ -54,6 +65,7 @@ class SpreadStation:
         self._rest = rest
         self._dadr = dadr
         self._xyz = np.arange(3)
+        self._rest_local = shirt_rest_local()
         self._slats_l = np.array(
             [
                 model.geom(i).id
@@ -71,6 +83,7 @@ class SpreadStation:
         self._slat_l0 = model.geom_pos[self._slats_l, 0].copy()
         self._slat_r0 = model.geom_pos[self._slats_r, 0].copy()
         self._local_xy: np.ndarray | None = None
+        self._local_z: np.ndarray | None = None
         self._world: np.ndarray | None = None
         self._prev: np.ndarray | None = None
         self._yaw = 0.0
@@ -83,6 +96,7 @@ class SpreadStation:
 
     def reset(self) -> None:
         self._local_xy = None
+        self._local_z = None
         self._world = None
         self._prev = None
         self._yaw = 0.0
@@ -118,12 +132,14 @@ class SpreadStation:
             self.data.qvel[self._dadr[:, None] + self._xyz] = vel
         self._prev = np.asarray(world, dtype=float).copy()
 
-    def cycle(self, line, targets: np.ndarray):
-        """Yaw with a belt-speed split, resync, then lay the square T."""
+    def cycle(self, line, targets: np.ndarray | None = None):
+        """Yaw with a belt-speed split, resync, keep the crumple for the press."""
+        del targets
         pos = np.asarray(line.positions(), dtype=float)
-        yaw0 = _yaw_of(pos)
+        yaw0 = _heading(pos, self._rest_local)
         center0 = pos[:, :2].mean(axis=0)
         self._local_xy = pos[:, :2] - center0
+        self._local_z = pos[:, 2].copy()
         self._world = None
         self._prev = pos.copy()
         self._set_pose(0.0, center0)
@@ -136,25 +152,27 @@ class SpreadStation:
             f"turns {-math.degrees(yaw0):+.0f} deg",
         )
         yield from self._tween(line, 0.0, -yaw0, center0, goal_xy, turn)
+        leftover = _heading(self._posed_world(), self._rest_local)
+        if abs(leftover) > math.radians(3.0):
+            line._enter(
+                "ORIENT",
+                f"dual belts trim leftover {-math.degrees(leftover):+.0f} deg",
+            )
+            yield from self._tween(
+                line, self._yaw, self._yaw - leftover, self._center, goal_xy, 0.45
+            )
         line._enter("ORIENT", "dual belts resync, shirt runs straight")
         yield from self._resync(line, 0.40)
-        start = self._posed_world()
+        self._world = self._posed_world()
         self._local_xy = None
-        square = np.asarray(targets, dtype=float).copy()
-        square[:, 2] = SURFACE_Z + SHIRT_RADIUS
-        line._enter("ORIENT", "turner settles the shirt square")
-        steps = max(1, line._steps(0.40))
-        for index in range(steps):
-            blend = smoothstep((index + 1) / steps)
-            self._world = start + blend * (square - start)
-            self.v_left = self.v_right = 0.0
-            yield
-        self._world = square.copy()
+        self._local_z = None
+        line._enter("ORIENT", "heading squared, wrinkles stay until the press")
         yield from self._hold(line, 0.25)
 
     def release(self) -> None:
         self._world = None
         self._local_xy = None
+        self._local_z = None
         self._prev = None
         self.v_left = self.v_right = 0.0
         self.data.qvel[self._dadr[:, None] + self._xyz] = 0.0
@@ -165,7 +183,10 @@ class SpreadStation:
         world = np.empty((len(rel), 3))
         world[:, 0] = rel[:, 0] * cos - rel[:, 1] * sin + self._center[0]
         world[:, 1] = rel[:, 0] * sin + rel[:, 1] * cos + self._center[1]
-        world[:, 2] = SURFACE_Z + SHIRT_RADIUS
+        if self._local_z is not None:
+            world[:, 2] = self._local_z
+        else:
+            world[:, 2] = SURFACE_Z + SHIRT_RADIUS
         return world
 
     def _set_pose(self, yaw: float, center: np.ndarray) -> None:

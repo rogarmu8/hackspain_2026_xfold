@@ -156,10 +156,10 @@
     </body>
 
     <!--
-      Infeed belt, x = -2.00 .. 0.30, 0.97 m wide so the sleeves (0.91 m)
-      lie flat on it. Only the top face touches cloth; the belt's motion is
-      applied to the cloth in xfold.line. Slats are visual and slide along
-      with the belt so it reads as moving.
+      Linear belt, x = -1.02 .. 0.30, 0.97 m wide so the sleeves (0.91 m)
+      lie flat on it. Dual-lane contact decks cover the turner upstream.
+      Only the top face touches cloth; the belt's motion is applied to the
+      cloth in xfold.line. Slats are visual and slide along the linear deck.
     -->
     <body name="belt">
       <!-- Dual-lane contact decks, same split as spread_rig.xml.
@@ -186,22 +186,16 @@
       <geom name="press_post_l" class="deco" type="box" size="0.04 0.04 0.252" pos="-0.99 0.54 0.252" material="steel"/>
       <geom name="press_post_r" class="deco" type="box" size="0.04 0.04 0.252" pos="-0.99 -0.54 0.252" material="steel"/>
 
-      <geom name="belt_slat_0" class="deco" type="box" size="0.010 0.480 0.0006" pos="-2.00 0 0.5000" material="slat"/>
-      <geom name="belt_slat_1" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.85 0 0.5000" material="slat"/>
-      <geom name="belt_slat_2" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.70 0 0.5000" material="slat"/>
-      <geom name="belt_slat_3" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.55 0 0.5000" material="slat"/>
-      <geom name="belt_slat_4" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.40 0 0.5000" material="slat"/>
-      <geom name="belt_slat_5" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.25 0 0.5000" material="slat"/>
-      <geom name="belt_slat_6" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.10 0 0.5000" material="slat"/>
-      <geom name="belt_slat_7" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.95 0 0.5626" material="slat"/>
-      <geom name="belt_slat_8" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.80 0 0.5626" material="slat"/>
-      <geom name="belt_slat_9" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.65 0 0.5626" material="slat"/>
-      <geom name="belt_slat_10" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.50 0 0.5626" material="slat"/>
-      <geom name="belt_slat_11" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.35 0 0.5626" material="slat"/>
-      <geom name="belt_slat_12" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.20 0 0.5626" material="slat"/>
-      <geom name="belt_slat_13" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.05 0 0.5626" material="slat"/>
-      <geom name="belt_slat_14" class="deco" type="box" size="0.010 0.480 0.0006" pos="0.10 0 0.5626" material="slat"/>
-      <geom name="belt_slat_15" class="deco" type="box" size="0.010 0.480 0.0006" pos="0.25 0 0.5626" material="slat"/>
+      <!-- Even 0.147 m pitch, all on the belt top (x = -1.02 .. 0.30). -->
+      <geom name="belt_slat_0" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.0200 0 0.5626" material="slat"/>
+      <geom name="belt_slat_1" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.8733 0 0.5626" material="slat"/>
+      <geom name="belt_slat_2" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.7267 0 0.5626" material="slat"/>
+      <geom name="belt_slat_3" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.5800 0 0.5626" material="slat"/>
+      <geom name="belt_slat_4" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.4333 0 0.5626" material="slat"/>
+      <geom name="belt_slat_5" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.2867 0 0.5626" material="slat"/>
+      <geom name="belt_slat_6" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.1400 0 0.5626" material="slat"/>
+      <geom name="belt_slat_7" class="deco" type="box" size="0.010 0.480 0.0006" pos="0.0067 0 0.5626" material="slat"/>
+      <geom name="belt_slat_8" class="deco" type="box" size="0.010 0.480 0.0006" pos="0.1533 0 0.5626" material="slat"/>
     </body>
 
     <!--
