@@ -108,6 +108,53 @@ class ExperimentStoreTests(unittest.TestCase):
         self.assertEqual(store.get_run(run_id)["lifecycle"], "failed")
         store.close()
 
+    def test_schema_migrates_and_is_idempotent(self) -> None:
+        from xfold.bridge.experiments import SCHEMA_VERSION
+
+        self.assertEqual(self.store.schema_version, SCHEMA_VERSION)
+        version = int(
+            self.store._conn.execute("PRAGMA user_version").fetchone()[0]  # noqa: SLF001
+        )
+        self.assertEqual(version, SCHEMA_VERSION)
+
+        self.store.close()
+        again = ExperimentStore(self.db)
+        self.assertEqual(again.schema_version, SCHEMA_VERSION)
+        again.close()
+        self.store = ExperimentStore(self.db)
+
+    def test_legacy_unversioned_file_upgrades(self) -> None:
+        """DBs written before user_version still open; migrate sets v1."""
+        import sqlite3
+
+        from xfold.bridge.experiments import SCHEMA_VERSION, _migrate_v1
+
+        legacy = Path(self._tmp.name) / "legacy.sqlite"
+        conn = sqlite3.connect(str(legacy))
+        _migrate_v1(conn)  # tables as shipped in the first commit
+        conn.execute("PRAGMA user_version = 0")
+        conn.commit()
+        conn.close()
+
+        store = ExperimentStore(legacy)
+        self.assertEqual(store.schema_version, SCHEMA_VERSION)
+        version = int(
+            store._conn.execute("PRAGMA user_version").fetchone()[0]  # noqa: SLF001
+        )
+        self.assertEqual(version, SCHEMA_VERSION)
+        store.close()
+
+    def test_newer_schema_is_rejected(self) -> None:
+        import sqlite3
+
+        future = Path(self._tmp.name) / "future.sqlite"
+        conn = sqlite3.connect(str(future))
+        conn.execute("PRAGMA user_version = 99")
+        conn.close()
+        with self.assertRaises(RuntimeError) as ctx:
+            ExperimentStore(future)
+        self.assertIn("v99", str(ctx.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

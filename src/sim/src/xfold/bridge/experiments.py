@@ -9,6 +9,9 @@ bridge (especially the Isaac box) can still answer ``GET /experiments`` and
 Never puts pixels or cloth verts in the DB — same rule as the journal.
 Writes are short SQLite transactions under a lock; callers must not invoke
 them from inside ``mj_step``.
+
+Schema changes go through ``_MIGRATIONS`` + ``PRAGMA user_version`` (see
+``_migrate``). Do not edit applied migration bodies; append a new version.
 """
 
 from __future__ import annotations
@@ -17,71 +20,13 @@ import json
 import re
 import sqlite3
 import threading
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS experiments (
-  id TEXT PRIMARY KEY,
-  batch_id TEXT,
-  title TEXT,
-  lifecycle TEXT NOT NULL,
-  seed INTEGER,
-  name TEXT,
-  scenario TEXT,
-  engine TEXT,
-  garment TEXT,
-  cloth_type TEXT,
-  cloth_condition TEXT,
-  skewed INTEGER NOT NULL DEFAULT 0,
-  custom_design INTEGER NOT NULL DEFAULT 0,
-  driver TEXT,
-  fail_reason TEXT,
-  started_at_iso TEXT,
-  finished_at_iso TEXT,
-  t_sim REAL,
-  cycle_time_wall_s REAL,
-  has_photo INTEGER NOT NULL DEFAULT 0,
-  has_video INTEGER NOT NULL DEFAULT 0,
-  photo_path TEXT,
-  video_dir TEXT,
-  detail_json TEXT NOT NULL,
-  updated_at_iso TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS experiments_started
-  ON experiments (started_at_iso DESC);
-
-CREATE TABLE IF NOT EXISTS batches (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  lifecycle TEXT NOT NULL,
-  total INTEGER NOT NULL DEFAULT 0,
-  finished INTEGER NOT NULL DEFAULT 0,
-  succeeded INTEGER NOT NULL DEFAULT 0,
-  failed INTEGER NOT NULL DEFAULT 0,
-  started_at_iso TEXT,
-  summary_json TEXT NOT NULL,
-  updated_at_iso TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS batches_started
-  ON batches (started_at_iso DESC);
-
-CREATE TABLE IF NOT EXISTS journal_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  seq INTEGER NOT NULL,
-  run_id TEXT,
-  batch_id TEXT,
-  type TEXT NOT NULL,
-  ts_iso TEXT NOT NULL,
-  payload_json TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS journal_events_run
-  ON journal_events (run_id, seq);
-"""
+# Bump when appending to _MIGRATIONS. Existing files advance on open.
+SCHEMA_VERSION = 1
 
 _RUN_ID = re.compile(r"^RUN-(\d+)$")
 _BATCH_ID = re.compile(r"^B-(\d+)$")
@@ -117,6 +62,112 @@ def _rel_under_data(path: Path | None) -> str | None:
         return str(path)
 
 
+def _migrate_v1(conn: sqlite3.Connection) -> None:
+    """Initial catalogue: experiments, batches, journal_events."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS experiments (
+          id TEXT PRIMARY KEY,
+          batch_id TEXT,
+          title TEXT,
+          lifecycle TEXT NOT NULL,
+          seed INTEGER,
+          name TEXT,
+          scenario TEXT,
+          engine TEXT,
+          garment TEXT,
+          cloth_type TEXT,
+          cloth_condition TEXT,
+          skewed INTEGER NOT NULL DEFAULT 0,
+          custom_design INTEGER NOT NULL DEFAULT 0,
+          driver TEXT,
+          fail_reason TEXT,
+          started_at_iso TEXT,
+          finished_at_iso TEXT,
+          t_sim REAL,
+          cycle_time_wall_s REAL,
+          has_photo INTEGER NOT NULL DEFAULT 0,
+          has_video INTEGER NOT NULL DEFAULT 0,
+          photo_path TEXT,
+          video_dir TEXT,
+          detail_json TEXT NOT NULL,
+          updated_at_iso TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS experiments_started
+          ON experiments (started_at_iso DESC);
+
+        CREATE TABLE IF NOT EXISTS batches (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          lifecycle TEXT NOT NULL,
+          total INTEGER NOT NULL DEFAULT 0,
+          finished INTEGER NOT NULL DEFAULT 0,
+          succeeded INTEGER NOT NULL DEFAULT 0,
+          failed INTEGER NOT NULL DEFAULT 0,
+          started_at_iso TEXT,
+          summary_json TEXT NOT NULL,
+          updated_at_iso TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS batches_started
+          ON batches (started_at_iso DESC);
+
+        CREATE TABLE IF NOT EXISTS journal_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          seq INTEGER NOT NULL,
+          run_id TEXT,
+          batch_id TEXT,
+          type TEXT NOT NULL,
+          ts_iso TEXT NOT NULL,
+          payload_json TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS journal_events_run
+          ON journal_events (run_id, seq);
+        """
+    )
+
+
+# version -> migration. Each runs once inside a transaction, then user_version
+# is set to that version. Append only; never edit a past entry.
+# To add a column later:
+#   SCHEMA_VERSION = 2
+#   def _migrate_v2(conn):
+#       cols = {r[1] for r in conn.execute("PRAGMA table_info(experiments)")}
+#       if "notes" not in cols:
+#           conn.execute("ALTER TABLE experiments ADD COLUMN notes TEXT")
+#   _MIGRATIONS[2] = _migrate_v2
+_MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
+    1: _migrate_v1,
+}
+
+
+def _migrate(conn: sqlite3.Connection) -> int:
+    """Apply pending migrations. Returns the schema version after migrate.
+
+    Each step then bumps ``PRAGMA user_version``. Do not wrap ``executescript``
+    in BEGIN/COMMIT: SQLite commits before running a script.
+    """
+    if max(_MIGRATIONS) != SCHEMA_VERSION:
+        raise RuntimeError(
+            f"SCHEMA_VERSION={SCHEMA_VERSION} but migrations go to {max(_MIGRATIONS)}"
+        )
+    current = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if current > SCHEMA_VERSION:
+        raise RuntimeError(
+            f"experiments.sqlite is at schema v{current}, this build only knows "
+            f"v{SCHEMA_VERSION}. Upgrade the bridge package on this box."
+        )
+    for version in range(current + 1, SCHEMA_VERSION + 1):
+        step = _MIGRATIONS.get(version)
+        if step is None:
+            raise RuntimeError(f"missing migration for schema v{version}")
+        step(conn)
+        conn.execute(f"PRAGMA user_version = {version}")
+    return SCHEMA_VERSION
+
+
 class ExperimentStore:
     """SQLite-backed catalogue of finished and in-flight experiments."""
 
@@ -135,9 +186,13 @@ class ExperimentStore:
         )
         self._conn.row_factory = sqlite3.Row
         with self._lock:
-            self._conn.execute("PRAGMA journal_mode=WAL")
+            # WAL + busy timeout: safe for the HTTP thread and the driver thread.
+            if not self._memory:
+                self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA synchronous=NORMAL")
-            self._conn.executescript(_SCHEMA)
+            self._conn.execute("PRAGMA busy_timeout=5000")
+            self._conn.execute("PRAGMA foreign_keys=ON")
+            self.schema_version = _migrate(self._conn)
 
     def close(self) -> None:
         with self._lock:

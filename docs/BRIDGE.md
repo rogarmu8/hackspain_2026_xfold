@@ -168,7 +168,7 @@ curl -sN 'http://127.0.0.1:8765/events/stream?after_seq=0'
 | `GET` | `/snapshot` | Materialized control-room snapshot |
 | `GET` | `/runs`, `/runs/{id}` | Run list / detail (memory + `data/experiments.sqlite`) |
 | `GET` | `/batches/{id}` | Batch summary |
-| `GET` | `/experiments` | Launch list for Experimentos (durable across bridge restarts) |
+| `GET` | `/experiments` | Launch list for Experimentos (durable across bridge restarts; `data/experiments.sqlite`, schema via `PRAGMA user_version`) |
 | `GET` | `/experiments/{id}` | Durable experiment detail (`kind: run\|batch`) |
 | `POST` | `/runs`, `/batches` | Launch individual / batch |
 | `POST` | `/commands` | Operator command (`202` / `409`) |
