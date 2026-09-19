@@ -50,10 +50,12 @@ white garment to flat white from 1 m up, taking the print and any stain with
 it. The image is a file, never a journal event — same rule as the viewport.
 
 The line's input garment is chosen at **launch**, not only at process start.
-`POST /runs` and `POST /batches` carry cloth type + condition; `LineDriver`
-calls `select_garment` and rebuilds the shared `SimSession` when the SKU mesh
-or texture changes. Pose-only `skewed` does not rebuild. `GET /capabilities`
-lists `clothTypes` and `clothConditions` for the dashboard form. `XFOLD_GARMENT`
+`POST /runs` and `POST /batches` carry cloth type + condition; `random` draws
+use `seed` and optional `clothTypeWeights` / `clothConditionWeights` (0 = never).
+`LineDriver` calls `select_garment` and rebuilds the shared `SimSession` when
+the SKU mesh or texture changes. Pose-only `skewed` does not rebuild: the shirt
+stays flat on the belt and `seed` picks the heading. `GET /capabilities` lists
+`clothTypes` and `clothConditions` for the dashboard form. `XFOLD_GARMENT`
 and `[garment] type` in `shirt.toml` remain the compile-time default.
 ## Why this shape (and not WS / gRPC)
 

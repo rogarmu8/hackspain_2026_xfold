@@ -398,6 +398,8 @@ def create_app(*, persist: bool = True) -> FastAPI:
                 scenario=body.scenario,
                 cloth_type=body.clothType,
                 cloth_condition=body.clothCondition,
+                cloth_weights=body.clothTypeWeights,
+                condition_weights=body.clothConditionWeights,
             )
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
@@ -414,6 +416,8 @@ def create_app(*, persist: bool = True) -> FastAPI:
                 cloth_types=body.clothTypes,
                 condition_mix=body.conditionMix,
                 conditions=body.conditions,
+                cloth_weights=body.clothTypeWeights,
+                condition_weights=body.clothConditionWeights,
             )
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc

@@ -133,6 +133,12 @@ export const CLOTH_MIX_KEYS = ["same", "random", "list"] as const;
 
 export type ClothMix = (typeof CLOTH_MIX_KEYS)[number];
 
+/** Relative draws for `clothType: "random"` / `clothMix: "random"`. 0 = never. */
+export type ClothWeightMap = Partial<Record<ClothType, number>>;
+
+/** Relative draws for `clothCondition: "random"` / `conditionMix: "random"`. */
+export type ConditionWeightMap = Partial<Record<ClothCondition, number>>;
+
 export type CatalogOption = {
   key: string;
   label: string;
@@ -245,6 +251,10 @@ export type BridgeLaunchRun = {
   clothType?: ClothType | "random";
   /** Concrete condition, or `"random"`. */
   clothCondition?: ClothCondition | "random";
+  /** Used when `clothType` is `"random"`. Missing keys default to 1. */
+  clothTypeWeights?: ClothWeightMap;
+  /** Used when `clothCondition` is `"random"`. */
+  clothConditionWeights?: ConditionWeightMap;
 };
 
 export type BridgeLaunchBatch = {
@@ -258,4 +268,6 @@ export type BridgeLaunchBatch = {
   clothTypes?: ClothType[];
   conditionMix?: ClothMix;
   conditions?: ClothCondition[];
+  clothTypeWeights?: ClothWeightMap;
+  clothConditionWeights?: ConditionWeightMap;
 };

@@ -119,15 +119,15 @@ list and `--list-garments` prints all 30 SKUs.
 | clean | the SKU as designed | `-g tee` |
 | torn | a hole / torn hem, as real geometry | `-g tee_damaged` (alias `tee_torn`) |
 | stained | coffee, grease or mud on the base mesh | `-g tee_notgood1..3` (alias `tee_stain1..3`) |
-| off square | dropped 35° rotated and 9 cm off centre | `--skewed`, on any of the above |
+| off square | flat on the belt, heading from the seed | `--skewed` (and `--seed`), or launch condition `skewed` |
 
 Six clean SKUs — `tee`, `work_tee`, `jersey`, `tank`, `polo`, `dress` — times
 four conditions. The pose is separate from the SKU, so `-g dress_damaged
---skewed` is a torn pinafore put on the belt crooked.
+--skewed --seed 7` is a torn pinafore put on the belt at a seeded heading.
 
-The bridge takes the same inputs from the environment, since swapping SKU means
-recompiling the model: `XFOLD_GARMENT=tee_damaged XFOLD_SKEWED=1 moon run
-sim:bridge`. Each run's first console line says which input it got.
+The dashboard launch form picks type and condition (exact or random, with
+weights). Random draws and the skewed heading use `seed`. `XFOLD_GARMENT`
+is still the compile-time default for the bridge process.
 
 ### Product shot → try-on
 

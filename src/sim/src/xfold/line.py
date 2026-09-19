@@ -94,9 +94,9 @@ BELT_ACCEL = 0.6  # m/s^2, both speeding up and braking
 # Cloth this close above the belt top rides with it.
 ON_BELT = 0.03
 
-# How far a "not square on the belt" drop is rotated / shifted.
-SKEW_YAW = math.radians(35.0)
-SKEW_Y = 0.09
+# How far a "not square on the belt" drop may wander laterally.
+# Heading itself is sampled from the run seed (see ``skew_pose``).
+SKEW_Y_MAX = 0.05
 # QC station: where the belt stops the pressed shirt for its product shot.
 # Downstream of the press and far enough from the belt's end (0.30) that the
 # whole 0.65 m of shirt stays on the belt.
@@ -287,11 +287,25 @@ def _widen_press(spec, dy: float) -> None:
         geom.size = size
 
 
+def skew_pose(seed: int) -> tuple[float, float]:
+    """Yaw (rad) and lateral y (m) for a flat, rotated belt drop.
+
+    The shirt stays on the belt plane; only heading and a small side nudge
+    vary. Same seed ⇒ same pose.
+    """
+    import random
+
+    rng = random.Random((int(seed) * 13 + 5) & 0xFFFFFFFF)
+    yaw = rng.uniform(-math.pi, math.pi)
+    y = rng.uniform(-SKEW_Y_MAX, SKEW_Y_MAX)
+    return yaw, y
+
+
 def flat_shirt(center_x: float, *, yaw: float = 0.0, y: float = 0.0) -> np.ndarray:
     """World vertices of the shirt lying flat on the belt, collar toward +x.
 
     ``yaw`` is rotation about +Z (radians). ``y`` is a lateral shift. A
-    square drop is yaw=0, y=0; a bad belt place uses SKEW_YAW / SKEW_Y.
+    square drop is yaw=0, y=0; a skewed drop uses ``skew_pose(seed)``.
     """
     mesh = load_shirt_mesh()[0]  # OBJ frame: sleeves along x, collar at +y
     world = np.empty_like(mesh)
@@ -327,6 +341,7 @@ class Line:
         log=print,
         *,
         skewed: bool = False,
+        seed: int = 0,
         on_photo=None,
     ) -> None:
         import mujoco
@@ -337,6 +352,8 @@ class Line:
         self.repeat = repeat
         self.log = log
         self.skewed = skewed
+        self.seed = int(seed)
+        self._skew_yaw = 0.0
         # Called once, at the top of the flash, to take the product shot.
         # None (the windowed run) still fires the flash; nothing records it.
         self.on_photo = on_photo
@@ -565,7 +582,9 @@ class Line:
     def _cycle(self):
         self._load()
         load_msg = (
-            "skewed shirt on the belt" if self.skewed else "flat shirt on the belt"
+            f"skewed shirt on the belt ({math.degrees(self._skew_yaw):.0f}°)"
+            if self.skewed
+            else "flat shirt on the belt"
         )
         yield from self._hold("LOAD", load_msg, 0.6)
 
@@ -692,11 +711,12 @@ class Line:
         self._steam.reset()
         set_steam(self.model, False)
         self.data.ctrl[self._stroke] = STROKE_OPEN
-        world = (
-            flat_shirt(SPAWN_X, yaw=SKEW_YAW, y=SKEW_Y)
-            if self.skewed
-            else flat_shirt(SPAWN_X)
-        )
+        yaw = 0.0
+        y = 0.0
+        if self.skewed:
+            yaw, y = skew_pose(self.seed)
+        self._skew_yaw = yaw
+        world = flat_shirt(SPAWN_X, yaw=yaw, y=y)
         ids = np.arange(len(world))
         self._pin(ids, world, None)
         for name, gid in self._g.items():
@@ -1183,6 +1203,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="XFOLD line: belt, press, folder")
     parser.add_argument("--cycles", type=int, default=0, help="0 keeps going")
     parser.add_argument("--headless", action="store_true", help="no window, as fast as it can")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="reproducible random draws (stain variant, skewed heading)",
+    )
     add_garment_arguments(parser)
     parser.add_argument(
         "--shots", default="", help="headless: save a frame per stage into this directory"
@@ -1214,7 +1240,9 @@ def main() -> None:
     cfg = shirt_config()
     model = build()
     data = mujoco.MjData(model)
-    line = Line(model, data, repeat=args.cycles == 0, skewed=bool(args.skewed))
+    line = Line(
+        model, data, repeat=args.cycles == 0, skewed=bool(args.skewed), seed=int(args.seed)
+    )
     pose = "skewed" if args.skewed else "square"
     print(
         f"XFOLD line  garment={cfg.garment} ({cfg.mesh})  pose={pose}  {LINE_PATH}",

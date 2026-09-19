@@ -63,7 +63,7 @@ CLOTH_CONDITION_LABELS = {
     "good": "clean, square on the belt",
     "damaged": "hole / torn hem",
     "notgood": "stain (random 1–3)",
-    "skewed": "any heading on the belt (arms square it)",
+    "skewed": "flat on the belt, heading from the seed",
 }
 
 
@@ -145,7 +145,23 @@ def compose_pick(cloth: str, condition: str, rng) -> GarmentPick:
     return GarmentPick(base, skewed=False)
 
 
-def _mix_choice(mix: str, values: list[str], universe: tuple[str, ...], rng) -> str:
+def _weight_of(weights: dict[str, float] | None, key: str) -> float:
+    if not weights:
+        return 1.0
+    raw = weights.get(key, 1.0)
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def _mix_choice(
+    mix: str,
+    values: list[str],
+    universe: tuple[str, ...],
+    rng,
+    weights: dict[str, float] | None = None,
+) -> str:
     allowed = set(universe)
     cleaned = [v for v in values if v in allowed]
     if values and not cleaned:
@@ -156,7 +172,11 @@ def _mix_choice(mix: str, values: list[str], universe: tuple[str, ...], rng) -> 
         pool = cleaned or list(universe)
         return pool[0]
     pool = cleaned or list(universe)
-    return pool[rng.randrange(len(pool))]
+    ws = [_weight_of(weights, key) for key in pool]
+    total = sum(ws)
+    if total <= 0:
+        raise ValueError("todos los pesos son cero; sube al menos uno")
+    return rng.choices(pool, weights=ws, k=1)[0]
 
 
 def resolve_launch(
@@ -167,8 +187,15 @@ def resolve_launch(
     conditions: list[str] | None = None,
     seed: int = 0,
     index: int = 0,
+    cloth_weights: dict[str, float] | None = None,
+    condition_weights: dict[str, float] | None = None,
 ) -> tuple[GarmentPick, str, str]:
-    """Pick one SKU for a run (or batch member). Returns pick, cloth type, condition."""
+    """Pick one SKU for a run (or batch member). Returns pick, cloth type, condition.
+
+    Random / list draws are seeded and, when weights are given, weighted.
+    ``skewed`` is still a condition: the pose itself is sampled later from the
+    same seed (flat on the belt, random heading).
+    """
     import random
 
     cloth_mix = cloth_mix if cloth_mix in {"same", "random", "list"} else "same"
@@ -185,8 +212,12 @@ def resolve_launch(
         cond_seed = (cond_seed + index + 1) & 0xFFFFFFFF
     cloth_rng = random.Random(cloth_seed)
     cond_rng = random.Random(cond_seed)
-    cloth = _mix_choice(cloth_mix, types, CLOTH_TYPE_KEYS, cloth_rng)
-    cond = _mix_choice(condition_mix, conds, CLOTH_CONDITION_KEYS, cond_rng)
+    cloth = _mix_choice(
+        cloth_mix, types, CLOTH_TYPE_KEYS, cloth_rng, cloth_weights
+    )
+    cond = _mix_choice(
+        condition_mix, conds, CLOTH_CONDITION_KEYS, cond_rng, condition_weights
+    )
     return compose_pick(cloth, cond, cond_rng), cloth, cond
 
 
@@ -215,7 +246,7 @@ def add_garment_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--skewed",
         action="store_true",
-        help="spawn the cloth rotated / off-centre on the belt",
+        help="spawn the cloth flat on the belt with a seeded random heading",
     )
     parser.add_argument(
         "--list-garments",
@@ -344,7 +375,7 @@ def prompt_garment(current: str = "tee", *, skewed: bool = False) -> GarmentPick
             ("good", "clean, square on the belt"),
             ("damaged", "hole / torn hem"),
             ("notgood", "stain (random 1–3)"),
-            ("skewed", "not square on the belt"),
+            ("skewed", "flat on the belt, heading from the seed"),
         )
         cond_idx = _arrow_pick("2/2  Condition", list(conds), cond_idx, fd)
     finally:

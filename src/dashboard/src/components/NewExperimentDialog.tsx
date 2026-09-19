@@ -12,6 +12,8 @@ import type {
   ClothCondition,
   ClothMix,
   ClothType,
+  ClothWeightMap,
+  ConditionWeightMap,
 } from "@xfold/protocol";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +43,27 @@ import {
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
+const WEIGHT_MAX = 10;
+
+function evenWeights<T extends string>(keys: readonly T[]): Record<T, number> {
+  return Object.fromEntries(keys.map((key) => [key, 1])) as Record<T, number>;
+}
+
+function weightTotal(weights: Record<string, number>, keys: readonly string[]): number {
+  return keys.reduce((sum, key) => sum + Math.max(0, Number(weights[key] ?? 1)), 0);
+}
+
+function payloadWeights(
+  mix: ClothMix,
+  keys: readonly string[],
+  weights: Record<string, number>,
+): Record<string, number> | undefined {
+  if (mix !== "random") return undefined;
+  const out: Record<string, number> = {};
+  for (const key of keys) out[key] = Math.max(0, Number(weights[key] ?? 1));
+  return out;
+}
+
 export type NewExperimentDefaults = {
   mode?: "individual" | "batch";
   name?: string;
@@ -50,6 +73,8 @@ export type NewExperimentDefaults = {
   clothTypes?: ClothType[];
   conditionMix?: ClothMix;
   conditions?: ClothCondition[];
+  clothTypeWeights?: ClothWeightMap;
+  clothConditionWeights?: ConditionWeightMap;
 };
 
 type NewExperimentDialogProps = {
@@ -139,6 +164,15 @@ function NewExperimentDialogBody({
   const [conditions, setConditions] = useState<ClothCondition[]>(
     defaults?.conditions?.length ? defaults.conditions : ["good"],
   );
+  const [clothWeights, setClothWeights] = useState<Record<string, number>>(
+    () => ({ ...evenWeights(DEFAULT_CLOTH_TYPES), ...defaults?.clothTypeWeights }),
+  );
+  const [conditionWeights, setConditionWeights] = useState<Record<string, number>>(
+    () => ({
+      ...evenWeights(DEFAULT_CLOTH_CONDITIONS),
+      ...defaults?.clothConditionWeights,
+    }),
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -151,6 +185,8 @@ function NewExperimentDialogBody({
     (defaults?.clothTypes ?? []).join(","),
     defaults?.conditionMix ?? "",
     (defaults?.conditions ?? []).join(","),
+    JSON.stringify(defaults?.clothTypeWeights ?? {}),
+    JSON.stringify(defaults?.clothConditionWeights ?? {}),
   ].join("|");
   const [appliedKey, setAppliedKey] = useState(defaultsKey);
   if (appliedKey !== defaultsKey) {
@@ -162,6 +198,14 @@ function NewExperimentDialogBody({
     setClothTypes(defaults?.clothTypes?.length ? defaults.clothTypes : ["tee"]);
     setConditionMix(defaults?.conditionMix ?? "same");
     setConditions(defaults?.conditions?.length ? defaults.conditions : ["good"]);
+    setClothWeights({
+      ...evenWeights(DEFAULT_CLOTH_TYPES),
+      ...defaults?.clothTypeWeights,
+    });
+    setConditionWeights({
+      ...evenWeights(DEFAULT_CLOTH_CONDITIONS),
+      ...defaults?.clothConditionWeights,
+    });
     setError(null);
   }
 
@@ -194,7 +238,7 @@ function NewExperimentDialogBody({
     labelOf: (key: string) => string,
     allLabel: string,
   ): string {
-    if (mix === "random") return `aleatoria (${allLabel})`;
+    if (mix === "random") return `aleatoria (${allLabel}, semilla)`;
     if (mix === "list") {
       if (!selected.length) return "selección vacía";
       return selected.map(labelOf).join(", ");
@@ -234,6 +278,14 @@ function NewExperimentDialogBody({
       setError("Selecciona al menos una condición para la fila.");
       return;
     }
+    if (clothMix === "random" && weightTotal(clothWeights, typePool) <= 0) {
+      setError("Sube el peso de al menos un tipo de prenda.");
+      return;
+    }
+    if (conditionMix === "random" && weightTotal(conditionWeights, condPool) <= 0) {
+      setError("Sube el peso de al menos una condición.");
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -250,6 +302,12 @@ function NewExperimentDialogBody({
               clothTypes: clothMix === "random" ? [] : clothTypes,
               conditionMix,
               conditions: conditionMix === "random" ? [] : conditions,
+              clothTypeWeights: payloadWeights(clothMix, typePool, clothWeights),
+              clothConditionWeights: payloadWeights(
+                conditionMix,
+                condPool,
+                conditionWeights,
+              ),
             })
           : launch({
               mode: "individual",
@@ -259,6 +317,12 @@ function NewExperimentDialogBody({
               clothType: clothMix === "random" ? "random" : clothTypes[0],
               clothCondition:
                 conditionMix === "random" ? "random" : conditions[0],
+              clothTypeWeights: payloadWeights(clothMix, typePool, clothWeights),
+              clothConditionWeights: payloadWeights(
+                conditionMix,
+                condPool,
+                conditionWeights,
+              ),
             }),
       );
 
@@ -317,8 +381,8 @@ function NewExperimentDialogBody({
               required
             />
             <FieldDescription>
-              Entero ≥ 0. En una fila se incrementa por camisa y también
-              determina los sorteos aleatorios.
+              Entero ≥ 0. Sortea prenda y condición al azar, y si va torcida
+              el rumbo inicial (sigue plana).
             </FieldDescription>
           </Field>
 
@@ -357,8 +421,12 @@ function NewExperimentDialogBody({
             onSelectedChange={setClothTypes}
             labelOf={clothTypeLabel}
             pickHint="Una sola prenda para toda la fila."
-            randomHint="Cada camisa sale de todo el catálogo."
+            randomHint="Cada camisa sale del catálogo según los pesos y la semilla."
             listHint="Cada camisa sale de los tipos marcados."
+            weights={clothWeights}
+            onWeightChange={(key, value) =>
+              setClothWeights((prev) => ({ ...prev, [key]: value }))
+            }
           />
 
           <MixField
@@ -372,8 +440,12 @@ function NewExperimentDialogBody({
             onSelectedChange={setConditions}
             labelOf={clothConditionLabel}
             pickHint="La misma condición en toda la fila."
-            randomHint="Cada camisa sortea buena / rasgada / manchada / torcida."
+            randomHint="Cada camisa sortea condición con los pesos. Torcida = plana, rotada con la semilla."
             listHint="Cada camisa sale de las condiciones marcadas."
+            weights={conditionWeights}
+            onWeightChange={(key, value) =>
+              setConditionWeights((prev) => ({ ...prev, [key]: value }))
+            }
           />
 
           <details className="border-t border-border pt-3">
@@ -449,6 +521,8 @@ function MixField<T extends string>({
   pickHint,
   randomHint,
   listHint,
+  weights,
+  onWeightChange,
 }: {
   formId: string;
   axis: string;
@@ -462,6 +536,8 @@ function MixField<T extends string>({
   pickHint: string;
   randomHint: string;
   listHint: string;
+  weights: Record<string, number>;
+  onWeightChange: (key: T, value: number) => void;
 }) {
   const title = axis === "prenda" ? "Tipo de prenda" : "Condición";
 
@@ -516,7 +592,41 @@ function MixField<T extends string>({
       ) : null}
 
       {mix === "random" ? (
-        <FieldDescription>{randomHint}</FieldDescription>
+        <>
+          <div className="mt-1 flex flex-col gap-1.5">
+            {options.map((key) => {
+              const value = Math.max(0, Number(weights[key] ?? 1));
+              return (
+                <label
+                  key={key}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-sm"
+                >
+                  <span className="min-w-0 truncate">{labelOf(key)}</span>
+                  <span className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min={0}
+                      max={WEIGHT_MAX}
+                      step={1}
+                      value={value}
+                      aria-label={`Peso ${labelOf(key)}`}
+                      onChange={(event) =>
+                        onWeightChange(key, Number(event.target.value))
+                      }
+                      className="w-28 accent-foreground"
+                    />
+                    <span className="w-4 text-right font-mono tabular-nums text-muted-foreground">
+                      {value}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <FieldDescription>
+            {randomHint} 0 = nunca.
+          </FieldDescription>
+        </>
       ) : null}
 
       {mix === "list" && batch ? (

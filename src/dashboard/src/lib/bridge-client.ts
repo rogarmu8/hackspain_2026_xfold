@@ -272,6 +272,8 @@ export class BridgeClient {
           scenario: request.scenario,
           clothType: request.clothType,
           clothCondition: request.clothCondition,
+          clothTypeWeights: request.clothTypeWeights,
+          clothConditionWeights: request.clothConditionWeights,
         };
         const res = await fetch(`${this.baseUrl}/runs`, {
           method: "POST",
@@ -293,6 +295,8 @@ export class BridgeClient {
         clothTypes: request.clothTypes,
         conditionMix: request.conditionMix,
         conditions: request.conditions,
+        clothTypeWeights: request.clothTypeWeights,
+        clothConditionWeights: request.clothConditionWeights,
       };
       const res = await fetch(`${this.baseUrl}/batches`, {
         method: "POST",

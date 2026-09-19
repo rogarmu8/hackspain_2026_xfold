@@ -79,7 +79,7 @@ const CLOTH_CONDITION_LABELS: Record<ClothCondition, string> = {
   good: "Limpia, a escuadra",
   damaged: "Rasgada",
   notgood: "Manchada",
-  skewed: "Colocada torcida",
+  skewed: "Plana, rotada (semilla)",
 };
 
 export function clothTypeLabel(key: string): string {

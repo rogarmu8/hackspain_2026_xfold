@@ -299,6 +299,8 @@ class Runtime:
         scenario: str,
         cloth_type: str = "tee",
         cloth_condition: str = "good",
+        cloth_weights: dict[str, float] | None = None,
+        condition_weights: dict[str, float] | None = None,
     ) -> dict[str, Any]:
         cloth_mix = "random" if cloth_type == "random" else "same"
         cond_mix = "random" if cloth_condition == "random" else "same"
@@ -311,6 +313,8 @@ class Runtime:
             conditions=conditions,
             seed=seed,
             index=0,
+            cloth_weights=cloth_weights if cloth_mix == "random" else None,
+            condition_weights=condition_weights if cond_mix == "random" else None,
         )
         with self._lock:
             if self.active_run_id and self.runs[self.active_run_id].lifecycle in {"running", "paused"}:
@@ -342,6 +346,8 @@ class Runtime:
         cloth_types: list[str] | None = None,
         condition_mix: str = "same",
         conditions: list[str] | None = None,
+        cloth_weights: dict[str, float] | None = None,
+        condition_weights: dict[str, float] | None = None,
     ) -> dict[str, Any]:
         types = list(cloth_types or [])
         conds = list(conditions or [])
@@ -373,6 +379,8 @@ class Runtime:
                     conditions=conds,
                     seed=base_seed + i,
                     index=i,
+                    cloth_weights=cloth_weights if cloth_mix == "random" else None,
+                    condition_weights=condition_weights if condition_mix == "random" else None,
                 )
                 run = self._create_run(
                     name=name or None,
@@ -707,6 +715,7 @@ class Runtime:
             if not run or run.lifecycle not in {"running", "paused"}:
                 return
             run.t = float(t)
+
     def finish_success(self, run_id: str, t: float) -> None:
         with self._lock:
             run = self.runs.get(run_id)

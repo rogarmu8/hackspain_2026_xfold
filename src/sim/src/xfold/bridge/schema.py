@@ -96,6 +96,8 @@ class LaunchRunRequest(BaseModel):
     scenario: str = "mock"
     clothType: str = "tee"
     clothCondition: str = "good"
+    clothTypeWeights: dict[str, float] = Field(default_factory=dict)
+    clothConditionWeights: dict[str, float] = Field(default_factory=dict)
 
 
 class LaunchBatchRequest(BaseModel):
@@ -108,6 +110,8 @@ class LaunchBatchRequest(BaseModel):
     clothTypes: list[str] = Field(default_factory=lambda: ["tee"])
     conditionMix: Literal["same", "random", "list"] = "same"
     conditions: list[str] = Field(default_factory=lambda: ["good"])
+    clothTypeWeights: dict[str, float] = Field(default_factory=dict)
+    clothConditionWeights: dict[str, float] = Field(default_factory=dict)
 
 
 class HealthResponse(BaseModel):

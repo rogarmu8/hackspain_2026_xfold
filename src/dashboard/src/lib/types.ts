@@ -3,6 +3,8 @@ import type {
   ClothCondition,
   ClothMix,
   ClothType,
+  ClothWeightMap,
+  ConditionWeightMap,
   Telemetry,
 } from "@xfold/protocol";
 
@@ -206,6 +208,8 @@ export type LaunchRequest =
       scenario: string;
       clothType: ClothType | "random";
       clothCondition: ClothCondition | "random";
+      clothTypeWeights?: ClothWeightMap;
+      clothConditionWeights?: ConditionWeightMap;
     }
   | {
       mode: "batch";
@@ -218,4 +222,6 @@ export type LaunchRequest =
       clothTypes: ClothType[];
       conditionMix: ClothMix;
       conditions: ClothCondition[];
+      clothTypeWeights?: ClothWeightMap;
+      clothConditionWeights?: ConditionWeightMap;
     };

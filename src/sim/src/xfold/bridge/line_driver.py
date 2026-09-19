@@ -28,7 +28,6 @@ Do not block mj_step on network I/O.
 
 from __future__ import annotations
 
-import os
 import threading
 import time
 from typing import TYPE_CHECKING
@@ -79,11 +78,6 @@ _TRACK_EVERY = 16  # ~30 Hz at timestep 0.002
 _HEARTBEAT_S = 5.0
 # A cycle is ~45 s of sim time. Well past that, something is wedged.
 _SIM_TIME_CAP_S = 240.0
-
-
-def _skewed_default() -> bool:
-    """XFOLD_SKEWED=1 drops the shirt off square, like `--skewed` on the CLI."""
-    return os.environ.get("XFOLD_SKEWED", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 class LineDriver:
@@ -199,6 +193,7 @@ class LineDriver:
                     repeat=False,
                     log=pending.append,
                     skewed=skewed,
+                    seed=seed,
                     on_photo=take_photo,
                 )
             cfg = shirt_config()
