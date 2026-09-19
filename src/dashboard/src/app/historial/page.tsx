@@ -1,5 +1,6 @@
-import { HistoryView } from "@/components/HistoryView";
+import { redirect } from "next/navigation";
 
+/** The run list is the home page now. */
 export default function HistoryPage() {
-  return <HistoryView />;
+  redirect("/");
 }

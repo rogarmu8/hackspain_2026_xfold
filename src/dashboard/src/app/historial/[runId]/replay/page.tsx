@@ -1,8 +1,9 @@
-import { RunReplayView } from "@/components/RunReplayView";
+import { redirect } from "next/navigation";
 
+/** Replay lives inside the control view now. */
 export default async function RunReplayPage(
   props: PageProps<"/historial/[runId]/replay">,
 ) {
   const { runId } = await props.params;
-  return <RunReplayView runId={runId} />;
+  redirect(`/historial/${runId}`);
 }

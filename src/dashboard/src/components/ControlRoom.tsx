@@ -5,14 +5,18 @@ import type { CellState } from "@xfold/protocol";
 import { AppShell } from "@/components/AppShell";
 import { BatchContextPanel } from "@/components/BatchContextPanel";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
+import { RunSummaryPanel } from "@/components/RunSummaryPanel";
 import { SimulationViewport } from "@/components/SimulationViewport";
 import { StageStepper } from "@/components/StageStepper";
 import { useDashboard } from "@/lib/dashboard-context";
 import type { FixtureScenario } from "@/lib/adapter";
 import { formatSeconds, stageLabel } from "@/lib/format";
+import type { RunLifecycle } from "@/lib/types";
+import { useRunReplay } from "@/lib/use-run-replay";
 import Link from "next/link";
 import { ArrowUpRight, TriangleAlert } from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
+import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./ui/sheet";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { lifecycleLabel } from "@/lib/format";
@@ -92,7 +96,13 @@ function useInspectorWidth() {
   return { width, dragging, onPointerDown, onKeyDown };
 }
 
-export function ControlRoom() {
+const FINISHED = new Set<RunLifecycle>(["succeeded", "failed", "cancelled"]);
+
+/**
+ * Single run view. The active run gets the live stream + commands; a finished
+ * run becomes a scrubbable replay of the same layout.
+ */
+export function ControlRoom({ runId }: { runId: string }) {
   const {
     snapshot,
     scenario,
@@ -101,12 +111,18 @@ export function ControlRoom() {
     requestCommand,
     source,
     bridgeUrl,
+    getRun,
   } = useDashboard();
   const [selectedStage, setSelectedStage] = useState<CellState | null>(null);
   const stageTrigger = useRef<HTMLElement | null>(null);
   const inspector = useInspectorWidth();
 
-  const run = snapshot.activeRun;
+  const run = getRun(runId);
+  const finished = Boolean(run && FINISHED.has(run.lifecycle));
+  const replay = useRunReplay({ run, enabled: finished, bridgeUrl });
+  const isActive = Boolean(run && run.id === snapshot.activeRun?.id);
+  const notFound = !run;
+
   const stageDetail =
     run && selectedStage
       ? run.stages.find((s) => s.state === selectedStage)
@@ -116,10 +132,22 @@ export function ControlRoom() {
       ? run.events.filter((e) => e.stage === selectedStage)
       : [];
 
+  const selectStage = (state: CellState) => {
+    if (finished) {
+      setSelectedStage((prev) => (prev === state ? null : state));
+      const marker = replay.markers.find((m) => m.state === state);
+      if (marker) replay.seek(marker.t);
+      return;
+    }
+    stageTrigger.current = document.activeElement as HTMLElement;
+    setSelectedStage(state);
+  };
+
   return (
     <AppShell
-      title="Centro de control"
-      eyebrow="OpenArm · prensa · pliegue · bolsa"
+      title={run?.id ?? runId}
+      eyebrow={run ? (run.name ?? undefined) : undefined}
+      back={{ href: "/", label: "Ejecuciones" }}
       fit
       actions={
         <>
@@ -128,10 +156,29 @@ export function ControlRoom() {
             provenance={snapshot.provenance}
             lastUpdatedIso={snapshot.lastUpdatedIso}
           />
+          {!isActive && snapshot.activeRun ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/historial/${snapshot.activeRun.id}`}>
+                Ver activa <ArrowUpRight className="size-3.5" aria-hidden />
+              </Link>
+            </Button>
+          ) : null}
           <NewExperimentDialog />
         </>
       }
     >
+      {notFound ? (
+        <Alert className="mb-3 py-2">
+          <AlertTitle>Ejecución no encontrada</AlertTitle>
+          <AlertDescription>
+            No hay datos para <span className="font-mono">{runId}</span>.
+            <Link href="/" className="inline-flex items-center gap-1">
+              Ver ejecuciones <ArrowUpRight className="size-3.5" aria-hidden />
+            </Link>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       {snapshot.incident ? (
         <Alert variant="destructive" className="mb-3 py-2">
           <TriangleAlert className="size-4" />
@@ -157,15 +204,16 @@ export function ControlRoom() {
             provenance={snapshot.provenance}
             streamAvailable={snapshot.capabilities.viewportStream}
             bridgeUrl={bridgeUrl}
+            replay={finished ? replay : null}
           />
 
           <section className="shrink-0 border border-divider bg-surface px-4 py-3">
             <StageStepper
-              stages={run?.stages ?? null}
+              stages={finished ? replay.stages : run?.stages ?? null}
               selected={selectedStage}
-              onSelect={(state) => { stageTrigger.current = document.activeElement as HTMLElement; setSelectedStage(state); }}
+              onSelect={selectStage}
             />
-            <Sheet open={Boolean(selectedStage && run)} onOpenChange={(open) => { if (!open) setSelectedStage(null); }}>
+            <Sheet open={Boolean(selectedStage && run && !finished)} onOpenChange={(open) => { if (!open) setSelectedStage(null); }}>
               <SheetContent onCloseAutoFocus={(event) => { event.preventDefault(); stageTrigger.current?.focus(); }}>
                 <SheetHeader>
                   <SheetTitle>{selectedStage ? stageLabel(selectedStage) : "Detalle de etapa"}</SheetTitle>
@@ -202,14 +250,18 @@ export function ControlRoom() {
         </div>
 
         <div className="min-h-0 min-w-0 xl:overflow-y-auto">
-          <BatchContextPanel
-            batch={snapshot.activeBatch}
-            run={run}
-            capabilities={snapshot.capabilities}
-            pendingCommand={pendingCommand}
-            disconnected={snapshot.connection === "disconnected"}
-            onCommand={requestCommand}
-          />
+          {run && finished ? (
+            <RunSummaryPanel run={run} selectedStage={selectedStage} />
+          ) : (
+            <BatchContextPanel
+              batch={isActive ? snapshot.activeBatch : null}
+              run={run}
+              capabilities={snapshot.capabilities}
+              pendingCommand={pendingCommand}
+              disconnected={snapshot.connection === "disconnected"}
+              onCommand={requestCommand}
+            />
+          )}
         </div>
       </div>
 

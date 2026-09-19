@@ -42,4 +42,5 @@ Leyenda: ⬜ todo · 🟡 en curso · ✅ hecho · ⛔ bloqueado
 | 2026-09-19 | Viewport MJPEG prefers `press_cell` (flex T + UR5e via `scene.build`); `cell.xml` keeps `overview` + cloth as fallback. No `shirt_free` proxy. | press track |
 | 2026-09-19 | **SimSession** compartida + **PressBridgeDriver** (PressCycle → `emit_state` con `t=data.time`). Trajectory NPZ + `GET …/recording/frame?t=` + UI Replay con scrubber FSM. MockDriver solo si MuJoCo/press_cell falla. | bridge |
 | 2026-09-19 | Viewport **primary** = long-poll JPEG (`/viewport/frame?after_seq&wait_ms`) via Next `/api/bridge` proxy. MJPEG multipart = legacy only (Safari black-box). Dual plane: journal SSE ≠ pixels. | bridge |
+| 2026-09-19 | Dashboard **sin sidebar ni pestañas**: `/` = lista de ejecuciones (Experimentos + Historial fusionados), `/historial/{runId}` = vista de control (live si activa, **replay integrado** con scrubber si terminada). Eliminados `ExperimentsView`, `RunDetailView`, `RunReplayView`; `/experimentos`, `/historial`, `…/replay` redirigen. Batches = columna enlazable, `/experimentos/{batchId}` se mantiene. | dashboard |
 | | | |

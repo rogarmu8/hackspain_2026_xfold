@@ -1,14 +1,17 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
-  ArrowUpRight,
   Camera,
   CameraOff,
+  ChevronLeft,
+  ChevronRight,
   FlaskConical,
+  History,
   Maximize2,
   Minimize2,
+  Pause,
+  Play,
   Radio,
 } from "lucide-react";
 import { CellSchematic } from "./CellSchematic";
@@ -20,6 +23,7 @@ import {
   useLiveViewport,
   type ViewportStatus,
 } from "@/lib/use-live-viewport";
+import type { RunReplay } from "@/lib/use-run-replay";
 import type { DataProvenance, RunDetail } from "@/lib/types";
 
 export function SimulationViewport({
@@ -27,12 +31,15 @@ export function SimulationViewport({
   provenance,
   streamAvailable,
   bridgeUrl,
+  replay,
 }: {
   run: RunDetail | null;
   provenance: DataProvenance;
   streamAvailable: boolean;
   /** Direct bridge URL (fallback if Next proxy cannot reach it). */
   bridgeUrl?: string;
+  /** When set, the viewport scrubs a finished run instead of showing the live stream. */
+  replay?: RunReplay | null;
 }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -50,9 +57,9 @@ export function SimulationViewport({
 
   const running = run?.lifecycle === "running";
   const showLive =
-    streamAvailable && Boolean(bridgeUrl) && provenance !== "fixture";
+    !replay && streamAvailable && Boolean(bridgeUrl) && provenance !== "fixture";
   const live = running && showLive;
-  const stage = run?.currentState ?? null;
+  const stage = replay ? replay.active : run?.currentState ?? null;
   const StageIcon = stage ? STAGE_ICONS[stage] : null;
 
   const viewport = useLiveViewport({
@@ -85,15 +92,9 @@ export function SimulationViewport({
             </StatusBadge>
           ) : null}
           {showLive ? <ViewportStatusBadge status={viewport.status} /> : null}
+          {replay?.loading ? <StatusBadge tone="neutral">Cargando replay</StatusBadge> : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {run ? (
-            <Button asChild variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-xs">
-              <Link href={`/historial/${run.id}`}>
-                Detalle <ArrowUpRight className="size-3.5" aria-hidden />
-              </Link>
-            </Button>
-          ) : null}
           <Button
             variant="ghost"
             size="icon-sm"
@@ -114,7 +115,20 @@ export function SimulationViewport({
         <span className="hud-corner" aria-hidden />
         {live ? <div className="scanline" aria-hidden /> : null}
 
-        {showLive ? (
+        {replay ? (
+          replay.frameSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={replay.frameSrc}
+              alt={`Frame MuJoCo en t=${formatSeconds(replay.t)}`}
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center p-6">
+              <CellSchematic stage={stage} />
+            </div>
+          )
+        ) : showLive ? (
           viewport.src ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -157,7 +171,12 @@ export function SimulationViewport({
             )}
           </div>
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em]">
-            {live ? (
+            {replay ? (
+              <>
+                <History className="size-3.5" strokeWidth={1.75} aria-hidden />
+                <span>replay{replay.hasTrajectory ? " · mujoco" : " · fsm"}</span>
+              </>
+            ) : live ? (
               <>
                 <span className="pulse-dot size-2 rounded-full bg-danger text-danger" aria-hidden />
                 <span>live</span>
@@ -179,7 +198,9 @@ export function SimulationViewport({
           </div>
         </div>
 
-        {run?.telemetry ? (
+        {replay ? (
+          <ReplayControls replay={replay} />
+        ) : run?.telemetry ? (
           <dl className="pointer-events-none absolute inset-x-0 bottom-0 grid grid-cols-5 gap-x-3 border-t border-hud/15 bg-black/60 px-6 py-2.5 text-left backdrop-blur-[2px]">
             <Metric label="fase" value={stageLabel(run.telemetry.state)} />
             <Metric label="ciclo" value={String(run.telemetry.cycle)} />
@@ -195,6 +216,52 @@ export function SimulationViewport({
         ) : null}
       </div>
     </section>
+  );
+}
+
+/** Bottom HUD bar: transport + scrubber with FSM markers, synced to `replay.t`. */
+function ReplayControls({ replay }: { replay: RunReplay }) {
+  const pct = (t: number) => (replay.tMax > 0 ? (t / replay.tMax) * 100 : 0);
+  return (
+    <div className="absolute inset-x-0 bottom-0 flex items-center gap-3 border-t border-hud/15 bg-black/60 px-4 py-2 backdrop-blur-[2px]">
+      <div className="flex shrink-0 items-center gap-0.5">
+        <Button variant="ghost" size="icon-sm" className="size-7 text-hud hover:bg-hud/10 hover:text-hud" onClick={() => replay.stepMarker(-1)} aria-label="Fase anterior" title="Fase anterior">
+          <ChevronLeft className="size-4" />
+        </Button>
+        <Button variant="ghost" size="icon-sm" className="size-7 text-hud hover:bg-hud/10 hover:text-hud" onClick={replay.togglePlay} aria-label={replay.playing ? "Pausa" : "Reproducir"} title={replay.playing ? "Pausa" : "Reproducir"}>
+          {replay.playing ? <Pause className="size-4" /> : <Play className="size-4" />}
+        </Button>
+        <Button variant="ghost" size="icon-sm" className="size-7 text-hud hover:bg-hud/10 hover:text-hud" onClick={() => replay.stepMarker(1)} aria-label="Fase siguiente" title="Fase siguiente">
+          <ChevronRight className="size-4" />
+        </Button>
+      </div>
+
+      <div className="relative min-w-0 flex-1">
+        <div className="pointer-events-none absolute inset-x-0 top-1/2 h-3 -translate-y-1/2" aria-hidden>
+          {replay.markers.filter((m) => m.state).map((m) => (
+            <span
+              key={`${m.seq ?? ""}-${m.t}-${m.state}`}
+              className="absolute top-0 bottom-0 w-px -translate-x-1/2 bg-hud/50"
+              style={{ left: `${pct(m.t)}%` }}
+            />
+          ))}
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={replay.tMax || 1}
+          step={0.01}
+          value={replay.t}
+          onChange={(e) => replay.seek(Number(e.target.value))}
+          aria-label="Tiempo simulado del replay"
+          className="relative block w-full accent-[var(--color-hud)]"
+        />
+      </div>
+
+      <span className="shrink-0 font-mono text-[11px] tabular text-hud">
+        {formatSeconds(replay.t)} <span className="text-hud-dim">/ {formatSeconds(replay.tMax)}</span>
+      </span>
+    </div>
   );
 }
 
