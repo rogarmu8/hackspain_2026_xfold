@@ -374,6 +374,33 @@ class SimSession:
                     except Exception:
                         pass
 
+    def render_rgb(self) -> np.ndarray | None:
+        """Live viewport frame as raw RGB, for the video encoder.
+
+        Same lock discipline as `render_jpeg`: `update_scene` reads MjData and
+        needs the lock, rasterising does not.
+        """
+        with self.lock:
+            if not self._ok or self._mujoco is None or self._render_broken:
+                return None
+            try:
+                renderer = self._renderer_for_current_thread()
+                renderer.update_scene(self.data, camera=self.camera)
+            except Exception as exc:  # noqa: BLE001
+                self._render_broken = True
+                self._renderers.pop(threading.get_ident(), None)
+                print(
+                    f"[sim-session] offscreen render unavailable ({exc}); "
+                    "continuing without a viewport",
+                    flush=True,
+                )
+                return None
+        try:
+            return np.asarray(renderer.render())
+        except Exception as exc:  # noqa: BLE001
+            print(f"[sim-session] render failed: {exc}", flush=True)
+            return None
+
     def render_jpeg(self) -> tuple[bytes, str] | None:
         """Live viewport frame, holding the lock only as long as it must.
 
