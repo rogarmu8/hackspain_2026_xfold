@@ -454,9 +454,18 @@ ANCHOR_PATCH = 0.08
 class PinchHold:
     """Spring a patch of flex vertices onto the hand's pinch point."""
 
-    def __init__(self, model, data) -> None:
+    def __init__(
+        self,
+        model,
+        data,
+        *,
+        hz: float = PINCH_SPRING_HZ,
+        force_limit: float = PINCH_FORCE_LIMIT,
+    ) -> None:
         self._model = model
         self._data = data
+        self._hz = float(hz)
+        self._force_limit = float(force_limit)
         self._vert_body = np.asarray(model.flex_vertbodyid, dtype=np.int64)
         self._bodies: np.ndarray | None = None
         self._offsets: np.ndarray | None = None
@@ -502,7 +511,7 @@ class PinchHold:
         import mujoco
 
         target = np.asarray(target, dtype=np.float64)
-        omega = 2.0 * np.pi * PINCH_SPRING_HZ
+        omega = 2.0 * np.pi * self._hz
         vel = np.empty(6)
         for body, offset in zip(self._bodies, self._offsets):
             mass = float(self._model.body_mass[body])
@@ -512,7 +521,7 @@ class PinchHold:
             )
             error = (target + offset) - pos
             force = mass * (omega**2) * error - 2.0 * mass * omega * vel[3:6]
-            limit = PINCH_FORCE_LIMIT * mass * 9.81
+            limit = self._force_limit * mass * 9.81
             magnitude = np.linalg.norm(force)
             if magnitude > limit:
                 force *= limit / magnitude

@@ -1,0 +1,77 @@
+<!--
+  Turntable conveyor: a thick steel drum with a rectangular dual-lane belt
+  inscribed on top (same charcoal belt / slat language as belt 1 and belt 2).
+  All deco; contact is belt_top_orient / belt_top in line.xml. Shirt vertices
+  sit at 0.565, above every geom here.
+
+  Body origin TABLE_Z0 = 0.500 (drum centre).
+    drum  r=0.65  half-h=0.038  → top 0.538
+    belt  half-h=0.0115 at z=0.0495 → 0.538 .. 0.561
+-->
+<mujoco model="xfold-spread-rig">
+  <worldbody>
+    <!-- Pedestal and bearing under the drum. Stays put while the deck turns. -->
+    <geom name="orient_foot" class="deco" type="cylinder" size="0.42 0.035"
+          pos="-1.55 0 0.035" material="panel_grey"/>
+    <geom name="orient_hub" class="deco" type="cylinder" size="0.16 0.155"
+          pos="-1.55 0 0.260" material="steel"/>
+    <geom name="orient_bearing" class="deco" type="cylinder" size="0.50 0.016"
+          pos="-1.55 0 0.446" material="steel"/>
+
+    <geom name="orient_leg_0" class="deco" type="box" size="0.028 0.028 0.22"
+          pos="-1.15  0.00 0.22" material="steel"/>
+    <geom name="orient_leg_1" class="deco" type="box" size="0.028 0.028 0.22"
+          pos="-1.35  0.346 0.22" material="steel"/>
+    <geom name="orient_leg_2" class="deco" type="box" size="0.028 0.028 0.22"
+          pos="-1.75  0.346 0.22" material="steel"/>
+    <geom name="orient_leg_3" class="deco" type="box" size="0.028 0.028 0.22"
+          pos="-1.95  0.00 0.22" material="steel"/>
+    <geom name="orient_leg_4" class="deco" type="box" size="0.028 0.028 0.22"
+          pos="-1.75 -0.346 0.22" material="steel"/>
+    <geom name="orient_leg_5" class="deco" type="box" size="0.028 0.028 0.22"
+          pos="-1.35 -0.346 0.22" material="steel"/>
+
+    <geom name="orient_caster_0" class="deco" type="cylinder" size="0.020 0.016"
+          pos="-1.03  0.00 0.478" material="roller"/>
+    <geom name="orient_caster_1" class="deco" type="cylinder" size="0.020 0.016"
+          pos="-1.182  0.368 0.478" material="roller"/>
+    <geom name="orient_caster_2" class="deco" type="cylinder" size="0.020 0.016"
+          pos="-1.55  0.52 0.478" material="roller"/>
+    <geom name="orient_caster_3" class="deco" type="cylinder" size="0.020 0.016"
+          pos="-1.918  0.368 0.478" material="roller"/>
+    <geom name="orient_caster_4" class="deco" type="cylinder" size="0.020 0.016"
+          pos="-2.07  0.00 0.478" material="roller"/>
+    <geom name="orient_caster_5" class="deco" type="cylinder" size="0.020 0.016"
+          pos="-1.918 -0.368 0.478" material="roller"/>
+    <geom name="orient_caster_6" class="deco" type="cylinder" size="0.020 0.016"
+          pos="-1.55 -0.52 0.478" material="roller"/>
+    <geom name="orient_caster_7" class="deco" type="cylinder" size="0.020 0.016"
+          pos="-1.182 -0.368 0.478" material="roller"/>
+
+    <geom name="orient_drive" class="deco" type="box" size="0.07 0.055 0.045"
+          pos="-2.08 0.42 0.430" material="panel_grey"/>
+    <geom name="orient_drive_b" class="deco" type="box" size="0.045 0.04 0.03"
+          pos="-2.08 0.42 0.505" material="steel"/>
+    <geom name="orient_drive_shaft" class="deco" type="cylinder" size="0.014 0.04"
+          pos="-2.02 0.36 0.455" euler="0.9 0 0.4" material="steel"/>
+
+    <geom name="orient_gap" class="deco" type="box" size="0.012 0.470 0.012"
+          pos="-0.895 0 0.548" material="slat"/>
+
+    <body name="orient_table" mocap="true" pos="-1.55 0 0.500">
+      <geom name="orient_disk" class="deco" type="cylinder" size="0.65 0.038"
+            material="steel"/>
+
+      <!-- Dual-lane belt inscribed in the circle. Thickness hangs down into
+           the drum so the top stays at 0.561, under the shirt. -->
+      <geom name="orient_belt_l" class="deco" type="box" size="0.460 0.220 0.0115"
+            pos="0  0.236 0.0495" material="belt"/>
+      <geom name="orient_belt_r" class="deco" type="box" size="0.460 0.220 0.0115"
+            pos="0 -0.236 0.0495" material="belt"/>
+      <geom name="orient_stripe" class="deco" type="box" size="0.460 0.016 0.0116"
+            pos="0 0 0.0496" material="slat"/>
+      <geom name="orient_seam" class="deco" type="box" size="0.003 0.472 0.0117"
+            pos="0 0 0.0497" material="slat"/>
+    </body>
+  </worldbody>
+</mujoco>

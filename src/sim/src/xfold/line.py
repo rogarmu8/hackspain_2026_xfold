@@ -1,6 +1,8 @@
-"""The line, no robots: belt -> press -> flap folder -> bagger -> carton.
+"""The line: rotating infeed -> belt -> press -> flap folder -> bagger -> carton.
 
-1. A shirt lies flat on the belt, collar leading, already where it belongs.
+1. A shirt is laid on the infeed. If the selector's "skewed" condition is
+   on, it is dropped at a random heading. A rotating conveyor turns it
+   until the collar leads downstream, then the linear belt takes it.
 2. The belt carries it under the press and stops. The platen comes down on
    the belt itself, steams, and lifts.
 3. The belt runs on. The shirt leaves the belt's end onto the folder, and
@@ -41,8 +43,8 @@ does not collide with itself in MuJoCo, so ClothLayers keeps the folded
 layers apart from then on.
 
 With a window:  moon run sim:run              # type, then good / damaged / notGood / skewed
-                moon run sim:run -- -g tee --skewed
-                moon run sim:run -- -g dress  # skip the list
+                moon run sim:run -- -g tee
+                moon run sim:run -- -g tee --skewed  # any heading; conveyor squares it
 Headless:       pixi run -e mujoco python -P -m xfold.line --headless --cycles 1 -g jersey
 Catalogue:      moon run sim:run -- --list-garments
 """
@@ -65,6 +67,7 @@ from .garments import (
 )
 from .platform import reexec_under_mjpython
 from .self_collide import ClothLayers
+from .spread import SpreadStation
 from .shirt import (
     SHIRT_RADIUS,
     apply_shirt_config,
@@ -84,6 +87,7 @@ LINE_PATH = Path(__file__).resolve().parents[2] / "models" / "line.xml"
 
 LINE_PHASES = (
     {"state": "LOAD", "label": "Carga", "station": "infeed"},
+    {"state": "ORIENT", "label": "Orientación", "station": "orient"},
     {"state": "TO_PRESS", "label": "A prensa", "station": "belt"},
     {"state": "PRESS", "label": "Prensado", "station": "press"},
     {"state": "TO_QC", "label": "A cámara QC", "station": "belt"},
@@ -110,9 +114,12 @@ BELT_ACCEL = 0.6  # m/s^2, both speeding up and braking
 # Cloth this close above the belt top rides with it.
 ON_BELT = 0.03
 
-# How far a "not square on the belt" drop may wander laterally.
-# Heading itself is sampled from the run seed (see ``skew_pose``).
+# How far a "not square on the belt" drop may wander.
+# Heading is sampled from the run seed; the infeed turner squares it.
+SKEW_X_MAX = 0.05
 SKEW_Y_MAX = 0.05
+SKEW_WRINKLE = 0.004
+BELT_HALF_Y = 0.475
 # QC station: where the belt stops the pressed shirt for its product shot.
 # Downstream of the press and far enough from the belt's end (0.30) that the
 # whole 0.65 m of shirt stays on the belt.
@@ -127,7 +134,6 @@ FLASH_FALL = 0.35  # seconds, full -> dark
 # the print and any stain with it.
 QC_DIP = 0.22  # scene lights during the shot, as a fraction of normal
 FLASH_DIFFUSE = (0.34, 0.34, 0.33)
-
 # The shirt's centre when it is put on the belt, and where the press is.
 SPAWN_X = -1.55
 PRESS_X = -0.75
@@ -344,6 +350,58 @@ def flat_shirt(center_x: float, *, yaw: float = 0.0, y: float = 0.0) -> np.ndarr
     return world
 
 
+@dataclass(frozen=True)
+class OperatorPlace:
+    world: np.ndarray
+    yaw: float
+    dx: float
+    dy: float
+
+
+def _slide_onto_belt(world: np.ndarray) -> np.ndarray:
+    """Shift the T so as much of it as possible sits on the infeed."""
+    out = world.copy()
+    y_min, y_max = float(out[:, 1].min()), float(out[:, 1].max())
+    if y_min < -BELT_HALF_Y:
+        out[:, 1] += -BELT_HALF_Y - y_min
+    if y_max > BELT_HALF_Y:
+        out[:, 1] += BELT_HALF_Y - y_max
+    y_min, y_max = float(out[:, 1].min()), float(out[:, 1].max())
+    if y_min < -BELT_HALF_Y or y_max > BELT_HALF_Y:
+        out[:, 1] -= 0.5 * (y_min + y_max)
+    x_min, x_max = float(out[:, 0].min()), float(out[:, 0].max())
+    if x_min < BELT_X[0]:
+        out[:, 0] += BELT_X[0] - x_min
+    if x_max > BELT_X[1]:
+        out[:, 0] += BELT_X[1] - x_max
+    return out
+
+
+def operator_shirt(center_x: float, rng: np.random.Generator) -> OperatorPlace:
+    """Random operator lay: any heading, a shift, light wrinkles.
+
+    Drawn again every cycle. The spreaders then spin it onto the square T,
+    collar downstream.
+    """
+    yaw = float(rng.uniform(-math.pi, math.pi))
+    dy = float(rng.uniform(-SKEW_Y_MAX, SKEW_Y_MAX))
+    dx = float(rng.uniform(-SKEW_X_MAX, SKEW_X_MAX))
+    world = _slide_onto_belt(flat_shirt(center_x + dx, yaw=yaw, y=dy))
+    dx = float(world[:, 0].mean() - center_x)
+    dy = float(world[:, 1].mean())
+    rel = world - world.mean(axis=0)
+    wrinkle = SKEW_WRINKLE * float(rng.uniform(0.35, 1.0))
+    side = float(rng.choice((-1.0, 1.0)))
+    world[rel[:, 1] * side > 0.0, 2] += wrinkle
+    world[:, 2] += (
+        0.5
+        * wrinkle
+        * np.sin(float(rng.uniform(4.0, 9.0)) * rel[:, 0] + float(rng.uniform(0.0, 6.0)))
+    )
+    world[:, 2] = np.maximum(world[:, 2], SURFACE_Z + SHIRT_RADIUS)
+    return OperatorPlace(world, yaw, dx, dy)
+
+
 class Line:
     """Runs the line one physics step at a time: ``step()`` forever.
 
@@ -359,6 +417,7 @@ class Line:
         log=print,
         *,
         skewed: bool = False,
+        flat: bool = False,
         seed: int = 0,
         on_photo=None,
         on_event=None,
@@ -373,8 +432,12 @@ class Line:
         self.on_event = on_event
         self.phase = "LOAD"
         self.skewed = skewed
+        self.flat = flat
         self.seed = int(seed)
+        self._rng = np.random.default_rng(self.seed if self.seed else None)
+        self._place: OperatorPlace | None = None
         self._skew_yaw = 0.0
+        self._skew_y = 0.0
         # Called once, at the top of the flash, to take the product shot.
         # None (the windowed run) still fires the flash; nothing records it.
         self.on_photo = on_photo
@@ -408,6 +471,9 @@ class Line:
         self._slat_x0 = model.geom_pos[self._slats, 0].copy()
         self._mocap = {f.body: int(model.body(f.body).mocapid[0]) for f in FLAPS}
         self._flap_geom = {f.body: model.geom(f.body).id for f in FLAPS}
+        self._spread = SpreadStation(
+            model, data, qadr=self._qadr, rest=self._rest, dadr=self._dadr
+        )
 
         self._slats2 = [
             model.geom(i).id
@@ -503,6 +569,7 @@ class Line:
                 next(self._bagger)
             except StopIteration:
                 self._bagger = None
+        self._spread.apply()
         self._drive_belt()
         self._drive_belt2()
         self._steam.follow(self.data)
@@ -537,6 +604,7 @@ class Line:
             & (pos[:, 2] < SURFACE_Z + ON_BELT)
         )
         self.data.qvel[self._dadr[riding]] = self.belt_speed
+        self.data.qvel[self._dadr[riding] + 1] = 0.0
 
     def _drive_belt2(self) -> None:
         """Belt 2 carries the bag while the bag's centre is over it.
@@ -602,14 +670,55 @@ class Line:
 
     def _cycle(self):
         self._load()
-        load_msg = (
-            f"skewed shirt on the belt ({math.degrees(self._skew_yaw):.0f}°)"
-            if self.skewed
-            else "flat shirt on the belt"
-        )
-        self.phase = "LOAD"
-        yield from self._hold("LOAD", load_msg, 0.6,
-                              measurements={"spawnYawRad": self._skew_yaw, "spawnOffsetYM": self._skew_y})
+        if self.skewed and not self.flat:
+            place = self._place
+            if place is not None:
+                load_msg = (
+                    f"operator place  {math.degrees(place.yaw):+.0f} deg, "
+                    f"{place.dy * 100:+.1f} cm aside, {place.dx * 100:+.1f} cm along"
+                )
+            else:
+                load_msg = (
+                    f"skewed shirt on the belt ({math.degrees(self._skew_yaw):.0f}°)"
+                )
+            self.phase = "LOAD"
+            yield from self._hold(
+                "LOAD",
+                load_msg,
+                0.7,
+                measurements={
+                    "spawnYawRad": self._skew_yaw,
+                    "spawnOffsetYM": self._skew_y,
+                },
+            )
+            square = flat_shirt(SPAWN_X)
+            self._enter(
+                "SPREAD",
+                "rotating conveyor squares the shirt",
+                phase="ORIENT",
+            )
+            yield from self._spread.cycle(self, square)
+            pos = self.positions()
+            span = pos.max(axis=0) - pos.min(axis=0)
+            err = float(np.linalg.norm((pos[:, :2] - square[:, :2]).mean(axis=0)))
+            self._enter(
+                "SPREAD",
+                f"squared {span[0] * 100:.0f} x {span[1] * 100:.0f} cm, "
+                f"centre error {err * 1000:.0f} mm",
+            )
+            yield from self._hold("SPREAD", "", 0.4, quiet=True)
+        else:
+            load_msg = "flat shirt on the belt"
+            self.phase = "LOAD"
+            yield from self._hold(
+                "LOAD",
+                load_msg,
+                0.6,
+                measurements={
+                    "spawnYawRad": self._skew_yaw,
+                    "spawnOffsetYM": self._skew_y,
+                },
+            )
 
         self._enter("BELT", "carry the shirt under the press", phase="TO_PRESS")
         yield from self._belt_until(lambda pos: PRESS_X - float(pos[:, 0].mean()))
@@ -740,13 +849,19 @@ class Line:
         self._steam.reset()
         set_steam(self.model, False)
         self.data.ctrl[self._stroke] = STROKE_OPEN
+        self._spread.reset()
+        self._place = None
         yaw = 0.0
         y = 0.0
         if self.skewed:
-            yaw, y = skew_pose(self.seed)
+            place = operator_shirt(SPAWN_X, self._rng)
+            self._place = place
+            world = place.world
+            yaw, y = place.yaw, place.dy
+        else:
+            world = flat_shirt(SPAWN_X)
         self._skew_yaw = yaw
         self._skew_y = y
-        world = flat_shirt(SPAWN_X, yaw=yaw, y=y)
         ids = np.arange(len(world))
         self._pin(ids, world, None)
         for name, gid in self._g.items():
@@ -1253,7 +1368,7 @@ class FollowCam:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="XFOLD line: belt, press, folder")
+    parser = argparse.ArgumentParser(description="XFOLD line: spreaders, belt, press, folder")
     parser.add_argument("--cycles", type=int, default=0, help="0 keeps going")
     parser.add_argument("--headless", action="store_true", help="no window, as fast as it can")
     parser.add_argument(
@@ -1262,6 +1377,11 @@ def main() -> None:
         default=0,
         help="reproducible random draws (stain variant, skewed heading)",
     )
+    parser.add_argument(
+        "--flat",
+        action="store_true",
+        help="skip the infeed turner even if --skewed",
+    )
     add_garment_arguments(parser)
     parser.add_argument(
         "--shots", default="", help="headless: save a frame per stage into this directory"
@@ -1269,8 +1389,8 @@ def main() -> None:
     parser.add_argument(
         "--camera",
         default="follow",
-        help="follow (tracks the shirt) or a fixed one: overview, press_cam, fold_cam, "
-        "bagger_cam, bag_cam",
+        help="follow (tracks the shirt) or a fixed one: overview, spread_cam, press_cam, "
+        "fold_cam, bagger_cam, bag_cam",
     )
     args = parser.parse_args()
     chosen = garment_from_args(
@@ -1294,9 +1414,14 @@ def main() -> None:
     model = build()
     data = mujoco.MjData(model)
     line = Line(
-        model, data, repeat=args.cycles == 0, skewed=bool(args.skewed), seed=int(args.seed)
+        model,
+        data,
+        repeat=args.cycles == 0,
+        skewed=bool(args.skewed),
+        flat=bool(args.flat),
+        seed=int(args.seed),
     )
-    pose = "skewed" if args.skewed else "square"
+    pose = "operator-skewed" if args.skewed and not args.flat else "square"
     print(
         f"XFOLD line  garment={cfg.garment} ({cfg.mesh})  pose={pose}  {LINE_PATH}",
         flush=True,

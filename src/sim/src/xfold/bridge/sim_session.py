@@ -165,7 +165,7 @@ class SimSession:
         from xfold.shirt import shirt_config
 
         self._garment_key = f"{shirt_config().garment}:{shirt_config().texture}"
-        print("[sim-session] line.xml (belt, press, folder, bagger)", flush=True)
+        print("[sim-session] line.xml (orient, belt, press, folder, bagger)", flush=True)
         return True
 
     def _compile_press_cell(self, mujoco) -> bool:

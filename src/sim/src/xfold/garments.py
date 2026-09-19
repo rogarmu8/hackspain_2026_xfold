@@ -278,7 +278,7 @@ def add_garment_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--skewed",
         action="store_true",
-        help="spawn the cloth flat on the belt with a seeded random heading",
+        help="random heading on the belt; the infeed turner squares it",
     )
     parser.add_argument(
         "--list-garments",
@@ -407,7 +407,7 @@ def prompt_garment(current: str = "tee", *, skewed: bool = False) -> GarmentPick
             ("good", "clean, square on the belt"),
             ("damaged", "hole / torn hem"),
             ("notgood", "stain (random 1–3)"),
-            ("skewed", "flat on the belt, heading from the seed"),
+            ("skewed", "any heading (infeed turner squares it)"),
         )
         cond_idx = _arrow_pick("2/2  Condition", list(conds), cond_idx, fd)
     finally:
@@ -430,7 +430,7 @@ def prompt_garment(current: str = "tee", *, skewed: bool = False) -> GarmentPick
     else:
         chosen = base_key
     item = CATALOG[chosen]
-    extra = "  skewed on belt" if pose else ""
+    extra = "  any heading, conveyor will square" if pose else ""
     print(f"garment: {chosen}  ({item.label}){extra}", flush=True)
     return GarmentPick(chosen, skewed=pose)
 

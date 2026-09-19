@@ -1,11 +1,13 @@
 <!--
-  The line, no robots: infeed belt -> press -> flap folder.
+  The line: dual-arm spread station -> infeed belt -> press -> flap folder.
 
-  A shirt arrives on the belt already flat, collar leading (+x). The belt
-  stops it under the press, the platen comes down on the belt itself (the
-  press's own bed and table are removed in xfold.line), then the belt runs
-  the shirt off its end onto the folder. The folder is a FlipFold on legs:
-  a sliding peel under the collar, a flap on each side and one under the hem.
+  A shirt is laid on the belt. If it is the selector's skewed condition, it
+  lands at a random heading; a rotating conveyor (spread_rig.xml) turns it
+  until the collar leads (+x). The belt then stops
+  it under the press, the platen comes down on the belt itself (the press's
+  own bed and table are removed in xfold.line), then the belt runs the
+  shirt off its end onto the folder. The folder is a FlipFold on legs: a
+  sliding peel under the collar, a flap on each side and one under the hem.
 
   Then the bagger, two stations on belt 2. Pre-made bags (gusseted, sealed on
   three sides) lie flat in a magazine behind the belt. While the shirt is
@@ -45,6 +47,7 @@
   <visual>
     <headlight diffuse="0.55 0.55 0.55" ambient="0.25 0.22 0.2"/>
     <rgba haze="0.15 0.15 0.16 1"/>
+    <quality numslices="48" numstacks="20"/>
     <global offwidth="1280" offheight="960"/>
   </visual>
 
@@ -97,6 +100,7 @@
   </asset>
 
   <include file="press_rig.xml"/>
+  <include file="spread_rig.xml"/>
 
   <worldbody>
     <light name="key" pos="-0.4 -1.2 2.2" dir="0.1 0.5 -1" diffuse="0.8 0.75 0.7"/>
@@ -104,6 +108,7 @@
     <light name="fold_light" pos="0.64 -0.3 1.5" dir="0 0.2 -1" diffuse="0.35 0.35 0.38"/>
     <light name="bag_light" pos="1.45 -0.4 1.6" dir="0 0.2 -1" diffuse="0.35 0.35 0.38"/>
     <light name="carton_light" pos="2.3 -0.4 1.6" dir="0 0.2 -1" diffuse="0.3 0.3 0.32"/>
+    <light name="spread_light" pos="-1.55 -0.4 1.8" dir="0 0.15 -1" diffuse="0.45 0.40 0.36"/>
     <geom name="floor" type="plane" size="4.0 2.5 0.05" material="floor"/>
 
     <!-- Aim points for the cameras; no geometry. -->
@@ -111,12 +116,14 @@
     <body name="fold_center" pos="0.90 0 0.56"/>
     <body name="bag_center" pos="1.55 0 0.45"/>
     <body name="bagger_center" pos="1.40 0.20 0.62"/>
+    <body name="spread_center" pos="-1.55 0 0.56"/>
 
     <camera name="overview" pos="0.45 -4.30 2.60" mode="targetbody" target="line_center"/>
     <camera name="press_cam" pos="-1.35 -1.55 1.35" mode="targetbody" target="press_platen"/>
     <camera name="fold_cam" pos="0.90 -1.15 1.70" mode="targetbody" target="fold_center"/>
     <camera name="bag_cam" pos="1.60 -1.35 1.60" mode="targetbody" target="bag_center"/>
     <camera name="bagger_cam" pos="0.75 -1.10 1.45" mode="targetbody" target="bagger_center"/>
+    <camera name="spread_cam" pos="-1.55 -1.55 1.45" mode="targetbody" target="spread_center"/>
 
     <!--
       QC station, just downstream of the press (the press frame sits around
@@ -153,9 +160,15 @@
       with the belt so it reads as moving.
     -->
     <body name="belt">
-      <geom name="belt_top" type="box" size="1.15 0.485 0.003" pos="-0.85 0 0.559" material="belt"/>
-      <geom name="belt_bed" class="deco" type="box" size="1.13 0.45 0.025" pos="-0.85 0 0.531" material="steel"/>
-      <geom name="roller_in" class="deco" type="cylinder" size="0.032 0.485" pos="-2.00 0 0.530" euler="1.5708 0 0" material="roller"/>
+      <!-- Invisible contact disk: same radius as the drum, top at 0.562. -->
+      <geom name="belt_top_orient" type="cylinder" size="0.65 0.003" pos="-1.55 0 0.559" rgba="0 0 0 0"/>
+      <!-- Linear belt starts at the drum's downstream edge (x = -0.90). -->
+      <geom name="belt_top" type="box" size="0.60 0.485 0.003" pos="-0.30 0 0.559" material="belt"/>
+      <geom name="belt_rail_l" class="deco" type="box" size="0.60 0.020 0.045" pos="-0.30  0.505 0.515" material="steel"/>
+      <geom name="belt_rail_r" class="deco" type="box" size="0.60 0.020 0.045" pos="-0.30 -0.505 0.515" material="steel"/>
+      <geom name="belt_drive_l" class="deco" type="box" size="0.045 0.038 0.030" pos="-0.88  0.545 0.555" material="panel_grey"/>
+      <geom name="belt_drive_r" class="deco" type="box" size="0.045 0.038 0.030" pos="-0.88 -0.545 0.555" material="panel_grey"/>
+      <geom name="belt_bed" class="deco" type="box" size="0.58 0.45 0.025" pos="-0.30 0 0.508" material="steel"/>
       <geom name="roller_out" class="deco" type="cylinder" size="0.032 0.485" pos="0.30 0 0.530" euler="1.5708 0 0" material="roller"/>
       <geom name="belt_leg_0" class="deco" type="box" size="0.03 0.03 0.25" pos="-1.90 0.41 0.25" material="steel"/>
       <geom name="belt_leg_1" class="deco" type="box" size="0.03 0.03 0.25" pos="-1.90 -0.41 0.25" material="steel"/>
@@ -166,14 +179,14 @@
       <geom name="press_post_l" class="deco" type="box" size="0.04 0.04 0.252" pos="-0.99 0.54 0.252" material="steel"/>
       <geom name="press_post_r" class="deco" type="box" size="0.04 0.04 0.252" pos="-0.99 -0.54 0.252" material="steel"/>
 
-      <geom name="belt_slat_0" class="deco" type="box" size="0.010 0.480 0.0006" pos="-2.00 0 0.5626" material="slat"/>
-      <geom name="belt_slat_1" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.85 0 0.5626" material="slat"/>
-      <geom name="belt_slat_2" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.70 0 0.5626" material="slat"/>
-      <geom name="belt_slat_3" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.55 0 0.5626" material="slat"/>
-      <geom name="belt_slat_4" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.40 0 0.5626" material="slat"/>
-      <geom name="belt_slat_5" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.25 0 0.5626" material="slat"/>
-      <geom name="belt_slat_6" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.10 0 0.5626" material="slat"/>
-      <geom name="belt_slat_7" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.95 0 0.5626" material="slat"/>
+      <geom name="belt_slat_0" class="deco" type="box" size="0.010 0.480 0.0006" pos="-2.00 0 0.5000" material="slat"/>
+      <geom name="belt_slat_1" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.85 0 0.5000" material="slat"/>
+      <geom name="belt_slat_2" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.70 0 0.5000" material="slat"/>
+      <geom name="belt_slat_3" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.55 0 0.5000" material="slat"/>
+      <geom name="belt_slat_4" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.40 0 0.5000" material="slat"/>
+      <geom name="belt_slat_5" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.25 0 0.5000" material="slat"/>
+      <geom name="belt_slat_6" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.10 0 0.5000" material="slat"/>
+      <geom name="belt_slat_7" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.95 0 0.5000" material="slat"/>
       <geom name="belt_slat_8" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.80 0 0.5626" material="slat"/>
       <geom name="belt_slat_9" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.65 0 0.5626" material="slat"/>
       <geom name="belt_slat_10" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.50 0 0.5626" material="slat"/>

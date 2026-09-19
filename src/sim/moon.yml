@@ -42,7 +42,7 @@ tasks:
       cache: false
       persistent: true
       runFromWorkspaceRoot: true
-  # The line: belt, press, folder, bagger (bag magazine + picker, mouth opener, tilting peel, seal station + label), belt 2, carton.
+  # The line: dual-arm spread, belt, press, folder, bagger, belt 2, carton.
   # `command` (not `script`) so `moon run sim:run -- --garment tank` reaches Python.
   run:
     command: bash
