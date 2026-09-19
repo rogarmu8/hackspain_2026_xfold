@@ -171,7 +171,7 @@ def main(argv: list[str] | None = None) -> None:
 
     chosen = garment_from_args(args, interactive=True, current=shirt_config().garment)
     if chosen:
-        args.garment = chosen
+        args.garment = chosen.key
 
     try:
         import mujoco
