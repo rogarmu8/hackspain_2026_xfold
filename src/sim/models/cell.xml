@@ -1,7 +1,9 @@
 <mujoco model="xfold-cell-stub">
   <!-- CG, not Newton: the cloth is equality-heavy and CG runs it ~2x faster
        at the same accuracy. 500 Hz physics per SOLUTION.md §6. -->
-  <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast" solver="CG"/>
+  <option gravity="0 0 -9.81" timestep="0.002" integrator="discrete" solver="CG"
+          iterations="80" tolerance="1e-6" cone="elliptic"/>
+  <size nconmax="4000"/>
   <visual>
     <headlight diffuse="0.45 0.45 0.45" ambient="0.3 0.3 0.32" specular="0.1 0.1 0.1"/>
   </visual>

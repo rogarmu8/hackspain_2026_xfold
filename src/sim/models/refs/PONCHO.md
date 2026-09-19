@@ -20,8 +20,10 @@ Extracted flexcomp settings used by XFOLD:
 
 Notes:
 - Poncho is a cape on a mannequin, not a T-shirt — best **parameter** reference.
-- Exact `young=3e5` + free fall is rank-deficient on our CLOTH3D mesh; use ~`1e3`
-  bend elasticity (or edge-equality only) for the playground.
+- Exact `young=3e5` + free fall is rank-deficient. Issue #1433 + our drop tests:
+  `elastic2d="bend" young="5e3" thickness="5e-4"` **with** edge equality. Stretch
+  FEM (`elastic2d="both"`) cannot coexist with edge constraints on MuJoCo 3.13.
+  `discrete` + `CG` + `iterations="40"` keeps the bent cloth at ~1.1× realtime.
 - Default geometry is the generated T-outline (`python -m xfold.generate_shirt_mesh`).
   CLOTH3D / ClothesNet are an optional scanned source; convert with
   `python -m xfold.convert_cloth3d_mesh <flat.obj>`. That converter keeps only the

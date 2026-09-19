@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-from xfold.shirt import CELL_XML, load_mujoco_plugins
+from xfold.shirt import CELL_XML, load_mjcf, load_mujoco_plugins, shirt_config
 
 MODEL_PATH = CELL_XML
 
@@ -55,9 +55,10 @@ def main() -> None:
     if not MODEL_PATH.is_file():
         raise SystemExit(f"Missing scene: {MODEL_PATH}")
 
-    model = mujoco.MjModel.from_xml_path(MODEL_PATH.as_posix())
-    data = mujoco.MjData(model)
+    model, data = load_mjcf(MODEL_PATH)
+    cfg = shirt_config()
     print(f"XFOLD cell  {MODEL_PATH}", flush=True)
+    print(f"shirt.toml  mass={cfg.mass} kg  young={cfg.young:g}  ({cfg.path})", flush=True)
     print(
         "Denser flex shirt drops crumpled onto the press. "
         "Physics: gravity + soft contacts + edge cloth. Close window to quit.",

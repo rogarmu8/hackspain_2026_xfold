@@ -1,6 +1,10 @@
-<!-- Shirt-only playground: generated T-shirt + poncho-style edge cloth. -->
+<!-- Shirt-only playground: T panel, inextensible edges + bend FEM.
+     Ground contacts are per-vertex spheres; claws are mocap connects
+     added at compile (shirt.toml / apply_shirt_config). -->
 <mujoco model="xfold-shirt-playground">
-  <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast" solver="CG"/>
+  <option gravity="0 0 -9.81" timestep="0.002" integrator="discrete" solver="CG"
+          iterations="80" tolerance="1e-6" cone="elliptic"/>
+  <size nconmax="4000"/>
   <visual>
     <!-- Low specular everywhere: sharp highlights are what made the cloth
          look wet, and they wash out the folds that sell it as fabric. -->
@@ -26,8 +30,8 @@
     <light name="fill" pos="-0.6 -0.4 1.5" dir="0.3 0.2 -1"
            diffuse="0.3 0.3 0.34" specular="0 0 0"/>
     <geom name="floor" type="plane" size="1.5 1.5 0.05"
-          material="floor_mat" friction="1.0 0.05 0.0001"
-          solref="0.005 1.2" solimp="0.99 0.999 0.0002"/>
+          material="floor_mat" friction="0.5 0.005 0.0001"
+          solref="0.005 1" solimp="0.95 0.99 0.001"/>
     <camera name="play" pos="0.95 -1.05 0.75" xyaxes="0.75 0.65 0 -0.25 0.3 0.92"/>
 
     <!-- 3D button: double-click it (or press N) to run the ninja fold. -->
@@ -37,13 +41,15 @@
     </body>
 
     <flexcomp name="shirt" type="mesh" dim="2" file="shirt_t.obj"
-              radius="0.004" mass="0.22" flatskin="false"
-              pos="0 0 0.28" euler="0.04 0 0.08"
+              radius="0.003" mass="0.18" flatskin="false"
+              pos="0 0 0.005" euler="0 0 0"
               material="shirt_cloth">
-      <contact internal="false" selfcollide="bvh"
-               solref="0.005 1.2" solimp="0.99 0.999 0.0002"
-               friction="1.0 0.05 0.0001" condim="3"/>
-      <edge equality="true" damping="0.5"/>
+      <contact internal="false" selfcollide="none" passive="false"
+               solref="0.005 1" solimp="0.95 0.99 0.001"
+               friction="0.5 0.005 0.0001" condim="3"/>
+      <edge equality="true" damping="0.1"/>
+      <elasticity young="3e3" poisson="0" thickness="0.001"
+                  elastic2d="bend" damping="0.02"/>
     </flexcomp>
   </worldbody>
 </mujoco>

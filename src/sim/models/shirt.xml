@@ -1,31 +1,26 @@
-<!-- XFOLD T-shirt — ninja-fold proportions + MuJoCo flexcomp.
-     Asset: shirt_t.obj (torso 0.60×0.64 m, sleeves 0.15 m, crew neck)
-       python -m xfold.generate_shirt_mesh --spacing 0.052
-     Thirds are 0.20 m so the Japanese fold lands on the 0.20×0.28 packet.
-
-     Vertex count is a physics budget (mjMAXCONPAIR = 50). Stay near 160.
-     Edge equality keeps taut. Native bend elasticity needs integrator=discrete
-     and drops us to ~0.5x realtime, so it lives in the poncho playground only.
-     No joint damping. The scene owns <option>. -->
+<!-- XFOLD T-shirt — inextensible edges + bend FEM (not cotton constants).
+     Stretch FEM (elastic2d=both) + spring claws stretched the T into a spike.
+     Starter from issue #1433 / poncho_edgeequality:
+       edge equality, young=3e3, poisson=0, elastic2d=bend
+     Floor support is per-vertex spheres (apply_shirt_config), not the
+     50-contact flex-vs-plane pair. Mesh density is a looks/drape knob. -->
 <mujoco model="xfold-shirt">
   <asset>
-    <!-- Matte and desaturated. A saturated rgba with MuJoCo's default specular
-         is what made people call the cloth slime: the highlights read as a wet
-         surface and they flatten every fold. Cube textures come out white on a
-         flex, so the fabric look has to come from the shading. -->
     <material name="shirt_cloth" rgba="0.20 0.31 0.46 1"
               specular="0.02" shininess="0.01" reflectance="0"/>
   </asset>
 
   <worldbody>
     <flexcomp name="shirt" type="mesh" dim="2" file="shirt_t.obj"
-              radius="0.004" mass="0.22" flatskin="false"
-              pos="0.15 0 0.55" euler="0.25 0.08 0.3"
+              radius="0.003" mass="0.18" flatskin="false"
+              pos="0.15 0 0.098" euler="0 0 0"
               material="shirt_cloth">
-      <contact internal="false" selfcollide="bvh"
-               solref="0.005 1.2" solimp="0.99 0.999 0.0002"
-               friction="1.0 0.05 0.0001" condim="3"/>
-      <edge equality="true" damping="0.5"/>
+      <contact internal="false" selfcollide="none" passive="false"
+               solref="0.005 1" solimp="0.95 0.99 0.001"
+               friction="0.5 0.005 0.0001" condim="3"/>
+      <edge equality="true" damping="0.1"/>
+      <elasticity young="3e3" poisson="0" thickness="0.001"
+                  elastic2d="bend" damping="0.02"/>
     </flexcomp>
   </worldbody>
 </mujoco>

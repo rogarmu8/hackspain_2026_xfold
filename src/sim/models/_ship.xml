@@ -1,0 +1,20 @@
+<mujoco>
+<option gravity="0 0 -9.81" timestep="0.002" integrator="discrete" solver="CG" iterations="40" tolerance="1e-6"/>
+<visual>
+  <headlight diffuse="0.45 0.45 0.45" ambient="0.3 0.3 0.32" specular="0.1 0.1 0.1"/>
+  <global offwidth="1280" offheight="800"/>
+</visual>
+<asset>
+  <material name="shirt_cloth" rgba="0.20 0.31 0.46 1" specular="0.02" shininess="0.01" reflectance="0"/>
+</asset>
+<statistic center="0 0 0.12" extent="1.0"/>
+<worldbody>
+  <geom type="plane" size="1.5 1.5 0.05" friction="1.0 0.05 0.0001" solref="0.005 1.2" solimp="0.99 0.999 0.0002"/>
+  <flexcomp name="s" type="mesh" dim="2" file="shirt_t.obj" radius="0.004" mass="0.18"
+            flatskin="false" pos="0 0 0.28" euler="0.04 0 0.08" material="shirt_cloth">
+    <contact internal="false" selfcollide="bvh" solref="0.005 1.2" solimp="0.99 0.999 0.0002"
+             friction="1.0 0.05 0.0001" condim="3"/>
+    <edge equality="true" damping="0.5"/>
+    <elasticity young="5e3" poisson="0.3" thickness="5e-4" elastic2d="bend" damping="0.02"/>
+  </flexcomp>
+</worldbody></mujoco>

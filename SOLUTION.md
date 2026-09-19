@@ -106,48 +106,43 @@ Enactic OpenArm v2, 7-DOF × 2 + grippers, Apache-2.0. Cite Enactic for the MJCF
 | Resource | Verdict | Notes |
 |----------|---------|-------|
 | MuJoCo `flexcomp` 2D cloth | **USE** | Start from OpenArm’s 9×9 self-colliding cloth, then coarsen if it explodes. |
-| **Contact budget: `mjMAXCONPAIR` = 50** | **CONSTRAINT** | See below. Sets the vertex count, so decide it before anything else. |
+| **Contact budget: `mjMAXCONPAIR` = 50** | **CONSTRAINT** | Flex-element vs one geom is still one pair. Bypass it with per-vertex spheres (below). |
 | Bundled flex models (`flag.xml`, `poncho.xml`, …) | **USE** | Poncho is the closest garment-shaped **param** reference (`refs/PONCHO.md`). |
 | Elasticity shell plugin `mujoco.elasticity.shell` | SKIP (3.13 pip) | Only `cable` is registered; use native `<elasticity>` (discrete) or edge equality. |
-| Generated T-outline (`xfold.generate_shirt_mesh`) | **USE** | Default shirt: torso + sleeves + crew neck → `shirt_t.obj`. Sized for the 0.70 m press. |
+| Generated T-shell (`xfold.generate_shirt_mesh`) | **USE** | Sewn two-panel T (front+back welded, 4 openings) sized for the ninja thirds. Not a generic OpenSew/GarmentCode dump — crease lines stay at ±body/6. |
 | CLOTH3D / ClothesNet T-meshes | **ADAPT** | Geometry only if we want a scanned drape; convert with `xfold.convert_cloth3d_mesh`. |
 | [Issue #1433 — Shirt/Cloth with flexcomp](https://github.com/google-deepmind/mujoco/issues/1433) | **USE** | Tunings that stop explosions: `internal="false"`, Young ~`1e3–5e3`, damping `1–10`. |
 | ICARSC 2026 *Clothing Simulation in MuJoCo* | INSPIRE | Cite on the slide. |
 
-#### The contact budget decides the mesh density
+#### The contact budget used to decide mesh density — vertex spheres fix it
 
 MuJoCo caps **one geom pair at 50 contacts** (`mjMAXCONPAIR`), and an entire
 flex against the floor counts as a single pair. A 20×20 grid resting flat has
 394 vertices touching and still gets exactly 50 contacts — raising `nconmax`,
-`margin` or splitting the floor into tiles changes nothing.
+`margin` or splitting the floor into tiles changes nothing. That is why a
+shirt on the ground jittered / clipped while a one-point lift looked fine:
+almost nothing was touching the plane.
 
-Everything above that ceiling is unsupported. Measured on the 365-vertex shirt:
-363 vertices lay on the floor competing for 50 slots, 82 of them hung through
-the plane (the “floor overlap”), and because the solver picks a different 50
-each step the sheet never stopped moving — a 7.3 Hz ripple, 9.4 mm
-peak-to-peak, that no amount of `solref`, `solimp`, friction, `impratio`,
-`noslip`, edge damping or elasticity tuning removed. Only the vertex count did.
+3.13 has no `vertcollide` attribute. The bypass is the same idea: `apply_shirt_config`
+attaches an invisible sphere to every `shirt_*` body and sets flex
+`contype=conaffinity=0`. Each sphere is its own geom pair, so the sewn T
+(~520 verts) on the floor reports ~470 contacts (not 50) and zero verts
+through the plane.
 
-| Physics verts | Resting ripple | Verts through floor | Real-time factor |
-|---|---|---|---|
-| 385 | 1.6 mm | 82 | 0.42x |
-| 207 | 0.4 mm | 0 | 0.61x |
-| **161 (default)** | **0.15 mm** | **0** | **1.1x** |
+Default mesh is a **sewn two-panel T** (front + back, welded seams, open
+hem / neck / cuffs), laid flat (12 mm stack) so two claws can crease the
+front panel. ~520 verts / `dt=0.002` stays near 60 fps; the 1080-vert /
+all-pairs XPBD combo was ~0.03× realtime. Hi is `--spacing 0.024`. Do not
+swap in a random GarmentCode OBJ: the ninja fold pinches interior verts
+on x = ±0.10 / ±0.20.
 
-So 161 vertices is not a compromise on looks, it is the physics budget — and it
-lands inside the range §4.3 already called for (OpenArm’s 9×9 = 81, “12×16 is
-plenty” = 192). Consequences for the rest of the build:
-
-- **Two knock-on fixes:** the solver is `CG`, not Newton (~2x faster on an
-  equality-heavy flex), and there is **no** `<joint damping>` on the cloth. DOF
-  damping is absolute-frame drag: at 0.008 it stretched free fall by 1.5x,
-  which is what read as a heavy object in slow motion.
-- **Folding is the open risk.** Cloth-on-cloth is its own pair with its own
-  50-contact cap. A three-layer ninja packet may exceed it and let layers
-  interpenetrate. Test at block 5 before trusting the fold.
-- The `flatness` metric (§8) is only meaningful below the ripple floor. At 385
-  verts the cloth wobbles 1.6 mm at rest, so “the press flattened it” is not
-  measurable; at 161 the noise floor is 0.15 mm.
+- **Two knock-on fixes:** the solver is `CG`, not Newton (~2x faster on this
+  flex), and there is **no** `<joint damping>` on the cloth. DOF damping is
+  absolute-frame drag: at 0.008 it stretched free fall by 1.5x, which is what
+  read as a heavy object in slow motion.
+- **Folding is still a contact-cap risk for flex self-collision.** That is
+  why layers are an XPBD projection (`xfold.self_collide`), not flex
+  `selfcollide`. Test at block 5 before trusting the fold.
 
 #### Looking like cloth is shading, not triangles
 
@@ -183,7 +178,11 @@ half-thickness `radius`, and 0.008 was a 16 mm yoga mat.
 
 If this diverges: lower Young, raise damping, disable internal contacts, reduce `count`. OpenArm’s 9×9 is a proven foldable sheet; a 12×16 grid is plenty for a shirt demo.
 
-T-shirt shape: `python -m xfold.generate_shirt_mesh` writes `shirt_t.obj` — 0.60×0.64 m body (thirds = 0.20 m), short sleeves, crew neck. Same contact / edge-equality block. Native bend elasticity needs `integrator="discrete"` and runs at ~0.5x realtime, so it stays in the poncho playground. Stay near 150 verts so the platen can support the whole T. Crease vertices live in `xfold.ninja`.
+T-shirt shape: `python -m xfold.generate_shirt_mesh` sews a two-panel T
+(`shirt_t.obj`) — 0.60×0.64 m body (thirds = 0.20 m), short sleeves, crew
+neck, four openings. Rest pose is laid flat so the two-claw ninja fold
+(mid+hem, then the other side, then hem) can run on the front panel.
+Floor support is per-vertex spheres. Crease vertices live in `xfold.ninja`.
 
 ### 4.4 Mechanisms we build ourselves (no good OSS)
 
