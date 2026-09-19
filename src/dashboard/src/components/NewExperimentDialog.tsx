@@ -161,8 +161,8 @@ function NewExperimentDialogBody({
       }
 
       onClose();
-      // Live monitoring lives on Control; Historial is for finished runs / replay.
-      router.push("/");
+      // Individual runs open straight in control; batches land on the run list.
+      router.push(mode === "individual" ? `/historial/${result.id}` : "/");
     } finally {
       setSubmitting(false);
     }

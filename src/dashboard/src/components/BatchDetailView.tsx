@@ -20,7 +20,7 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
           <p className="text-sm text-muted-foreground">
             No hay datos para <span className="font-mono">{batchId}</span>.
           </p>
-          <Button asChild variant="outline"><Link href="/experimentos">Volver a experimentos</Link></Button>
+          <Button asChild variant="outline"><Link href="/">Volver a ejecuciones</Link></Button>
         </div>
       </AppShell>
     );
@@ -37,6 +37,7 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
     <AppShell
       title={batch.id}
       eyebrow={batch.name}
+      back={{ href: "/", label: "Ejecuciones" }}
       actions={
         <StatusBadge
           tone={batch.lifecycle === "running" ? "active" : "neutral"}
@@ -129,10 +130,10 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
 
       <p className="mt-6 text-sm">
         <Link
-          href="/experimentos"
+          href="/"
           className="font-semibold underline-offset-2 hover:underline"
         >
-          ← Experimentos
+          ← Ejecuciones
         </Link>
       </p>
     </AppShell>
