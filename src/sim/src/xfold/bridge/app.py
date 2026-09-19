@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from xfold.bridge.experiments import ExperimentStore, default_db_path
 from xfold.bridge.journal import Journal
 from xfold.bridge.line_driver import LineDriver
 from xfold.bridge.photo import find_photo
@@ -63,7 +64,8 @@ def create_app(
     (Isaac Sim's Kit only works on the main thread; see xfold_isaac.bridge).
     """
     journal = Journal(persist_dir=_repo_data_dir() if persist else None)
-    runtime = Runtime(journal)
+    store = ExperimentStore(default_db_path() if persist else ":memory:")
+    runtime = Runtime(journal, store=store)
     session = session if session is not None else SimSession()
     viewport_hub = ViewportHub()
     # One render per frame feeds the run's H.264 video and the JPEG hub. The
@@ -336,21 +338,9 @@ def create_app(
     def run_timeline(run_id: str) -> dict:
         """FSM markers from the journal for scrubber / replay UI."""
         detail = runtime.get_run(run_id)
-        if not detail:
-            # Still allow timeline from journal alone (hydrated / finished).
-            events = [
-                e.to_public_dict()
-                for e in journal.since(0)
-                if getattr(e, "runId", None) == run_id
-            ]
-            if not events:
-                raise HTTPException(404, "run not found")
-        else:
-            events = [
-                e.to_public_dict()
-                for e in journal.since(0)
-                if getattr(e, "runId", None) == run_id
-            ]
+        events = runtime.events_for_run(run_id)
+        if not detail and not events:
+            raise HTTPException(404, "run not found")
         markers = []
         for ev in events:
             if ev.get("type") == "state_changed":
@@ -476,6 +466,17 @@ def create_app(
     @app.get("/experiments")
     def experiments() -> list:
         return runtime.list_experiments()
+
+    @app.get("/experiments/{experiment_id}")
+    def get_experiment(experiment_id: str) -> dict:
+        """Durable experiment detail: a run's ``to_detail`` or a batch summary."""
+        run = runtime.get_run(experiment_id)
+        if run is not None:
+            return {"kind": "run", **run}
+        batch = runtime.get_batch(experiment_id)
+        if batch is not None:
+            return {"kind": "batch", **batch}
+        raise HTTPException(404, "experiment not found")
 
     @app.post("/runs", status_code=201)
     def post_run(body: LaunchRunRequest) -> dict:

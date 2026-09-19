@@ -166,9 +166,10 @@ curl -sN 'http://127.0.0.1:8765/events/stream?after_seq=0'
 | `GET` | `/health` | Liveness |
 | `GET` | `/capabilities` | What the UI may enable |
 | `GET` | `/snapshot` | Materialized control-room snapshot |
-| `GET` | `/runs`, `/runs/{id}` | Run list / detail |
+| `GET` | `/runs`, `/runs/{id}` | Run list / detail (memory + `data/experiments.sqlite`) |
 | `GET` | `/batches/{id}` | Batch summary |
-| `GET` | `/experiments` | Launch list for Experimentos |
+| `GET` | `/experiments` | Launch list for Experimentos (durable across bridge restarts) |
+| `GET` | `/experiments/{id}` | Durable experiment detail (`kind: run\|batch`) |
 | `POST` | `/runs`, `/batches` | Launch individual / batch |
 | `POST` | `/commands` | Operator command (`202` / `409`) |
 | `GET` | `/viewport/meta` | Readiness: `seq`, `ageMs`, `source`, `available` |

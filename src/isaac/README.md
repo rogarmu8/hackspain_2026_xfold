@@ -113,6 +113,10 @@ box's 127.0.0.1:8765 and forwards it here to 127.0.0.1:8766 over SSH; `dashboard
 points the dashboard at that (or at `XFOLD_ISAAC_BRIDGE_URL` if set). The live view, the run
 video (HLS, recorded and served on the box), the QC photo and the console all come from Isaac.
 Launch runs from the dashboard as usual; a cycle takes ~4-5 min of wall time.
+Experiments persist on the box in `data/experiments.sqlite` (same bridge code as
+MuJoCo): after a restart, `GET /experiments` and `GET /runs/{id}` still return
+finished runs. Video and QC photos stay under `data/video/` and `data/photos/`.
+`rsync` from the laptop excludes `data/`, so the catalogue is not wiped on sync.
 
 One render per frame, at two sizes: 1920x1080 into the run's recording (24 fps of sim time,
 so replay lines up with the timeline), and a 960x540 copy for the live view. The live view is

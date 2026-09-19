@@ -49,7 +49,7 @@ A `log` additionally carries `stage`, `operation`, `station`, `parallel`. These 
 
 `config.inputs` stores the effective per-run garment/mesh/texture/cloth/solver configuration, condition, pose flag, seed and whether it is actually applied. `/capabilities.process.seedApplied: true` advertises seed support; per-run `seedApplied` is true for random/list selections, stain variants or skewed poses, and false for fixed clean/torn selections. `spawnYawRad` and `spawnOffsetYM` are emitted at LOAD from the actual initial pose. Inputs are resolved for each run, not copied from the garment compiled at process startup. Scenario is `line`, regardless of stale UI launch defaults. Legacy drivers retain their own process catalogue. `run_started` persists the run's `stages`, `inputs` and `driver` in the journal as well, so configuration is not confined to the in-memory snapshot.
 
-Timeline terminal markers have `state: null`; they must not overwrite phase start markers. Replay uses `run.stages`, not a hard-coded sequence. Trajectory remains qpos-only: line replay is explicitly **partial**, because mocap and mutable visual geometry are not recorded. Durable run recovery and geometric quality gates remain separate work.
+Timeline terminal markers have `state: null`; they must not overwrite phase start markers. Replay uses `run.stages`, not a hard-coded sequence. Trajectory remains qpos-only: line replay is explicitly **partial**, because mocap and mutable visual geometry are not recorded. Durable run recovery uses SQLite at `data/experiments.sqlite` (see §2 REST `/experiments`); geometric quality gates remain separate work.
 
 ### Shared package
 
@@ -85,9 +85,13 @@ Every event has: `seq`, `tsIso`, `type`, `runId`, `batchId`.
 | GET | `/viewport/meta` | Viewport readiness (`seq`, `ageMs`, …) |
 | GET | `/viewport/frame?after_seq=&wait_ms=` | **Primary** live view: long-poll JPEG |
 | GET | `/viewport/stream` | Legacy MJPEG (curl/VLC only — not the dashboard) |
-| GET | `/runs/{id}/timeline` | FSM markers for scrubber |
+| GET | `/runs`, `/runs/{id}` | Run list / detail (memory + durable SQLite) |
+| GET | `/runs/{id}/timeline` | FSM markers for scrubber (journal, then SQLite after restart) |
 | GET | `/runs/{id}/recording` | Trajectory metadata |
 | GET | `/runs/{id}/recording/frame?t=` | Replay seek (JPEG + state) |
+| GET | `/batches/{id}` | Batch summary |
+| GET | `/experiments` | Launch list for Experimentos (survives bridge restart; `data/experiments.sqlite`) |
+| GET | `/experiments/{id}` | Durable experiment detail (`kind: run|batch`) |
 | POST | `/runs`, `/batches` | Launch. Run: `name`, `seed`, `scenario`, `clothType` (`tee`… / `custom` or `random`), `clothCondition` (`good`/`damaged`/`notgood`/`skewed` or `random`), optional `clothTypeWeights` / `clothConditionWeights` when random (0 = never). `custom` is a silhouette sheet: send `customDesign` `{ mime, data }` (base64 photo; the bridge cuts the garment out of the photo, builds a flexcomp to that outline, and prints both faces; never a journal payload). Batch: `count`, `baseSeed`, `clothMix`/`conditionMix` (`same`/`random`/`list`) + `clothTypes`/`conditions` + the same weight maps; the photo is required if the mix can draw `custom`. `seed` also draws a skewed heading (flat on the belt). Catalogue on `GET /capabilities`. |
 | POST | `/commands` | `{ clientCommandId, kind, runId?, batchId? }` |
 

@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
 
+from xfold.bridge.experiments import ExperimentStore
 from xfold.bridge.journal import Journal
 from xfold.bridge.schema import (
     BridgeCapabilities,
@@ -195,14 +196,16 @@ class BatchRecord:
             "queueTotal": len(queued),
             "seedStrategy": self.seedStrategy,
             "baseSeed": self.baseSeed,
+            "startedAtIso": self.startedAtIso,
         }
 
 
 class Runtime:
     """Single-process authority for runs, batches, and command idempotency."""
 
-    def __init__(self, journal: Journal) -> None:
+    def __init__(self, journal: Journal, store: ExperimentStore | None = None) -> None:
         self.journal = journal
+        self.store = store
         self.capabilities = BridgeCapabilities()
         catalog = public_catalog()
         self.capabilities.clothTypes = [CatalogOption(**item) for item in catalog["clothTypes"]]
@@ -214,8 +217,9 @@ class Runtime:
         self.batches: dict[str, BatchRecord] = {}
         self.active_run_id: str | None = None
         self.active_batch_id: str | None = None
-        self._run_counter = 0
-        self._batch_counter = 0
+        # Continue RUN-/B- numbering across bridge restarts when a store is present.
+        self._run_counter = store.max_run_number() if store is not None else 0
+        self._batch_counter = store.max_batch_number() if store is not None else 0
         self._seen_commands: dict[str, str] = {}  # clientCommandId -> status
         self._wake = threading.Event()
         # Set by app.py once a driver is chosen; shown as a run's `notes`.
@@ -223,6 +227,8 @@ class Runtime:
         self.stage_definitions = tuple({"state": s.value} for s in PRODUCTIVE)
         self.process_scenario: str | None = None
         self.process_config: dict[str, Any] = {}
+        if store is not None:
+            journal.subscribe(self._persist_journal_event)
 
     def configure_process(self, stages, *, scenario: str, config: dict[str, Any]) -> None:
         with self._lock:
@@ -291,23 +297,36 @@ class Runtime:
 
     def list_runs(self) -> list[dict[str, Any]]:
         with self._lock:
-            return [r.to_detail() for r in sorted(self.runs.values(), key=lambda x: x.id, reverse=True)]
+            live = {r.id: r.to_detail() for r in self.runs.values()}
+        if self.store is None:
+            return sorted(live.values(), key=lambda x: x["id"], reverse=True)
+        merged = {d["id"]: d for d in self.store.list_run_details()}
+        merged.update(live)  # in-memory wins for the active process
+        return sorted(merged.values(), key=lambda x: x.get("startedAtIso") or x["id"], reverse=True)
 
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         with self._lock:
             run = self.runs.get(run_id)
-            return run.to_detail() if run else None
+            if run is not None:
+                return run.to_detail()
+        if self.store is not None:
+            return self.store.get_run(run_id)
+        return None
 
     def get_batch(self, batch_id: str) -> dict[str, Any] | None:
         with self._lock:
             batch = self.batches.get(batch_id)
-            return batch.to_summary(self.runs) if batch else None
+            if batch is not None:
+                return batch.to_summary(self.runs)
+        if self.store is not None:
+            return self.store.get_batch(batch_id)
+        return None
 
     def list_experiments(self) -> list[dict[str, Any]]:
         with self._lock:
-            items: list[dict[str, Any]] = []
+            live: list[dict[str, Any]] = []
             for batch in self.batches.values():
-                items.append(
+                live.append(
                     {
                         "kind": "batch",
                         "id": batch.id,
@@ -323,7 +342,7 @@ class Runtime:
             for run in self.runs.values():
                 if run.batchId:
                     continue
-                items.append(
+                live.append(
                     {
                         "kind": "run",
                         "id": run.id,
@@ -334,8 +353,66 @@ class Runtime:
                         "batchId": None,
                     }
                 )
-            items.sort(key=lambda x: x.get("startedAtIso") or "", reverse=True)
-            return items
+        if self.store is None:
+            live.sort(key=lambda x: x.get("startedAtIso") or "", reverse=True)
+            return live
+        by_id = {item["id"]: item for item in self.store.list_experiments()}
+        for item in live:
+            by_id[item["id"]] = item  # live process wins
+        items = list(by_id.values())
+        items.sort(key=lambda x: x.get("startedAtIso") or "", reverse=True)
+        return items
+
+    def events_for_run(self, run_id: str) -> list[dict[str, Any]]:
+        """Journal events for a run: live journal first, then the durable store."""
+        live = [
+            e.to_public_dict()
+            for e in self.journal.since(0)
+            if getattr(e, "runId", None) == run_id
+        ]
+        if live:
+            return live
+        if self.store is not None:
+            return self.store.events_for_run(run_id)
+        return []
+
+    def _persist_journal_event(self, event) -> None:
+        if self.store is None:
+            return
+        try:
+            self.store.append_event(event.to_public_dict())
+        except Exception as exc:  # noqa: BLE001 — persistence must not kill the driver
+            print(f"[experiments] failed to append event: {exc}", flush=True)
+
+    def _persist_run(self, run: RunRecord) -> None:
+        if self.store is None:
+            return
+        try:
+            photo = video = None
+            if run.hasPhoto:
+                from xfold.bridge.photo import find_photo
+
+                photo = find_photo(run.id)
+            if run.hasVideo:
+                from xfold.bridge.video import run_dir
+
+                video = run_dir(run.id)
+            self.store.upsert_run(
+                run.to_detail(),
+                engine=self.capabilities.engine,
+                photo_path=photo,
+                video_dir=video,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[experiments] failed to upsert run {run.id}: {exc}", flush=True)
+
+    def _persist_batch(self, batch: BatchRecord) -> None:
+        if self.store is None:
+            return
+        try:
+            self.store.upsert_batch(batch.to_summary(self.runs))
+        except Exception as exc:  # noqa: BLE001
+            print(f"[experiments] failed to upsert batch {batch.id}: {exc}", flush=True)
 
     def _bake_custom_design(
         self, payload: CustomDesignPayload | None, cloth: str
@@ -547,6 +624,7 @@ class Runtime:
             skewed=run.skewed,
             customDesign=run.customDesign,
         )
+        self._persist_run(run)
 
     def handle_command(self, req: CommandRequest) -> dict[str, Any]:
         with self._lock:
@@ -806,6 +884,12 @@ class Runtime:
             run = self.runs.get(run_id)
             if run:
                 run.hasPhoto = True
+                self._persist_run(run)
+            elif self.store is not None:
+                try:
+                    self.store.mark_media(run_id, has_photo=True)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[experiments] mark_photo {run_id}: {exc}", flush=True)
 
     def mark_video(self, run_id: str) -> None:
         """This run is being recorded; its HLS playlist is live."""
@@ -813,6 +897,12 @@ class Runtime:
             run = self.runs.get(run_id)
             if run:
                 run.hasVideo = True
+                self._persist_run(run)
+            elif self.store is not None:
+                try:
+                    self.store.mark_media(run_id, has_video=True)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[experiments] mark_video {run_id}: {exc}", flush=True)
 
     def bump_sim_time(self, run_id: str, t: float) -> None:
         """Update live telemetry clock without a journal event (substep ticks)."""
@@ -872,6 +962,7 @@ class Runtime:
             clothCondition=run.clothCondition,
             t=round(run.t, 3),
         )
+        self._persist_run(run)
         if self.active_run_id == run.id:
             self.active_run_id = None
 
@@ -920,3 +1011,4 @@ class Runtime:
             pending=batch.pending,
             activeRunId=batch.activeRunId,
         )
+        self._persist_batch(batch)

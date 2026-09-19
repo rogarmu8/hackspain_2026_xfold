@@ -77,6 +77,7 @@ data/
 ## Observability verification
 
 - `pixi run -e mujoco python -B scripts/test-sim-observability.py` — runtime/observer regression tests.
+- `pixi run -e mujoco python -B scripts/test-experiment-store.py` — SQLite experiment persistence across a simulated bridge restart.
 - `XFOLD_TEST_PHYSICS=1 pixi run -e mujoco python -B scripts/test-sim-observability.py` — isolated full headless cycle (no live server commands or trajectory overwrite).
 - `node scripts/test-dashboard-observability.mjs` — replay, labels, console history, SSE cursor and snapshot coalescing.
 - `bash scripts/check-bridge-contract.sh` — event/command names only; not semantic correctness.
