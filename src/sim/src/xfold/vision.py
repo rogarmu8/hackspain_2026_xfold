@@ -1,15 +1,15 @@
 """Placement inspection from the wrist camera.
 
-The camera on the UR5e wrist renders the bed, OpenCV segments the blue
+The camera on the UR5e wrist renders the bed, OpenCV segments the white
 garment, and the silhouette is back-projected onto the bed plane. The shirt
 outline is then fitted against the known footprint, which turns the picture
 into a pose in metres and radians - what the controller needs to decide
 whether the shirt is straight enough to press.
 
-Two details matter. Only the bed region is inspected, because the crate of
-unpressed shirts is blue too and can sit in the same view. And the pose
-comes from a shape fit rather than a bounding box: a T-shirt's bounding box
-and its area centroid both sit off the garment's own frame.
+Two details matter. Only the bed region is inspected, because other
+geometry can sit in the same view. And the pose comes from a shape fit
+rather than a bounding box: a T-shirt's bounding box and its area centroid
+both sit off the garment's own frame.
 """
 
 from __future__ import annotations
@@ -22,9 +22,11 @@ import numpy as np
 from .scene import INSPECT_CAMERA
 from .shirt import shirt_footprint_polygons
 
-# Slate-blue cloth in HSV, OpenCV convention (hue 0-179).
-SHIRT_HSV_LOW = (80, 25, 25)
-SHIRT_HSV_HIGH = (140, 255, 255)
+# White cotton in HSV, OpenCV convention (hue 0-179). Bright and
+# desaturated so the orange platen and gray floor stay out; the navy
+# chest mark is a few pixels and MORPH_CLOSE fills it.
+SHIRT_HSV_LOW = (0, 0, 180)
+SHIRT_HSV_HIGH = (179, 40, 255)
 
 # How far past the heated plate we still look, in metres.
 ROI_MARGIN = 0.05
@@ -203,16 +205,16 @@ class PlacementCamera:
         import cv2
 
         hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
-        blue = cv2.inRange(hsv, SHIRT_HSV_LOW, SHIRT_HSV_HIGH)
-        blue = cv2.morphologyEx(blue, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
-        blue = cv2.morphologyEx(blue, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+        cloth = cv2.inRange(hsv, SHIRT_HSV_LOW, SHIRT_HSV_HIGH)
+        cloth = cv2.morphologyEx(cloth, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+        cloth = cv2.morphologyEx(cloth, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
 
-        roi = np.zeros_like(blue)
+        roi = np.zeros_like(cloth)
         cv2.fillConvexPoly(roi, self.roi_polygon(data).astype(np.int32), 255)
-        return cv2.bitwise_and(blue, roi)
+        return cv2.bitwise_and(cloth, roi)
 
     def outline(self, data, rgb: np.ndarray) -> np.ndarray | None:
-        """Largest blue silhouette on the bed, back-projected to world xy."""
+        """Largest white silhouette on the bed, back-projected to world xy."""
         import cv2
 
         contours, _ = cv2.findContours(

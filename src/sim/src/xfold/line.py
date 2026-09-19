@@ -19,8 +19,10 @@ real flap's friction does, and lets go at the top of the swing. The cloth
 does not collide with itself in MuJoCo, so ClothLayers keeps the folded
 layers apart from then on.
 
-With a window:  moon run sim:run
-Headless:       pixi run -e mujoco python -P -m xfold.line --headless --cycles 1
+With a window:  moon run sim:run              # arrow-key list
+                moon run sim:run -- -g dress  # skip the list
+Headless:       pixi run -e mujoco python -P -m xfold.line --headless --cycles 1 -g jersey
+Catalogue:      moon run sim:run -- --list-garments
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .garments import add_garment_arguments, garment_from_args, rewrite_argv_garment
 from .platform import reexec_under_mjpython
 from .self_collide import ClothLayers
 from .shirt import (
@@ -40,9 +43,12 @@ from .shirt import (
     apply_shirt_config,
     load_mujoco_plugins,
     load_shirt_mesh,
+    select_garment,
     set_steam,
+    shirt_config,
     shirt_rest_world,
     shirt_vertex_qposadr,
+    spec_from_mjcf,
 )
 from .sim_loop import smoothstep
 from .steam import SteamField
@@ -121,7 +127,7 @@ def build():
     import mujoco
 
     load_mujoco_plugins()
-    spec = mujoco.MjSpec.from_file(LINE_PATH.as_posix())
+    spec = spec_from_mjcf(LINE_PATH)
     apply_shirt_config(spec, claws=False)
     # The belt runs through the press, so the belt is its bed now.
     spec.delete(spec.actuator("press_tilt"))
@@ -389,11 +395,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="XFOLD line: belt, press, folder")
     parser.add_argument("--cycles", type=int, default=0, help="0 keeps going")
     parser.add_argument("--headless", action="store_true", help="no window, as fast as it can")
+    add_garment_arguments(parser)
     parser.add_argument(
         "--shots", default="", help="headless: save a frame per stage into this directory"
     )
     parser.add_argument("--camera", default="overview")
     args = parser.parse_args()
+    chosen = garment_from_args(
+        args, interactive=not args.headless, current=shirt_config().garment
+    )
+    if chosen:
+        rewrite_argv_garment(chosen)
+        args.garment = chosen
 
     try:
         import mujoco
@@ -402,10 +415,16 @@ def main() -> None:
     if not args.headless:
         reexec_under_mjpython("xfold.line")
 
+    if args.garment:
+        select_garment(args.garment)
+    cfg = shirt_config()
     model = build()
     data = mujoco.MjData(model)
     line = Line(model, data, repeat=args.cycles == 0)
-    print(f"XFOLD line  {LINE_PATH}", flush=True)
+    print(
+        f"XFOLD line  garment={cfg.garment} ({cfg.mesh})  {LINE_PATH}",
+        flush=True,
+    )
 
     def done() -> bool:
         return line.finished or (args.cycles and line.cycles > args.cycles)

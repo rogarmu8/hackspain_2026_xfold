@@ -61,6 +61,10 @@ build/
 data/
 *.mp4
 
+# Generated garment include (written at compile from shirt.toml / --garment)
+src/sim/models/_garment_active.xml
+src/sim/models/_scene_active.xml
+
 # MuJoCo
 MUJOCO_LOG.TXT
 shots/

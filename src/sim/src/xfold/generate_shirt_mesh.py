@@ -67,17 +67,38 @@ def _join(*parts: np.ndarray) -> np.ndarray:
     return np.vstack(chunks)
 
 
-def shirt_outline() -> np.ndarray:
-    """Closed classic crew-neck T, clockwise from the left neck.
+def shirt_outline(style: str = "tee") -> np.ndarray:
+    """Closed foldable panel, clockwise from the left neck.
 
-    Iconic front-view tee: circular collar, nearly level shoulders, short
-    sleeves that hang with rounded cuffs, straight sides, stadium hem.
-    One loop (U-neck, not a hole) so the sheet stays foldable.
+    One loop (U or V, not a hole) so the sheet stays a FlipFold / ninja panel.
     """
+    style = "tee" if style in ("tee", "work_tee") else style
+    if style == "tank":
+        return _outline_tank()
+    if style == "jersey":
+        return _outline_jersey()
+    if style == "polo":
+        return _outline_polo()
+    if style == "dress":
+        return _outline_dress()
+    if style != "tee":
+        raise ValueError(f"unknown panel style {style!r}")
+    return _outline_crew()
+
+
+def _outline_crew(
+    *,
+    neck: str = "crew",
+    sleeve_l: float = SLEEVE_L,
+    sleeve_h: float = SLEEVE_H,
+    neck_w: float = NECK_W,
+    neck_d: float = NECK_D,
+    hem_flare: float = 0.0,
+) -> np.ndarray:
     hw = 0.5 * BODY_W
     hl = 0.5 * BODY_L
     neck_cy = hl - 0.015
-    neck_rx, neck_ry = 0.5 * NECK_W, NECK_D
+    neck_rx, neck_ry = 0.5 * neck_w, neck_d
     a_right = np.deg2rad(18.0)
     a_left = np.deg2rad(-198.0)
     left_neck = (
@@ -96,11 +117,11 @@ def shirt_outline() -> np.ndarray:
         shoulder[-1],
         (-hw - 0.05, hl - 0.04),
         (-hw - 0.10, hl - 0.08),
-        (-hw - SLEEVE_L + 0.03, hl - 0.11),
+        (-hw - sleeve_l + 0.03, hl - 0.11),
         7,
     )
     cuff = _arc(
-        -hw - SLEEVE_L + 0.05,
+        -hw - sleeve_l + 0.05,
         hl - 0.16,
         0.048,
         0.052,
@@ -112,13 +133,68 @@ def shirt_outline() -> np.ndarray:
         cuff[-1],
         (-hw - 0.08, hl - 0.21),
         (-hw - 0.02, hl - 0.185),
-        (-hw, hl - SLEEVE_H),
+        (-hw, hl - sleeve_h),
         6,
     )
-    # Straight torso, then a stadium hem (rounded-rect, not a bag).
+    side_x = -hw - hem_flare
     side = _bezier(
         to_armpit[-1],
         (-hw, 0.02),
+        (side_x, -hl + 0.18),
+        (side_x, -hl + 0.08),
+        8,
+    )
+    hem_r = 0.085 + 0.4 * hem_flare
+    hem = _arc(side_x + hem_r, -hl + hem_r, hem_r, hem_r, np.pi, 1.5 * np.pi, 10)
+    hem = np.vstack([hem, np.array([[0.0, -hl]], dtype=np.float64)])
+
+    left = _join(shoulder, sleeve_top, cuff, to_armpit, side, hem)
+    right = left[-2:0:-1].copy()
+    right[:, 0] *= -1.0
+    if neck == "v":
+        v_tip = np.array([0.0, neck_cy - neck_ry], dtype=np.float64)
+        right_pt = np.array(
+            [neck_rx * np.cos(a_right), neck_cy + neck_ry * np.sin(a_right)]
+        )
+        left_pt = np.array(left_neck)
+        neck_pts = np.vstack([right_pt, v_tip, left_pt])
+    else:
+        neck_pts = _arc(0.0, neck_cy, neck_rx, neck_ry, a_right, a_left, 18)
+    return _join(left, right, neck_pts)
+
+
+def _outline_tank() -> np.ndarray:
+    """Sleeveless muscle tank: thin straps, deep armholes, same torso thirds."""
+    hw = 0.5 * BODY_W
+    hl = 0.5 * BODY_L
+    # Straps ~5 cm, sitting well inside the 0.60 m body (the T's sleeves
+    # stick out to ±0.46 m; this panel must read as "no sleeves" at a glance).
+    strap_i, strap_o = 0.09, 0.145
+    neck_cy = hl - 0.03
+    neck_rx, neck_ry = 0.10, 0.13
+    a_right = np.deg2rad(12.0)
+    a_left = np.deg2rad(-192.0)
+    left_neck = (
+        neck_rx * np.cos(a_left),
+        neck_cy + neck_ry * np.sin(a_left),
+    )
+    strap = _bezier(
+        left_neck,
+        (-strap_i, hl + 0.025),
+        (-strap_o, hl + 0.025),
+        (-strap_o, hl - 0.01),
+        8,
+    )
+    armhole = _bezier(
+        strap[-1],
+        (-strap_o - 0.02, hl - 0.12),
+        (-hw + 0.10, hl - 0.22),
+        (-hw, hl - 0.36),
+        12,
+    )
+    side = _bezier(
+        armhole[-1],
+        (-hw, 0.0),
         (-hw, -hl + 0.18),
         (-hw, -hl + 0.08),
         8,
@@ -126,11 +202,204 @@ def shirt_outline() -> np.ndarray:
     hem_r = 0.085
     hem = _arc(-hw + hem_r, -hl + hem_r, hem_r, hem_r, np.pi, 1.5 * np.pi, 10)
     hem = np.vstack([hem, np.array([[0.0, -hl]], dtype=np.float64)])
-
-    left = _join(shoulder, sleeve_top, cuff, to_armpit, side, hem)
+    left = _join(strap, armhole, side, hem)
     right = left[-2:0:-1].copy()
     right[:, 0] *= -1.0
-    neck = _arc(0.0, neck_cy, neck_rx, neck_ry, a_right, a_left, 18)
+    neck = _arc(0.0, neck_cy, neck_rx, neck_ry, a_right, a_left, 16)
+    return _join(left, right, neck)
+
+
+def _outline_jersey() -> np.ndarray:
+    """Deep V, long raglan sleeves, longer body — not a crew T with stripes."""
+    hw = 0.33
+    hl = 0.40
+    sleeve_l = 0.30
+    v_half = 0.11
+    v_depth = 0.26
+    left_neck = (-v_half, hl - 0.02)
+    raglan = _bezier(
+        left_neck,
+        (-0.20, hl + 0.03),
+        (-hw - 0.10, hl - 0.02),
+        (-hw - sleeve_l + 0.05, hl - 0.10),
+        10,
+    )
+    cuff = _arc(
+        -hw - sleeve_l + 0.07,
+        hl - 0.17,
+        0.058,
+        0.062,
+        np.deg2rad(95.0),
+        np.deg2rad(265.0),
+        12,
+    )
+    to_armpit = _bezier(
+        cuff[-1],
+        (-hw - 0.14, hl - 0.26),
+        (-hw - 0.04, hl - 0.32),
+        (-hw, hl - 0.36),
+        7,
+    )
+    side = _bezier(
+        to_armpit[-1],
+        (-hw - 0.01, 0.04),
+        (-hw + 0.01, -hl + 0.18),
+        (-hw, -hl + 0.05),
+        8,
+    )
+    hem = _bezier(
+        side[-1],
+        (-hw + 0.04, -hl),
+        (-0.10, -hl - 0.008),
+        (0.0, -hl),
+        8,
+    )
+    left = _join(raglan, cuff, to_armpit, side, hem)
+    right = left[-2:0:-1].copy()
+    right[:, 0] *= -1.0
+    down = np.column_stack(
+        (np.linspace(v_half, 0.0, 9), np.linspace(hl - 0.02, hl - v_depth, 9))
+    )
+    up = np.column_stack(
+        (np.linspace(0.0, -v_half, 9), np.linspace(hl - v_depth, hl - 0.02, 9))
+    )
+    neck = np.vstack([down, up[1:]])
+    return _join(left, right, neck)
+
+
+def _outline_polo() -> np.ndarray:
+    """Spread collar points + cap sleeves + boxy hem."""
+    hw = 0.27
+    hl = 0.27
+    left_neck = (-0.05, hl - 0.05)
+    collar = _bezier(
+        left_neck,
+        (-0.07, hl + 0.05),
+        (-0.12, hl + 0.13),
+        (-0.18, hl + 0.11),
+        8,
+    )
+    to_shoulder = _bezier(
+        collar[-1],
+        (-0.20, hl + 0.04),
+        (-0.22, hl + 0.01),
+        (-hw + 0.03, hl - 0.02),
+        6,
+    )
+    sleeve_top = _bezier(
+        to_shoulder[-1],
+        (-hw - 0.03, hl - 0.03),
+        (-hw - 0.07, hl - 0.06),
+        (-hw - 0.09, hl - 0.10),
+        6,
+    )
+    cuff = _arc(
+        -hw - 0.055,
+        hl - 0.13,
+        0.032,
+        0.036,
+        np.deg2rad(80.0),
+        np.deg2rad(250.0),
+        8,
+    )
+    to_armpit = _bezier(
+        cuff[-1],
+        (-hw - 0.03, hl - 0.16),
+        (-hw - 0.01, hl - 0.18),
+        (-hw, hl - 0.20),
+        5,
+    )
+    side = _bezier(
+        to_armpit[-1],
+        (-hw, 0.0),
+        (-hw, -hl + 0.10),
+        (-hw, -hl + 0.03),
+        6,
+    )
+    hem = _bezier(
+        side[-1],
+        (-hw + 0.02, -hl),
+        (-0.08, -hl - 0.006),
+        (0.0, -hl),
+        8,
+    )
+    left = _join(collar, to_shoulder, sleeve_top, cuff, to_armpit, side, hem)
+    right = left[-2:0:-1].copy()
+    right[:, 0] *= -1.0
+    neck = _bezier(
+        (0.05, hl - 0.05),
+        (0.02, hl - 0.12),
+        (-0.02, hl - 0.12),
+        (-0.05, hl - 0.05),
+        10,
+    )
+    return _join(left, right, neck)
+
+
+def _outline_dress() -> np.ndarray:
+    """Pinafore: braces, bib, long A-line skirt — not a flared T."""
+    strap_i, strap_o = 0.06, 0.14
+    bib_y = 0.20
+    brace_top = 0.48
+    bib_hw = 0.21
+    hem_hw = 0.50
+    hem_y = -0.54
+    left_neck = (-strap_i, bib_y)
+    inner_up = _bezier(
+        left_neck,
+        (-strap_i, bib_y + 0.12),
+        (-strap_i - 0.005, brace_top - 0.05),
+        (-strap_i, brace_top),
+        8,
+    )
+    cap = _bezier(
+        inner_up[-1],
+        (-strap_i - 0.01, brace_top + 0.035),
+        (-strap_o + 0.01, brace_top + 0.035),
+        (-strap_o, brace_top),
+        6,
+    )
+    outer_down = _bezier(
+        cap[-1],
+        (-strap_o, brace_top - 0.10),
+        (-strap_o + 0.01, bib_y + 0.06),
+        (-strap_o, bib_y),
+        8,
+    )
+    to_arm = _bezier(
+        outer_down[-1],
+        (-0.17, bib_y - 0.02),
+        (-bib_hw + 0.02, bib_y - 0.05),
+        (-bib_hw, bib_y - 0.10),
+        6,
+    )
+    armhole = _bezier(
+        to_arm[-1],
+        (-bib_hw - 0.05, bib_y - 0.18),
+        (-bib_hw - 0.02, 0.02),
+        (-bib_hw - 0.05, -0.06),
+        10,
+    )
+    flare = _bezier(
+        armhole[-1],
+        (-0.30, -0.18),
+        (-hem_hw + 0.05, hem_y + 0.16),
+        (-hem_hw, hem_y + 0.08),
+        10,
+    )
+    hem_r = 0.11
+    hem = _arc(-hem_hw + hem_r, hem_y + hem_r, hem_r, hem_r, np.pi, 1.5 * np.pi, 10)
+    hem = np.vstack([hem, np.array([[0.0, hem_y]], dtype=np.float64)])
+    left = _join(inner_up, cap, outer_down, to_arm, armhole, flare, hem)
+    right = left[-2:0:-1].copy()
+    right[:, 0] *= -1.0
+    neck = _bezier(
+        (strap_i, bib_y),
+        (0.03, bib_y - 0.10),
+        (-0.03, bib_y - 0.10),
+        (-strap_i, bib_y),
+        12,
+    )
     return _join(left, right, neck)
 
 
@@ -216,9 +485,9 @@ def _fit_boundary(
     return out, faces
 
 
-def build_panel(spacing: float) -> tuple[np.ndarray, np.ndarray]:
-    """One T-shaped 2D panel (z = 0) from the sewing pattern."""
-    poly = shirt_outline()
+def build_panel(spacing: float, style: str = "tee") -> tuple[np.ndarray, np.ndarray]:
+    """One foldable 2D panel (z = 0) from the sewing pattern."""
+    poly = shirt_outline(style)
     pad = 0.5 * spacing
     xs = _axis(float(poly[:, 0].min()) - pad, float(poly[:, 0].max()) + pad, spacing)
     ys = _axis(float(poly[:, 1].min()) - pad, float(poly[:, 1].max()) + pad, spacing)
@@ -321,9 +590,9 @@ def build_sewn_t(spacing: float = DEFAULT_SPACING, depth: float = TORSO_D) -> tu
     return verts, np.asarray(faces, dtype=np.int32)
 
 
-def build_mesh(spacing: float | None = None) -> tuple[np.ndarray, np.ndarray]:
-    """Single T panel — the foldable sheet."""
-    return build_panel(DEFAULT_SPACING if spacing is None else spacing)
+def build_mesh(spacing: float | None = None, style: str = "tee") -> tuple[np.ndarray, np.ndarray]:
+    """Single foldable panel."""
+    return build_panel(DEFAULT_SPACING if spacing is None else spacing, style=style)
 
 
 def build_shell(
@@ -424,9 +693,8 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("-o", "--out", type=Path, default=DEFAULT_OUT)
     p.add_argument("--spacing", type=float, default=DEFAULT_SPACING)
-    p.add_argument("--nx", type=int, default=None)
-    p.add_argument("--ny", type=int, default=None)
-    p.add_argument("--ns", type=int, default=None)
+    p.add_argument("--garment", default="tee", help="tee, work_tee, jersey, tank, polo, dress")
+    p.add_argument("--all", action="store_true", help="Write every catalogue panel")
     p.add_argument("--depth", type=float, default=TORSO_D)
     p.add_argument(
         "--shell",
@@ -435,13 +703,25 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = p.parse_args(argv)
     spacing = args.spacing
-    if args.nx:
-        spacing = BODY_W / max(int(args.nx) - 1, 1)
+    if args.all:
+        from xfold.garments import CATALOG
+
+        seen: set[str] = set()
+        for item in CATALOG.values():
+            if item.mesh in seen or item.mesh == "shirt_t.obj":
+                continue
+            seen.add(item.mesh)
+            verts, faces = build_panel(spacing, style=item.style)
+            path = MODELS / item.mesh
+            write_obj(path, verts, faces, shell=False)
+            print(f"wrote {path}  verts={len(verts)}  faces={len(faces)}", flush=True)
+        return
     if args.shell:
         verts, faces = build_sewn_t(spacing, depth=args.depth)
+        write_obj(args.out, verts, faces, shell=True)
     else:
-        verts, faces = build_panel(spacing)
-    write_obj(args.out, verts, faces, shell=args.shell)
+        verts, faces = build_panel(spacing, style=args.garment)
+        write_obj(args.out, verts, faces, shell=False)
     loops = boundary_loops(faces)
     span = verts.max(0) - verts.min(0)
     print(

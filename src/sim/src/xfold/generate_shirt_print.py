@@ -46,7 +46,7 @@ def extract_mark(rgb: np.ndarray) -> np.ndarray:
     return cropped
 
 
-def stamp(canvas: np.ndarray, mark: np.ndarray, frac: float) -> None:
+def stamp(canvas: np.ndarray, mark: np.ndarray, frac: float, *, cy: float = 0.5) -> None:
     h, w = canvas.shape[:2]
     mw = max(8, int(round(w * frac)))
     scale = mw / mark.shape[1]
@@ -61,9 +61,9 @@ def stamp(canvas: np.ndarray, mark: np.ndarray, frac: float) -> None:
         ),
         dtype=np.float64,
     )
-    # Dead centre of the T panel (unit-square UVs).
     x0 = (w - mw) // 2
-    y0 = (h - mh) // 2
+    y0 = int(round(h * cy)) - mh // 2
+    y0 = max(0, min(h - mh, y0))
     canvas[y0 : y0 + mh, x0 : x0 + mw] = small
 
 
@@ -87,14 +87,80 @@ def make_print(mark_path: Path, out: Path, size: int = SIZE, frac: float = MARK_
         _save_png(DEFAULT_MARK, np.clip(mark, 0, 255).astype(np.uint8))
 
 
+def bake_catalog(mark_path: Path = DEFAULT_MARK) -> None:
+    """Write PNG skins for every catalogue garment that is not the default T.
+
+    Cloth is the same white as the default T. Silhouette carries the type;
+    ink is only a small chest print / stitch so vision HSV stays white-cloth.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    mark = extract_mark(_load_rgb(mark_path))
+    size = SIZE
+    ink = tuple(int(c) for c in INK)
+
+    def white() -> np.ndarray:
+        return np.full((size, size, 3), CLOTH, dtype=np.float64)
+
+    def _font(px: int):
+        try:
+            return ImageFont.truetype("Arial.ttf", px)
+        except OSError:
+            return ImageFont.load_default()
+
+    # Work tee: white + pocket stitch + tiny mark.
+    work = white()
+    stamp(work, mark, 0.055, cy=0.46)
+    img = Image.fromarray(np.clip(work, 0, 255).astype(np.uint8))
+    draw = ImageDraw.Draw(img)
+    pocket = (int(size * 0.62), int(size * 0.48), int(size * 0.78), int(size * 0.62))
+    draw.rounded_rectangle(pocket, radius=12, outline=ink, width=3)
+    _save_png(MODELS / "garment_work_tee.png", np.asarray(img))
+
+    # Jersey: white + number 10.
+    jersey = white()
+    img = Image.fromarray(np.clip(jersey, 0, 255).astype(np.uint8))
+    draw = ImageDraw.Draw(img)
+    text = "10"
+    font = _font(size // 5)
+    box = draw.textbbox((0, 0), text, font=font)
+    tw, th = box[2] - box[0], box[3] - box[1]
+    draw.text(((size - tw) / 2, (size - th) / 2 - size * 0.02), text, fill=ink, font=font)
+    _save_png(MODELS / "garment_jersey.png", np.asarray(img.convert("RGB")))
+
+    # Tank: white + mark.
+    tank = white()
+    stamp(tank, mark, 0.09, cy=0.48)
+    _save_png(MODELS / "garment_tank.png", np.clip(tank, 0, 255).astype(np.uint8))
+
+    # Polo: white + placket stitch + tiny mark.
+    polo = white()
+    stamp(polo, mark, 0.06, cy=0.48)
+    img = Image.fromarray(np.clip(polo, 0, 255).astype(np.uint8))
+    draw = ImageDraw.Draw(img)
+    cx = size // 2
+    draw.line([(cx, int(size * 0.18)), (cx, int(size * 0.38))], fill=ink, width=4)
+    _save_png(MODELS / "garment_polo.png", np.asarray(img))
+
+    # A-line tee-dress: same white + mark.
+    dress = white()
+    stamp(dress, mark, 0.07)
+    _save_png(MODELS / "garment_dress.png", np.clip(dress, 0, 255).astype(np.uint8))
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--mark", type=Path, default=DEFAULT_MARK)
     p.add_argument("-o", "--out", type=Path, default=DEFAULT_OUT)
     p.add_argument("--frac", type=float, default=MARK_FRAC)
+    p.add_argument("--catalog", action="store_true", help="Bake jersey / tank / polo / dress / work tee")
     args = p.parse_args(argv)
     if not args.mark.is_file():
         raise SystemExit(f"mark image not found: {args.mark}")
+    if args.catalog:
+        bake_catalog(args.mark)
+        print("wrote garment_*.png", flush=True)
+        return
     make_print(args.mark, args.out, frac=args.frac)
     print(f"wrote {args.out}", flush=True)
 
