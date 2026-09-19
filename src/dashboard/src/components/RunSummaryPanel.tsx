@@ -5,8 +5,9 @@ import { ArrowUpRight, ClipboardList, RotateCcw } from "lucide-react";
 import { NewExperimentDialog } from "@/components/NewExperimentDialog";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { formatFlatness, formatIso, formatSeconds, lifecycleLabel } from "@/lib/format";
+import { formatFlatness, formatIso, formatSeconds, lifecycleLabel, DEFAULT_CLOTH_CONDITIONS, DEFAULT_CLOTH_TYPES } from "@/lib/format";
 import type { RunDetail } from "@/lib/types";
+import type { ClothCondition, ClothType } from "@xfold/protocol";
 
 /** Compact result card for a finished run; the event log lives in the console below. */
 export function RunSummaryPanel({ run }: { run: RunDetail }) {
@@ -25,7 +26,11 @@ export function RunSummaryPanel({ run }: { run: RunDetail }) {
           <StatusBadge tone={tone}>{run.lifecycle === "succeeded" ? "Ciclo completado" : lifecycleLabel(run.lifecycle)}</StatusBadge>
         </div>
         <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-          {run.id} · seed {run.seed} · {run.config.scenario}
+          {run.id} · seed {run.seed}
+          {run.config.clothType ? ` · ${run.config.clothType}` : ""}
+          {run.config.clothCondition ? ` · ${run.config.clothCondition}` : ""}
+          {" · "}
+          {run.config.scenario}
           {run.batchId ? (
             <>
               {" · "}
@@ -59,12 +64,29 @@ export function RunSummaryPanel({ run }: { run: RunDetail }) {
         <details className="text-xs">
           <summary className="cursor-pointer font-semibold">Entrada y parámetros de simulación</summary>
           <dl className="mt-2 grid grid-cols-2 gap-1 font-mono">{Object.entries(run.config.inputs).map(([key, value]) => <div key={key} className="contents"><dt className="truncate text-muted-foreground">{key}</dt><dd className="truncate" title={String(value)}>{String(value)}</dd></div>)}</dl>
-          {run.config.inputs.seedApplied === false ? <p className="mt-2 text-muted-foreground">Esta línea no utiliza la seed para variar la entrada.</p> : null}
+          {run.config.inputs.seedApplied === false ? <p className="mt-2 text-muted-foreground">Esta ejecución usa una entrada fija: la seed no la modifica.</p> : null}
         </details>
       ) : null}
 
       <NewExperimentDialog
-        defaults={{ mode: "individual", name: run.name ?? undefined, seed: run.seed }}
+        defaults={{
+          mode: "individual",
+          name: run.name ?? undefined,
+          seed: run.seed,
+          count: 1,
+          clothMix: "same",
+          clothTypes: [
+            DEFAULT_CLOTH_TYPES.includes(run.config.clothType as ClothType)
+              ? (run.config.clothType as ClothType)
+              : "tee",
+          ],
+          conditionMix: "same",
+          conditions: [
+            DEFAULT_CLOTH_CONDITIONS.includes(run.config.clothCondition as ClothCondition)
+              ? (run.config.clothCondition as ClothCondition)
+              : "good",
+          ],
+        }}
         trigger={
           <Button type="button" variant="outline" size="sm" className="w-full">
             <RotateCcw className="size-3.5" aria-hidden />

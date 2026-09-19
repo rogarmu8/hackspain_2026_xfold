@@ -12,8 +12,9 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from xfold.bridge.journal import Journal
-from xfold.bridge.schema import BridgeCapabilities, CommandKind, CommandRequest, ProcessDefinition
+from xfold.bridge.schema import BridgeCapabilities, CatalogOption, CommandKind, CommandRequest, ProcessDefinition
 from xfold.fsm import CYCLE, CellState
+from xfold.garments import public_catalog, resolve_garment, resolve_launch
 
 # Productive stages for the control-room stepper (matches @xfold/protocol).
 PRODUCTIVE = tuple(CYCLE)
@@ -59,6 +60,10 @@ class RunRecord:
     cancel_requested: bool = False
     driverLabel: str = "Bridge mock driver"
     hasPhoto: bool = False
+    garment: str = "tee"
+    clothType: str = "tee"
+    clothCondition: str = "good"
+    skewed: bool = False
 
     def telemetry(self) -> dict[str, Any] | None:
         if self.currentState is None:
@@ -81,6 +86,10 @@ class RunRecord:
             "lifecycle": self.lifecycle,
             "seed": self.seed,
             "name": self.name,
+            "garment": self.garment,
+            "clothType": self.clothType,
+            "clothCondition": self.clothCondition,
+            "skewed": self.skewed,
             "currentState": self.currentState,
             "startedAtIso": self.startedAtIso,
             "finishedAtIso": self.finishedAtIso,
@@ -103,6 +112,10 @@ class RunRecord:
                 "scenario": self.scenario,
                 "notes": self.driverLabel,
                 "inputs": dict(self.inputs),
+                "garment": self.garment,
+                "clothType": self.clothType,
+                "clothCondition": self.clothCondition,
+                "skewed": self.skewed,
             },
             "stages": [
                 {
@@ -178,6 +191,11 @@ class Runtime:
     def __init__(self, journal: Journal) -> None:
         self.journal = journal
         self.capabilities = BridgeCapabilities()
+        catalog = public_catalog()
+        self.capabilities.clothTypes = [CatalogOption(**item) for item in catalog["clothTypes"]]
+        self.capabilities.clothConditions = [
+            CatalogOption(**item) for item in catalog["clothConditions"]
+        ]
         self._lock = threading.RLock()
         self.runs: dict[str, RunRecord] = {}
         self.batches: dict[str, BatchRecord] = {}
@@ -306,18 +324,71 @@ class Runtime:
             items.sort(key=lambda x: x.get("startedAtIso") or "", reverse=True)
             return items
 
-    def launch_run(self, *, name: str, seed: int, scenario: str) -> dict[str, Any]:
+    def launch_run(
+        self,
+        *,
+        name: str,
+        seed: int,
+        scenario: str,
+        cloth_type: str = "tee",
+        cloth_condition: str = "good",
+        cloth_weights: dict[str, float] | None = None,
+        condition_weights: dict[str, float] | None = None,
+    ) -> dict[str, Any]:
+        cloth_mix = "random" if cloth_type == "random" else "same"
+        cond_mix = "random" if cloth_condition == "random" else "same"
+        cloth_types = [] if cloth_mix == "random" else [cloth_type]
+        conditions = [] if cond_mix == "random" else [cloth_condition]
+        pick, cloth, cond = resolve_launch(
+            cloth_mix=cloth_mix,
+            cloth_types=cloth_types,
+            condition_mix=cond_mix,
+            conditions=conditions,
+            seed=seed,
+            index=0,
+            cloth_weights=cloth_weights if cloth_mix == "random" else None,
+            condition_weights=condition_weights if cond_mix == "random" else None,
+        )
         with self._lock:
             if self.active_run_id and self.runs[self.active_run_id].lifecycle in {"running", "paused"}:
                 raise ValueError("Ya hay una ejecución activa")
-            run = self._create_run(name=name or None, seed=seed, scenario=scenario, batch_id=None)
+            run = self._create_run(
+                name=name or None,
+                seed=seed,
+                scenario=scenario,
+                batch_id=None,
+                garment=pick.key,
+                cloth_type=cloth,
+                cloth_condition=cond,
+                skewed=pick.skewed,
+                seed_applied=cloth_mix == "random" or cond_mix == "random" or cond in {"notgood", "skewed"},
+            )
             self.active_run_id = run.id
             self.active_batch_id = None
             self._start_run_locked(run)
             self.wake_driver()
             return {"ok": True, "id": run.id}
 
-    def launch_batch(self, *, name: str, count: int, base_seed: int, scenario: str) -> dict[str, Any]:
+    def launch_batch(
+        self,
+        *,
+        name: str,
+        count: int,
+        base_seed: int,
+        scenario: str,
+        cloth_mix: str = "same",
+        cloth_types: list[str] | None = None,
+        condition_mix: str = "same",
+        conditions: list[str] | None = None,
+        cloth_weights: dict[str, float] | None = None,
+        condition_weights: dict[str, float] | None = None,
+    ) -> dict[str, Any]:
+        types = list(cloth_types or [])
+        conds = list(conditions or [])
+        if cloth_mix == "list" and not types:
+            raise ValueError("Selecciona al menos un tipo de prenda")
+        if condition_mix == "list" and not conds:
+            raise ValueError("Selecciona al menos una condición")
         with self._lock:
             if self.active_run_id and self.runs[self.active_run_id].lifecycle in {"running", "paused"}:
                 raise ValueError("Ya hay una ejecución activa")
@@ -335,11 +406,26 @@ class Runtime:
             self.batches[batch_id] = batch
             self.active_batch_id = batch_id
             for i in range(count):
+                pick, cloth, cond = resolve_launch(
+                    cloth_mix=cloth_mix,
+                    cloth_types=types,
+                    condition_mix=condition_mix,
+                    conditions=conds,
+                    seed=base_seed + i,
+                    index=i,
+                    cloth_weights=cloth_weights if cloth_mix == "random" else None,
+                    condition_weights=condition_weights if condition_mix == "random" else None,
+                )
                 run = self._create_run(
                     name=name or None,
                     seed=base_seed + i,
                     scenario=scenario,
                     batch_id=batch_id,
+                    garment=pick.key,
+                    cloth_type=cloth,
+                    cloth_condition=cond,
+                    skewed=pick.skewed,
+                    seed_applied=cloth_mix != "same" or condition_mix != "same" or cond in {"notgood", "skewed"},
                 )
                 batch.run_ids.append(run.id)
             first = self.runs[batch.run_ids[0]]
@@ -351,7 +437,26 @@ class Runtime:
             self.wake_driver()
             return {"ok": True, "id": batch_id}
 
-    def _create_run(self, *, name: str | None, seed: int, scenario: str, batch_id: str | None) -> RunRecord:
+    def _create_run(
+        self,
+        *,
+        name: str | None,
+        seed: int,
+        scenario: str,
+        batch_id: str | None,
+        garment: str = "tee",
+        cloth_type: str = "tee",
+        cloth_condition: str = "good",
+        skewed: bool = False,
+        seed_applied: bool = False,
+    ) -> RunRecord:
+        item = resolve_garment(garment)
+        inputs = {
+            **self.process_config,
+            "garment": item.key, "mesh": item.mesh, "texture": item.texture,
+            "clothType": cloth_type, "clothCondition": cloth_condition,
+            "skewed": skewed, "seed": seed, "seedApplied": seed_applied,
+        }
         run = RunRecord(
             id=self._next_run_id(),
             batchId=batch_id,
@@ -360,7 +465,11 @@ class Runtime:
             scenario=self.process_scenario or scenario,
             stages=self._fresh_stages(),
             driverLabel=self.driver_label,
-            inputs=dict(self.process_config),
+            inputs=inputs,
+            garment=garment,
+            clothType=cloth_type,
+            clothCondition=cloth_condition,
+            skewed=skewed,
         )
         self.runs[run.id] = run
         return run
@@ -390,6 +499,10 @@ class Runtime:
             stages=[{"state": s.state, "label": s.label, "station": s.station} for s in run.stages],
             inputs=dict(run.inputs),
             driver=run.driverLabel,
+            garment=run.garment,
+            clothType=run.clothType,
+            clothCondition=run.clothCondition,
+            skewed=run.skewed,
         )
 
     def handle_command(self, req: CommandRequest) -> dict[str, Any]:
@@ -658,6 +771,7 @@ class Runtime:
             if not run or run.lifecycle not in {"running", "paused"}:
                 return
             run.t = float(t)
+
     def finish_success(self, run_id: str, t: float) -> None:
         with self._lock:
             run = self.runs.get(run_id)

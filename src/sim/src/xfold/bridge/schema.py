@@ -80,6 +80,11 @@ class SimOperation(BaseModel):
 BRIDGE_VERSION = "0.2.0"
 
 
+class CatalogOption(BaseModel):
+    key: str
+    label: str
+
+
 class BridgeCapabilities(BaseModel):
     process: ProcessDefinition | None = None
     liveTelemetry: bool = True
@@ -97,6 +102,8 @@ class BridgeCapabilities(BaseModel):
             "cancel_batch": True,
         }
     )
+    clothTypes: list[CatalogOption] = Field(default_factory=list)
+    clothConditions: list[CatalogOption] = Field(default_factory=list)
 
 
 class CommandRequest(BaseModel):
@@ -110,6 +117,10 @@ class LaunchRunRequest(BaseModel):
     name: str = ""
     seed: int = 0
     scenario: str = "mock"
+    clothType: str = "tee"
+    clothCondition: str = "good"
+    clothTypeWeights: dict[str, float] = Field(default_factory=dict)
+    clothConditionWeights: dict[str, float] = Field(default_factory=dict)
 
 
 class LaunchBatchRequest(BaseModel):
@@ -118,6 +129,12 @@ class LaunchBatchRequest(BaseModel):
     baseSeed: int = 0
     seedStrategy: Literal["sequential"] = "sequential"
     scenario: str = "mock"
+    clothMix: Literal["same", "random", "list"] = "same"
+    clothTypes: list[str] = Field(default_factory=lambda: ["tee"])
+    conditionMix: Literal["same", "random", "list"] = "same"
+    conditions: list[str] = Field(default_factory=lambda: ["good"])
+    clothTypeWeights: dict[str, float] = Field(default_factory=dict)
+    clothConditionWeights: dict[str, float] = Field(default_factory=dict)
 
 
 class HealthResponse(BaseModel):

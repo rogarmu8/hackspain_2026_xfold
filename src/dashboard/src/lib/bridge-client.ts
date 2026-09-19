@@ -289,6 +289,10 @@ export class BridgeClient {
           name: request.name,
           seed: request.seed,
           scenario: request.scenario,
+          clothType: request.clothType,
+          clothCondition: request.clothCondition,
+          clothTypeWeights: request.clothTypeWeights,
+          clothConditionWeights: request.clothConditionWeights,
         };
         const res = await fetch(`${this.baseUrl}/runs`, {
           method: "POST",
@@ -306,6 +310,12 @@ export class BridgeClient {
         baseSeed: request.baseSeed,
         seedStrategy: "sequential",
         scenario: request.scenario,
+        clothMix: request.clothMix,
+        clothTypes: request.clothTypes,
+        conditionMix: request.conditionMix,
+        conditions: request.conditions,
+        clothTypeWeights: request.clothTypeWeights,
+        clothConditionWeights: request.clothConditionWeights,
       };
       const res = await fetch(`${this.baseUrl}/batches`, {
         method: "POST",

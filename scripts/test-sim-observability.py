@@ -123,6 +123,58 @@ class ObservabilityTests(unittest.TestCase):
         warning = next(e for e in events if e["operation"] == "PHOTO_FAILED")
         self.assertEqual((warning["state"], warning["station"], warning["level"]), ("PHOTO", "qc", "warning"))
 
+    def test_selected_garment_replaces_startup_inputs(self):
+        from xfold.garments import resolve_garment
+
+        self.runtime.finish_success(self.run_id, 0)
+        run_id = self.runtime.launch_run(name="jersey", seed=8, scenario="legacy",
+                                         cloth_type="jersey", cloth_condition="damaged")["id"]
+        run = self.runtime.get_run(run_id)
+        item = resolve_garment("jersey_damaged")
+        self.assertEqual(run["config"]["inputs"]["mesh"], item.mesh)
+        self.assertEqual(run["config"]["inputs"]["texture"], item.texture)
+        self.assertEqual(run["config"]["inputs"]["garment"], run["garment"])
+        self.assertFalse(run["config"]["inputs"]["seedApplied"])
+        started = next(e for e in self.runtime.journal.since() if e.type == "run_started" and e.runId == run_id)
+        self.assertEqual(started.inputs, run["config"]["inputs"])
+
+    def test_weighted_inputs_are_reproducible_and_record_seed_usage(self):
+        from xfold.garments import CLOTH_TYPE_KEYS, CLOTH_CONDITION_KEYS
+
+        configs = []
+        for _ in range(2):
+            runtime = Runtime(Journal())
+            runtime.configure_process(LINE_PHASES, scenario="line", config={"seedApplied": True})
+            run_id = runtime.launch_run(
+                name="weighted", seed=42, scenario="line", cloth_type="random", cloth_condition="random",
+                cloth_weights={key: float(key == "polo") for key in CLOTH_TYPE_KEYS},
+                condition_weights={key: float(key == "skewed") for key in CLOTH_CONDITION_KEYS},
+            )["id"]
+            config = runtime.get_run(run_id)["config"]
+            self.assertEqual(config["garment"], "polo")
+            self.assertEqual(config["clothCondition"], "skewed")
+            self.assertTrue(config["inputs"]["seedApplied"])
+            configs.append(config)
+        self.assertEqual(configs[0], configs[1])
+
+    def test_batch_inputs_match_each_resolved_sku(self):
+        from xfold.garments import resolve_garment
+
+        runtime = Runtime(Journal())
+        runtime.configure_process(LINE_PHASES, scenario="line", config={"seedApplied": True})
+        runtime.launch_batch(name="mixed", count=4, base_seed=10, scenario="legacy",
+                             cloth_mix="list", cloth_types=["tee", "jersey"],
+                             condition_mix="list", conditions=["good", "notgood", "skewed"])
+        for index, run in enumerate(list(runtime.runs.values())):
+            item = resolve_garment(run.garment)
+            self.assertEqual(run.inputs["mesh"], item.mesh)
+            self.assertEqual(run.inputs["texture"], item.texture)
+            self.assertEqual(run.inputs["seed"], 10 + index)
+            self.assertTrue(run.inputs["seedApplied"])
+            started = next(e for e in runtime.journal.since() if e.type == "run_started" and e.runId == run.id)
+            self.assertEqual(started.inputs, run.inputs)
+            runtime.finish_success(run.id, 1)
+
     def test_unknown_phase_is_not_silently_hidden(self):
         with self.assertRaises(ValueError):
             self.runtime.emit_state(self.run_id, "NEW_UNDECLARED_PHASE", 1)
@@ -139,6 +191,24 @@ class ObservabilityTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("XFOLD_TEST_PHYSICS") == "1", "set XFOLD_TEST_PHYSICS=1 for full MuJoCo cycle")
 class PhysicsObservabilityTests(unittest.TestCase):
+    def test_seeded_spawn_reports_actual_pose(self):
+        import mujoco
+        from xfold.line import build, skew_pose
+
+        model = build()
+        poses = []
+        for seed in (7, 7, 8):
+            events = []
+            line = Line(model, mujoco.MjData(model), repeat=False, skewed=True, seed=seed,
+                        log=lambda message: None, on_event=events.append)
+            line.step()
+            measured = events[0]["measurements"]
+            pose = (measured["spawnYawRad"], measured["spawnOffsetYM"])
+            self.assertEqual(pose, skew_pose(seed))
+            poses.append(pose)
+        self.assertEqual(poses[0], poses[1])
+        self.assertNotEqual(poses[0], poses[2])
+
     def test_actual_line_cycle(self):
         import mujoco
         import numpy as np
@@ -152,7 +222,7 @@ class PhysicsObservabilityTests(unittest.TestCase):
         data = mujoco.MjData(model)
         pending = []
         photos = []
-        line = Line(model, data, repeat=False, log=lambda message: None, on_event=pending.append,
+        line = Line(model, data, repeat=False, log=lambda message: None, on_event=pending.append, seed=42,
                     on_photo=lambda: photos.append((line.phase, float(data.time))))
         while not line.finished and data.time < 120:
             line.step()
@@ -174,7 +244,7 @@ class PhysicsObservabilityTests(unittest.TestCase):
         self.assertEqual(photo["durationSimS"], 1.02)
         self.assertGreater(photos[0][1], photo["startedAtSimS"])
         measurements = run["metrics"]["measurements"]
-        self.assertEqual(set(measurements), {"flatnessPreM", "flatnessPostM", "packLengthM", "packWidthM", "packHeightM"})
+        self.assertEqual(set(measurements), {"flatnessPreM", "flatnessPostM", "packLengthM", "packWidthM", "packHeightM", "spawnYawRad", "spawnOffsetYM"})
         self.assertTrue(all(np.isfinite(v) and v >= 0 for v in measurements.values()))
         self.assertIsNone(run["metrics"]["shirtInBag"])
         logs = [e for e in run["events"] if e.get("operation")]

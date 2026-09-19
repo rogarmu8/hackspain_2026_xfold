@@ -62,8 +62,13 @@ globalThis.EventSource = class {
   close() {}
 };
 const calls = [];
-globalThis.fetch = async (url) => {
+const launches = [];
+globalThis.fetch = async (url, options) => {
   calls.push(url);
+  if (options?.method === "POST") {
+    launches.push(JSON.parse(options.body));
+    return { ok: true, json: async () => ({ ok: true, id: "test-run" }) };
+  }
   return { ok: true, json: async () => url.endsWith("/health") ? { ok: true }
     : url.endsWith("/snapshot") ? { journalSeq: 99, capabilities: {}, activeRun: null, activeBatch: null }
     : [] };
@@ -79,6 +84,14 @@ try {
   calls.length = 0;
   await Promise.all([client.refreshSnapshot(), client.refreshSnapshot()]);
   assert.equal(calls.filter((url) => url.endsWith("/snapshot")).length, 1);
+  await client.launch({ mode: "individual", name: "weighted", seed: 7, scenario: "line", clothType: "random", clothCondition: "skewed", clothTypeWeights: { tee: 0, polo: 1 } });
+  assert.equal(launches[0].scenario, "line");
+  assert.equal(launches[0].clothCondition, "skewed");
+  assert.deepEqual(launches[0].clothTypeWeights, { tee: 0, polo: 1 });
+  await client.launch({ mode: "batch", name: "mixed", count: 3, baseSeed: 8, seedStrategy: "sequential", scenario: "line", clothMix: "list", clothTypes: ["tee", "polo"], conditionMix: "random", conditions: [], clothConditionWeights: { good: 1, damaged: 0 } });
+  assert.equal(launches[1].clothMix, "list");
+  assert.deepEqual(launches[1].clothTypes, ["tee", "polo"]);
+  assert.deepEqual(launches[1].clothConditionWeights, { good: 1, damaged: 0 });
 } finally {
   client.stop();
   globalThis.fetch = originalFetch;

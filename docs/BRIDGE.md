@@ -49,10 +49,7 @@ dashboard shows it. The dip is not decoration: the overview lighting blows a
 white garment to flat white from 1 m up, taking the print and any stain with
 it. The image is a file, never a journal event — same rule as the viewport.
 
-The line's input garment is fixed when the scene compiles, because a different
-SKU is a different mesh: `XFOLD_GARMENT` (or `[garment] type` in
-`models/shirt.toml`) chooses it, and `XFOLD_SKEWED=1` drops it off square.
-`LineDriver` logs which input a cycle got as its first console line and stores the effective configuration in `run.config.inputs`.
+`LineDriver` logs which input a cycle got as its first console line and stores the effective per-run garment, mesh, texture, condition and seed usage in `run.config.inputs`.
 
 ### Simulator-defined process (0.2)
 
@@ -60,9 +57,19 @@ SKU is a different mesh: `XFOLD_GARMENT` (or `[garment] type` in
 
 Structured log context: `stage`, `operation`, `station`, `parallel`, plus existing `source`, `level`, `t`. Run snapshots preserve it for history/reconnect. The console uses complete `run.events` plus journal command events, rather than replacing history with a partial SSE tail. SSE cursors advance only on received events; snapshot sequence numbers cannot skip unread facts. Snapshot refreshes are coalesced and a 1 Hz refresh keeps the sim clock current between observations.
 
-Metrics are observations only: z-standard-deviation before/after the press (`flatnessPreM`, `flatnessPostM`) and folded AABB dimensions (`packLengthM`, `packWidthM`, `packHeightM`). All units are metres on the wire. No hard-coded flatness or bag success; unknown containment is null. Completing the script is not quality validation. Wall time includes pauses; the line explicitly reports that seed is not applied.
+Metrics are observations only: z-standard-deviation before/after the press (`flatnessPreM`, `flatnessPostM`) and folded AABB dimensions (`packLengthM`, `packWidthM`, `packHeightM`). All units are metres on the wire. No hard-coded flatness or bag success; unknown containment is null. Completing the script is not quality validation. Wall time includes pauses. The process advertises seed support; each run records whether selection, stain variant or skewed pose actually uses it. Fixed clean/torn selections do not vary with seed. `spawnYawRad` and `spawnOffsetYM` record the actual seeded heading and lateral offset at LOAD.
 
 Timeline final markers have no phase. Replay follows the supplied phase catalogue, including failed/cancelled endings, and labels qpos-only line reconstruction as partial. The console silence warning means **no signal**, not physical jam detection. Full replay fidelity, durable restart recovery and measured progress/quality gates are not implemented by this change.
+
+The line's input garment is chosen at **launch**, not only at process start.
+`POST /runs` and `POST /batches` carry cloth type + condition; `random` draws
+use `seed` and optional `clothTypeWeights` / `clothConditionWeights` (0 = never).
+`LineDriver` calls `select_garment` and rebuilds the shared `SimSession` when
+the SKU mesh or texture changes. Pose-only `skewed` does not rebuild: the shirt
+stays flat on the belt and `seed` picks the heading. `GET /capabilities` lists
+`clothTypes` and `clothConditions` for the dashboard form. `XFOLD_GARMENT`
+and `[garment] type` in `shirt.toml` remain the compile-time default.
+
 ## Why this shape (and not WS / gRPC)
 
 | Need | Choice |
@@ -101,7 +108,7 @@ keeps using local **fixtures** (honest `provenance: "fixture"`).
 curl -s http://127.0.0.1:8765/health
 curl -s -X POST http://127.0.0.1:8765/runs \
   -H 'content-type: application/json' \
-  -d '{"name":"demo","seed":1,"scenario":"mock"}'
+  -d '{"name":"demo","seed":1,"scenario":"mock","clothType":"tee","clothCondition":"good"}'
 curl -sN 'http://127.0.0.1:8765/events/stream?after_seq=0'
 ```
 

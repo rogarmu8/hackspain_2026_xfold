@@ -1,4 +1,15 @@
-import type { PhaseId, PhaseDefinition, ProcessDefinition, LogLevel, Telemetry } from "@xfold/protocol";
+import type {
+  PhaseId,
+  PhaseDefinition,
+  ProcessDefinition,
+  LogLevel,
+  ClothCondition,
+  ClothMix,
+  ClothType,
+  ClothWeightMap,
+  ConditionWeightMap,
+  Telemetry,
+} from "@xfold/protocol";
 
 /** Provenance of every value shown in the UI. */
 export type DataProvenance = "live" | "fixture" | "stale" | "absent";
@@ -41,6 +52,8 @@ export type SimulatorCapabilities = {
   startRun: boolean;
   startBatch: boolean;
   commands: Partial<Record<CommandKind, boolean>>;
+  clothTypes?: { key: string; label: string }[];
+  clothConditions?: { key: string; label: string }[];
 };
 
 export type TimelineMarker = {
@@ -110,6 +123,10 @@ export type RunConfig = {
   scenario: string;
   notes: string | null;
   inputs?: Record<string, unknown>;
+  garment?: string | null;
+  clothType?: string | null;
+  clothCondition?: string | null;
+  skewed?: boolean;
 };
 
 export type RunSummary = {
@@ -118,6 +135,9 @@ export type RunSummary = {
   lifecycle: RunLifecycle;
   seed: number;
   name: string | null;
+  garment?: string | null;
+  clothType?: string | null;
+  clothCondition?: string | null;
   currentState: PhaseId | null;
   startedAtIso: string | null;
   finishedAtIso: string | null;
@@ -195,6 +215,10 @@ export type LaunchRequest =
       name: string;
       seed: number;
       scenario: string;
+      clothType: ClothType | "random";
+      clothCondition: ClothCondition | "random";
+      clothTypeWeights?: ClothWeightMap;
+      clothConditionWeights?: ConditionWeightMap;
     }
   | {
       mode: "batch";
@@ -203,4 +227,10 @@ export type LaunchRequest =
       seedStrategy: "sequential" | "list";
       baseSeed: number;
       scenario: string;
+      clothMix: ClothMix;
+      clothTypes: ClothType[];
+      conditionMix: ClothMix;
+      conditions: ClothCondition[];
+      clothTypeWeights?: ClothWeightMap;
+      clothConditionWeights?: ConditionWeightMap;
     };

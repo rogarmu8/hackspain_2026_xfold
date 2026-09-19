@@ -33,7 +33,9 @@ export function lineFromJournal(event: JournalEvent): ConsoleLine | null {
         atSimS: 0,
         level: "info",
         source: "bridge",
-        message: `ejecución iniciada · seed ${event.seed} · ${event.scenario}`,
+        message: `ejecución iniciada · seed ${event.seed} · ${event.garment ?? event.scenario}${
+          event.clothCondition ? ` · ${event.clothCondition}` : ""
+        }`,
       };
     case "state_changed":
       return { ...base, atSimS: event.t, level: "info", source: "fsm", message: `→ ${event.label ?? stageLabel(event.state)}` };

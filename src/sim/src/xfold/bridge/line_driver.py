@@ -24,7 +24,6 @@ Do not block mj_step on network I/O.
 
 from __future__ import annotations
 
-import os
 import threading
 import time
 from typing import TYPE_CHECKING
@@ -77,11 +76,6 @@ _HEARTBEAT_S = 5.0
 _SIM_TIME_CAP_S = 240.0
 
 
-def _skewed_default() -> bool:
-    """XFOLD_SKEWED=1 drops the shirt off square, like `--skewed` on the CLI."""
-    return os.environ.get("XFOLD_SKEWED", "").strip().lower() in {"1", "true", "yes", "on"}
-
-
 class LineDriver:
     """Steps xfold.line.Line on the shared SimSession and journals it."""
 
@@ -97,7 +91,7 @@ class LineDriver:
         cfg = shirt_config()
         inputs = asdict(cfg)
         inputs["path"] = str(cfg.path)
-        inputs.update({"skewed": _skewed_default(), "seedApplied": False, "driver": "line"})
+        inputs.update({"seedApplied": True, "driver": "line"})
         runtime.configure_process(LINE_PHASES, scenario="line", config=inputs)
 
     def start(self) -> None:
@@ -124,7 +118,7 @@ class LineDriver:
             if run.paused or run.lifecycle == "paused":
                 self.runtime.wait_wake(0.25)
                 continue
-            self._run_cycle(run.id, run.seed)
+            self._run_cycle(run)
 
     # --- journal helpers ------------------------------------------------
 
@@ -181,14 +175,17 @@ class LineDriver:
 
     # --- the cycle -------------------------------------------------------
 
-    def _run_cycle(self, run_id: str, seed: int) -> None:
+    def _run_cycle(self, run) -> None:
         from xfold.line import Line
         from xfold.shirt import shirt_config
 
+        run_id = run.id
+        seed = int(run.seed)
+        garment = getattr(run, "garment", None) or shirt_config().garment
+        skewed = bool(getattr(run, "skewed", False))
         recorder = TrajectoryRecorder(run_id, sample_hz=10.0)
         session = self.session
-        dt = float(session.model.opt.timestep)
-        skewed = _skewed_default()
+        dt = float(session.model.opt.timestep) if session.ok else 0.002
 
         # Line.log fires inside session.lock; emit_log takes the runtime lock.
         # Buffer here and flush once the session lock is released, so the two
@@ -208,7 +205,9 @@ class LineDriver:
                 if name:
                     shot.append(name)
 
+            session.ensure_garment(garment)
             session.reset_time()
+            dt = float(session.model.opt.timestep)
             with session.lock:
                 line = Line(
                     session.model,
@@ -217,6 +216,7 @@ class LineDriver:
                     log=lambda message: None,
                     skewed=skewed,
                     on_event=pending.append,
+                    seed=seed,
                     on_photo=take_photo,
                 )
             cfg = shirt_config()
@@ -224,7 +224,8 @@ class LineDriver:
                 run_id,
                 f"ciclo iniciado · {cfg.garment} ({cfg.mesh}) · "
                 f"{'colocada torcida' if skewed else 'colocada a escuadra'} · "
-                f"seed {seed} (no aplicada por esta línea) · nq={session.model.nq} · timestep {dt:g}s",
+                f"seed {seed} ({'aplicada a entrada' if run.inputs.get('seedApplied') else 'entrada fija'}) · "
+                f"nq={session.model.nq} · timestep {dt:g}s",
             )
 
             stage = ""

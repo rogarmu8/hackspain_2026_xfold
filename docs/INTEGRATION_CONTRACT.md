@@ -47,7 +47,7 @@ A `log` additionally carries `stage`, `operation`, `station`, `parallel`. These 
 
 `metric_sample.measurements` contains measured scalar values with units in their keys. Current line measurements: `flatnessPreM` and `flatnessPostM` are standard deviation of vertex z immediately before lowering and after raising the platen; `packLengthM`, `packWidthM`, `packHeightM` are folded AABB dimensions. These are observations, not quality gates. Missing measurements stay null; `shirt_in_bag` is nullable and is not inferred from phase. `succeeded` means the programmed sequence completed, not that containment or seal quality was validated. `cycleTimeWallS` is elapsed wall time including pauses.
 
-`config.inputs` stores the effective garment/cloth/solver configuration, pose flag and `seedApplied: false` for the deterministic line. Scenario is `line`, regardless of stale UI launch defaults. Legacy drivers retain their own process catalogue. `run_started` persists the run's `stages`, `inputs` and `driver` in the journal as well, so configuration is not confined to the in-memory snapshot.
+`config.inputs` stores the effective per-run garment/mesh/texture/cloth/solver configuration, condition, pose flag, seed and whether it is actually applied. `/capabilities.process.seedApplied: true` advertises seed support; per-run `seedApplied` is true for random/list selections, stain variants or skewed poses, and false for fixed clean/torn selections. `spawnYawRad` and `spawnOffsetYM` are emitted at LOAD from the actual initial pose. Inputs are resolved for each run, not copied from the garment compiled at process startup. Scenario is `line`, regardless of stale UI launch defaults. Legacy drivers retain their own process catalogue. `run_started` persists the run's `stages`, `inputs` and `driver` in the journal as well, so configuration is not confined to the in-memory snapshot.
 
 Timeline terminal markers have `state: null`; they must not overwrite phase start markers. Replay uses `run.stages`, not a hard-coded sequence. Trajectory remains qpos-only: line replay is explicitly **partial**, because mocap and mutable visual geometry are not recorded. Durable run recovery and geometric quality gates remain separate work.
 
@@ -88,7 +88,7 @@ Every event has: `seq`, `tsIso`, `type`, `runId`, `batchId`.
 | GET | `/runs/{id}/timeline` | FSM markers for scrubber |
 | GET | `/runs/{id}/recording` | Trajectory metadata |
 | GET | `/runs/{id}/recording/frame?t=` | Replay seek (JPEG + state) |
-| POST | `/runs`, `/batches` | Launch |
+| POST | `/runs`, `/batches` | Launch. Run: `name`, `seed`, `scenario`, `clothType` (`tee`… or `random`), `clothCondition` (`good`/`damaged`/`notgood`/`skewed` or `random`), optional `clothTypeWeights` / `clothConditionWeights` when random (0 = never). Batch: `count`, `baseSeed`, `clothMix`/`conditionMix` (`same`/`random`/`list`) + `clothTypes`/`conditions` + the same weight maps. `seed` also draws a skewed heading (flat on the belt). Catalogue on `GET /capabilities`. |
 | POST | `/commands` | `{ clientCommandId, kind, runId?, batchId? }` |
 
 **Two planes (do not mix):**
