@@ -36,9 +36,43 @@ export type CommandStatus = "idle" | "pending" | "confirmed" | "rejected";
 export type SimulatorCapabilities = {
   liveTelemetry: boolean;
   viewportStream: boolean;
+  recordingSeek?: boolean;
   startRun: boolean;
   startBatch: boolean;
   commands: Partial<Record<CommandKind, boolean>>;
+};
+
+export type TimelineMarker = {
+  t: number;
+  state: CellState | null;
+  seq?: number;
+  finished?: boolean;
+  lifecycle?: string;
+};
+
+export type RunTimeline = {
+  runId: string;
+  tMax: number;
+  markers: TimelineMarker[];
+  hasTrajectory: boolean;
+};
+
+export type RecordingMeta = {
+  runId: string;
+  tMax: number;
+  sampleHz: number;
+  hasTrajectory: boolean;
+  frameCount: number;
+  nq: number;
+};
+
+export type RecordingFrame = {
+  runId: string;
+  t: number;
+  requestedT: number;
+  state: CellState;
+  mime: string;
+  imageBase64: string;
 };
 
 export type StageProgress = {

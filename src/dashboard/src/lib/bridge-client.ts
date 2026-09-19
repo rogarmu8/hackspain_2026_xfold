@@ -17,8 +17,11 @@ import type {
   ControlSnapshot,
   ExperimentListItem,
   LaunchRequest,
+  RecordingFrame,
+  RecordingMeta,
   RunDetail,
   RunSummary,
+  RunTimeline,
 } from "./types";
 
 export const DEFAULT_BRIDGE_URL = "http://127.0.0.1:8765";
@@ -211,6 +214,7 @@ export class BridgeClient {
       capabilities: this._capabilities ?? {
         liveTelemetry: false,
         viewportStream: false,
+        recordingSeek: false,
         startRun: false,
         startBatch: false,
         commands: {},
@@ -345,6 +349,42 @@ export class BridgeClient {
         ok: false,
         reason: err instanceof Error ? err.message : "Error de red",
       };
+    }
+  }
+
+  async fetchTimeline(runId: string): Promise<RunTimeline | null> {
+    try {
+      const res = await fetch(`${this.baseUrl}/runs/${encodeURIComponent(runId)}/timeline`);
+      if (!res.ok) return null;
+      return (await res.json()) as RunTimeline;
+    } catch {
+      return null;
+    }
+  }
+
+  async fetchRecording(runId: string): Promise<RecordingMeta | null> {
+    try {
+      const res = await fetch(
+        `${this.baseUrl}/runs/${encodeURIComponent(runId)}/recording`,
+      );
+      if (!res.ok) return null;
+      return (await res.json()) as RecordingMeta;
+    } catch {
+      return null;
+    }
+  }
+
+  async fetchRecordingFrame(
+    runId: string,
+    t: number,
+  ): Promise<RecordingFrame | null> {
+    try {
+      const url = `${this.baseUrl}/runs/${encodeURIComponent(runId)}/recording/frame?t=${encodeURIComponent(String(t))}`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      return (await res.json()) as RecordingFrame;
+    } catch {
+      return null;
     }
   }
 }

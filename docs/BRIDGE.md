@@ -11,7 +11,7 @@ directly. It appends **facts** to an append-only **journal**. A small HTTP
 process exposes that journal over **SSE** and accepts **REST** commands.
 
 ```text
-MockDriver / MuJoCo          Runtime              Journal           Browser
+MockDriver / PressBridgeDriver   Runtime              Journal           Browser
      │                          │                    │                  │
      │  emit_state / finish     │                    │                  │
      │─────────────────────────►│  append(event)     │                  │
@@ -23,6 +23,9 @@ MockDriver / MuJoCo          Runtime              Journal           Browser
      │                          │───────────────────►│─────────────────►│
 ```
 
+Live physics uses a shared **`SimSession`** (`MjModel`/`MjData`). `PressBridgeDriver`
+advances PressCycle + cloth; the viewport only **renders**. Trajectory NPZ under
+`data/trajectories/` powers replay seek (`recording/frame?t=`) — never JPEG in the journal.
 ## Why this shape (and not WS / gRPC)
 
 | Need | Choice |
@@ -77,9 +80,34 @@ curl -sN 'http://127.0.0.1:8765/events/stream?after_seq=0'
 | `GET` | `/experiments` | Launch list for Experimentos |
 | `POST` | `/runs`, `/batches` | Launch individual / batch |
 | `POST` | `/commands` | Operator command (`202` / `409`) |
-| `GET` | `/viewport/stream` | Live MJPEG (MuJoCo `overview` camera) — `<img src>` |
-| `GET` | `/viewport/frame` | Single latest JPEG/PNG frame |
+| `GET` | `/viewport/meta` | Readiness: `seq`, `ageMs`, `source`, `available` |
+| `GET` | `/viewport/frame?after_seq=&wait_ms=` | **Primary** live view — long-poll JPEG (+ `X-Viewport-Seq`) |
+| `GET` | `/viewport/stream` | Legacy multipart MJPEG (curl/VLC only; dashboard must not use) |
+| `GET` | `/runs/{id}/timeline` | FSM markers (`state_changed`) for scrubber |
+| `GET` | `/runs/{id}/recording` | Trajectory meta (`tMax`, `hasTrajectory`, …) |
+| `GET` | `/runs/{id}/recording/frame?t=` | Seek nearest sample → JPEG base64 + `state` |
 | `GET` | `/events/stream?after_seq=N` | SSE journal (replay + live) |
+
+### Viewport architecture (media plane)
+
+```text
+MuJoCo Renderer ──publish──► ViewportHub(seq, jpeg)
+                                │
+         ┌──────────────────────┼──────────────────────┐
+         ▼                      ▼                      ▼
+  GET /viewport/frame     GET /viewport/meta     GET /viewport/stream
+  (long-poll, primary)    (status JSON)          (legacy MJPEG)
+         │
+         ▼
+  Next /api/bridge/*  ←── same-origin proxy ──►  Dashboard <img>
+```
+
+Why not MJPEG-in-`<img>`? Safari/WebKit and several Chrome setups leave multipart
+streams as a black box even when frames are valid. Long-poll JPEG is universal,
+works with CORS/proxy, and keeps last-good-frame UX.
+
+Dashboard hook: `useLiveViewport` — visibility pause, backoff, last frame, honest
+`live|waiting|stale|offline` status.
 
 Interactive schema: `http://127.0.0.1:8765/docs`.
 

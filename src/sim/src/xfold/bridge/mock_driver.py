@@ -6,19 +6,18 @@ AGENTS.md → “For agents on other tracks (arm / cloth)”
 =============================================================================
 AGENT NOTE — ARM / FSM TRACK
 -----------------------------------------------------------------------------
-This file is the **reference Driver**. When you wire the real arm sequence
-(Menagerie / mink / scripted peel):
+This file is the **reference fallback Driver** (wall-clock stages, no physics).
+When MuJoCo + press_cell load, the bridge uses ``PressBridgeDriver`` instead.
 
   1. Keep calling the same Runtime API — do NOT invent a new bus.
        runtime.emit_state(run_id, CellState.<STAGE>, t=float(data.time))
        runtime.finish_success(run_id, t=float(data.time))
   2. Respect pause/cancel via runtime.driver_active_run().
-  3. You may replace this MockDriver class or run alongside it; Control and
-     Historial already consume journal events — no dashboard rewrite.
+  3. Prefer extending ``press_driver.py`` for real cycles; keep MockDriver as
+     offline / no-MuJoCo fallback.
   4. Do not import FastAPI here. Do not block mj_step on network I/O.
 
-Cloth teammates: you do not need to edit this file. Emit stages from your
-controller when the cycle advances; see viewport_mujoco.py for the 3D view.
+Cloth teammates: emit stages from your controller; share SimSession for 3D.
 =============================================================================
 """
 

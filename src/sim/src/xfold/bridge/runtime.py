@@ -86,7 +86,11 @@ class RunRecord:
                 "name": self.name,
                 "seed": self.seed,
                 "scenario": self.scenario,
-                "notes": "Bridge mock driver" if self.scenario == "mock" else None,
+                "notes": (
+                    "Bridge mock driver"
+                    if self.scenario == "mock"
+                    else "PressBridgeDriver (PressCycle + SimSession)"
+                ),
             },
             "stages": [
                 {
@@ -559,6 +563,13 @@ class Runtime:
                 state=state.value,
             )
 
+    def bump_sim_time(self, run_id: str, t: float) -> None:
+        """Update live telemetry clock without a journal event (substep ticks)."""
+        with self._lock:
+            run = self.runs.get(run_id)
+            if not run or run.lifecycle not in {"running", "paused"}:
+                return
+            run.t = float(t)
     def finish_success(self, run_id: str, t: float) -> None:
         with self._lock:
             run = self.runs.get(run_id)
@@ -571,6 +582,19 @@ class Runtime:
                     if stage.startedAtSimS is not None:
                         stage.durationSimS = round(t - stage.startedAtSimS, 3)
             self._finish_run_locked(run, "succeeded", None)
+
+    def finish_failed(self, run_id: str, t: float, reason: str | None = None) -> None:
+        with self._lock:
+            run = self.runs.get(run_id)
+            if not run:
+                return
+            run.t = t
+            for stage in run.stages:
+                if stage.status == "active":
+                    stage.status = "failed"
+                    if stage.startedAtSimS is not None:
+                        stage.durationSimS = round(t - stage.startedAtSimS, 3)
+            self._finish_run_locked(run, "failed", reason or "failed")
 
     def _finish_run_locked(
         self,

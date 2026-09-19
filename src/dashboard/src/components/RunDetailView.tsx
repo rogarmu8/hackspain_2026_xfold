@@ -71,6 +71,9 @@ export function RunDetailView({ runId }: { runId: string }) {
             }}
             trigger={<Button type="button">Repetir configuración</Button>}
           />
+          <Button asChild variant="outline">
+            <Link href={`/historial/${runId}/replay`}>Reproducir</Link>
+          </Button>
         </>
       }
     >
