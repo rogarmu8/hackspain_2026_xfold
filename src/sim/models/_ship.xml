@@ -5,7 +5,8 @@
   <global offwidth="1280" offheight="800"/>
 </visual>
 <asset>
-  <material name="shirt_cloth" rgba="0.20 0.31 0.46 1" specular="0.02" shininess="0.01" reflectance="0"/>
+  <texture name="shirt_print" type="2d" file="shirt_print.png"/>
+  <material name="shirt_cloth" texture="shirt_print" rgba="1 1 1 1" specular="0.02" shininess="0.01" reflectance="0"/>
 </asset>
 <statistic center="0 0 0.12" extent="1.0"/>
 <worldbody>

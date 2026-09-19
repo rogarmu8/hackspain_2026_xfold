@@ -33,6 +33,8 @@ DEFAULT_SPACING = 0.032
 DEFAULT_NX = 22
 DEFAULT_NY = 24
 DEFAULT_NS = 6
+# Unit-square UVs: one PNG covers the whole T (collar at the top of the
+# image). A chest print stays in the middle instead of tiling.
 
 LEFT_CREASE_X = -BODY_W / 6.0
 RIGHT_CREASE_X = BODY_W / 6.0
@@ -381,10 +383,27 @@ def validate_mesh(verts: np.ndarray, faces: np.ndarray, *, shell: bool) -> list[
     return loops
 
 
+def planar_uvs(verts: np.ndarray) -> np.ndarray:
+    """Map the T in metres onto the unit square, isotropic, collar at the top.
+
+    Independent 0–1 axes would stretch a chest print: the panel is wider
+    than it is tall (sleeves). Same metres-per-UV on both axes keeps α^x
+    the shape it is in the PNG.
+    """
+    cx = 0.5 * (float(verts[:, 0].min()) + float(verts[:, 0].max()))
+    cy = 0.5 * (float(verts[:, 1].min()) + float(verts[:, 1].max()))
+    span = max(float(np.ptp(verts[:, 0])), float(np.ptp(verts[:, 1])), 1e-6)
+    u = (verts[:, 0] - cx) / span + 0.5
+    # v=0 is the first PNG row. Collar (+Y) must sample the top of the print.
+    v = (verts[:, 1] - cy) / span + 0.5
+    return np.column_stack((u, v))
+
+
 def write_obj(path: Path, verts: np.ndarray, faces: np.ndarray, *, shell: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     loops = validate_mesh(verts, faces, shell=shell)
     kind = "hollow shell" if shell else "single T panel (ninja fold)"
+    uvs = planar_uvs(verts)
     with path.open("w", encoding="utf-8") as f:
         f.write(f"# XFOLD {kind}\n")
         f.write(f"# verts={len(verts)} faces={len(faces)} loops={len(loops)}\n")
@@ -394,8 +413,11 @@ def write_obj(path: Path, verts: np.ndarray, faces: np.ndarray, *, shell: bool =
         )
         for x, y, z in verts:
             f.write(f"v {x:.6f} {y:.6f} {z:.6f}\n")
+        for u, v in uvs:
+            f.write(f"vt {u:.6f} {v:.6f}\n")
         for a, b, c in faces:
-            f.write(f"f {a + 1} {b + 1} {c + 1}\n")
+            ia, ib, ic = a + 1, b + 1, c + 1
+            f.write(f"f {ia}/{ia} {ib}/{ib} {ic}/{ic}\n")
 
 
 def main(argv: list[str] | None = None) -> None:

@@ -6,7 +6,9 @@
      50-contact flex-vs-plane pair. Mesh density is a looks/drape knob. -->
 <mujoco model="xfold-shirt">
   <asset>
-    <material name="shirt_cloth" rgba="0.20 0.31 0.46 1"
+    <!-- White T + tiny AlphaFold α^x. UVs in shirt_t.obj cover the panel once. -->
+    <texture name="shirt_print" type="2d" file="shirt_print.png"/>
+    <material name="shirt_cloth" texture="shirt_print" rgba="1 1 1 1"
               specular="0.02" shininess="0.01" reflectance="0"/>
   </asset>
 
