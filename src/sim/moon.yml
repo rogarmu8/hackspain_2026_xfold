@@ -42,7 +42,7 @@ tasks:
       cache: false
       persistent: true
       runFromWorkspaceRoot: true
-  # The line: belt carries a flat shirt under the press, then onto the folder.
+  # The line: belt, press, folder, bagger (peel, seal, RFID sticker), belt 2, carton.
   run:
     script: |
       . ./scripts/pixi-path.sh

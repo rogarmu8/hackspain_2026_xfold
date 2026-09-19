@@ -100,7 +100,7 @@ Always from the repo root.
 | Dashboard only ([localhost:3000](http://localhost:3000)) | `moon run dashboard:dev` |
 | **Bridge** only (journal + REST/SSE on :8765) | `moon run sim:bridge` |
 | **MuJoCo window (the actual scene)** | `moon run sim:view` |
-| **The line — belt, press, folder (no robots)** | `moon run sim:run` |
+| **The line — belt, press, folder, bagger, carton (no robots)** | `moon run sim:run` |
 | Shirt playground (ninja-fold T — drag it) | `moon run sim:shirt-play` |
 | Mock cell cycle (JSON lines to stdout) | `moon run sim:mock` |
 | Dashboard lint | `moon run dashboard:lint` |
@@ -119,7 +119,7 @@ On macOS, `sim:view` runs under `mjpython` (Cocoa main thread). Elsewhere it use
 - **Bridge:** append-only run journal; mock FSM drives `PICK → … → BAG`; REST commands + SSE events for the control room.
 - **Mock CLI:** same cycle printed as JSON lines to stdout (`shirt_in_bag`, same shape as `@xfold/protocol`) — offline / piping.
 - **Viewer / Control 3D:** ninja-fold flex T (`shirt_t.obj`) in `cell.xml`, and the line (`line.xml`). The bridge viewport renders the line when MuJoCo is available.
-- **The line** (`sim:run`, `xfold/line.py`): a flat shirt rides a belt under the press, the platen presses it on the belt, the belt runs it onto a FlipFold-style folder, and three flaps fold it (left, right, hem up) into a ~32 × 30 cm pack. No arms.
+- **The line** (`sim:run`, `xfold/line.py`): a flat shirt rides a belt under the press, the platen presses it on the belt, the belt runs it onto a FlipFold-style folder, and three flaps fold it (left, right, hem up) into a ~33 × 33 cm pack. The plate under the pack is a peel: it slides between rails into an open plastic bag and pulls back out, the top film drops, a seal bar closes the mouth while a stamp sticks an RFID label on top, and belt 2 carries the bag off its end into a carton. No arms. The camera follows the shirt (`--camera overview|press_cam|fold_cam|bag_cam` for fixed views).
 
 Build order for cloth + dual-arm: [SOLUTION.md §9](SOLUTION.md#9-build-order-hackathon).
 

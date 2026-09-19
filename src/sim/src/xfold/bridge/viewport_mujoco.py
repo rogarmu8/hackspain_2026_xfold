@@ -100,7 +100,7 @@ class MujocoViewportProducer:
             from xfold.shirt import load_mujoco_plugins
 
             load_mujoco_plugins()
-            model, data, camera, step = self._compile_scene(mujoco)
+            model, data, camera, step, track = self._compile_scene(mujoco)
             model.vis.global_.offwidth = max(model.vis.global_.offwidth, self.width)
             model.vis.global_.offheight = max(model.vis.global_.offheight, self.height)
             renderer = mujoco.Renderer(model, height=self.height, width=self.width)
@@ -124,6 +124,7 @@ class MujocoViewportProducer:
                         step()
                 else:
                     mujoco.mj_forward(model, data)
+                track(interval)
 
                 renderer.update_scene(data, camera=camera)
                 rgb = renderer.render()
@@ -143,22 +144,31 @@ class MujocoViewportProducer:
     def _compile_scene(self, mujoco):
         """Prefer the line (belt, press, folder); fall back to cell.xml.
 
-        Returns the model, its data, the camera, and the function that
-        advances it one physics step.
+        Returns the model, its data, the camera (a name, or a camera that
+        follows the shirt), the function that advances it one physics step,
+        and the function that moves the camera, given seconds since its last
+        call.
         """
         try:
-            from xfold.line import Line, build
+            from xfold.line import FollowCam, Line, build
 
             model = build()
             data = mujoco.MjData(model)
             line = Line(model, data, log=lambda message: print(f"[viewport] {message}", flush=True))
             line.step()
+            follow = FollowCam()
             print("[viewport] rendering the line (belt, press, folder)", flush=True)
-            return model, data, "overview", line.step
+            return (
+                model,
+                data,
+                follow.cam,
+                line.step,
+                lambda dt: follow.track(line.positions(), dt),
+            )
         except Exception as exc:
             print(f"[viewport] line compile failed ({exc}); using cell.xml", flush=True)
             from xfold.shirt import load_mjcf
 
             model, data = load_mjcf(MODEL_PATH, claws=False)
             mujoco.mj_forward(model, data)
-            return model, data, "overview", lambda: mujoco.mj_step(model, data)
+            return model, data, "overview", lambda: mujoco.mj_step(model, data), lambda dt: None

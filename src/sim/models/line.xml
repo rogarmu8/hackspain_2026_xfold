@@ -5,14 +5,26 @@
   stops it under the press, the platen comes down on the belt itself (the
   press's own bed and table are removed in xfold.line), then the belt runs
   the shirt off its end onto the folder. The folder is a FlipFold on legs:
-  a fixed plate under the collar, a flap on each side and one under the hem.
+  a sliding peel under the collar, a flap on each side and one under the hem.
 
-  Flaps are mocap bodies driven by xfold.line; their hinge line is the body
-  origin, lifted a few millimetres above the plates so each flip lands its
-  layer on top of the cloth already there.
+  Then the pizza-peel part: the peel slides the folded shirt on through side
+  rails into an open plastic bag, and pulls out from under it. The top film
+  drops onto the shirt, a seal bar closes the bag's mouth while a stamp
+  sticks an RFID label on top, and a second belt carries the bag off its end
+  into a carton.
 
-  Belt top and plate tops are all at z = 0.562, the height the press stroke
-  was tuned for.
+  Flaps, peel, seal bar and stamp are mocap bodies driven by xfold.line.
+  A flap's hinge line is the body origin, lifted a few millimetres above the
+  plates so each flip lands its layer on top of the cloth already there.
+
+  Belt 1 and the flaps lie at z = 0.562, the height the press stroke was
+  tuned for; the folder table and belt 2 are 14 mm lower, so the peel (a
+  12 mm plate) rides on the table and its top is flush with the flaps.
+
+  Collision bits: cloth spheres are contype 2 / conaffinity 1 (xfold.shirt).
+  Flaps and peel carry conaffinity 2, so they touch cloth and nothing else.
+  The bag carries contype 4, so it touches the belt and the carton but not
+  the cloth; the shirt is held inside it kinematically once sealed.
 -->
 <mujoco model="xfold-line">
   <compiler angle="radian" autolimits="true"/>
@@ -46,6 +58,11 @@
     <material name="roller" rgba="0.55 0.57 0.60 1"/>
     <material name="plate" rgba="0.80 0.82 0.84 1"/>
     <material name="flap" rgba="0.93 0.62 0.16 1"/>
+    <material name="film" rgba="0.82 0.92 1.00 0.26"/>
+    <material name="film_sealed" rgba="0.70 0.84 0.95 0.85"/>
+    <material name="sticker" rgba="0.97 0.97 0.94 1"/>
+    <material name="antenna" rgba="0.20 0.25 0.35 1"/>
+    <material name="cardboard" rgba="0.62 0.47 0.30 1"/>
   </asset>
 
   <include file="press_rig.xml"/>
@@ -54,81 +71,184 @@
     <light name="key" pos="-0.4 -1.2 2.2" dir="0.1 0.5 -1" diffuse="0.8 0.75 0.7"/>
     <light name="fill" pos="0.6 1.0 1.8" dir="-0.2 -0.4 -1" diffuse="0.35 0.4 0.45"/>
     <light name="fold_light" pos="0.64 -0.3 1.5" dir="0 0.2 -1" diffuse="0.35 0.35 0.38"/>
-    <geom name="floor" type="plane" size="3.0 2.0 0.05" material="floor"/>
+    <light name="bag_light" pos="1.45 -0.4 1.6" dir="0 0.2 -1" diffuse="0.35 0.35 0.38"/>
+    <light name="carton_light" pos="2.3 -0.4 1.6" dir="0 0.2 -1" diffuse="0.3 0.3 0.32"/>
+    <geom name="floor" type="plane" size="4.0 2.5 0.05" material="floor"/>
 
     <!-- Aim points for the cameras; no geometry. -->
-    <body name="line_center" pos="-0.55 0 0.56"/>
-    <body name="fold_center" pos="0.635 0 0.56"/>
+    <body name="line_center" pos="0.45 0 0.50"/>
+    <body name="fold_center" pos="0.90 0 0.56"/>
+    <body name="bag_center" pos="1.55 0 0.45"/>
 
-    <camera name="overview" pos="-0.55 -3.00 2.10" mode="targetbody" target="line_center"/>
+    <camera name="overview" pos="0.45 -4.30 2.60" mode="targetbody" target="line_center"/>
     <camera name="press_cam" pos="-1.35 -1.55 1.35" mode="targetbody" target="press_platen"/>
-    <camera name="fold_cam" pos="0.635 -1.05 1.65" mode="targetbody" target="fold_center"/>
+    <camera name="fold_cam" pos="0.90 -1.15 1.70" mode="targetbody" target="fold_center"/>
+    <camera name="bag_cam" pos="1.60 -1.35 1.60" mode="targetbody" target="bag_center"/>
 
     <!--
-      Infeed belt, x = -2.00 .. 0.30. Only the top face touches cloth; the
-      belt's motion is applied to the cloth in xfold.line. Slats are visual
-      and slide along with the belt so it reads as moving.
+      Infeed belt, x = -2.00 .. 0.30, 0.97 m wide so the sleeves (0.91 m)
+      lie flat on it. Only the top face touches cloth; the belt's motion is
+      applied to the cloth in xfold.line. Slats are visual and slide along
+      with the belt so it reads as moving.
     -->
     <body name="belt">
-      <geom name="belt_top" type="box" size="1.15 0.437 0.003" pos="-0.85 0 0.559" material="belt"/>
-      <geom name="belt_bed" class="deco" type="box" size="1.13 0.40 0.025" pos="-0.85 0 0.531" material="steel"/>
-      <geom name="roller_in" class="deco" type="cylinder" size="0.032 0.437" pos="-2.00 0 0.530" euler="1.5708 0 0" material="roller"/>
-      <geom name="roller_out" class="deco" type="cylinder" size="0.032 0.437" pos="0.30 0 0.530" euler="1.5708 0 0" material="roller"/>
-      <geom name="belt_leg_0" class="deco" type="box" size="0.03 0.03 0.25" pos="-1.90 0.36 0.25" material="steel"/>
-      <geom name="belt_leg_1" class="deco" type="box" size="0.03 0.03 0.25" pos="-1.90 -0.36 0.25" material="steel"/>
-      <geom name="belt_leg_2" class="deco" type="box" size="0.03 0.03 0.25" pos="0.20 0.36 0.25" material="steel"/>
-      <geom name="belt_leg_3" class="deco" type="box" size="0.03 0.03 0.25" pos="0.20 -0.36 0.25" material="steel"/>
-      <!-- The press columns stand on these, where the press table used to be. -->
-      <geom name="press_post_l" class="deco" type="box" size="0.04 0.04 0.252" pos="-0.99 0.46 0.252" material="steel"/>
-      <geom name="press_post_r" class="deco" type="box" size="0.04 0.04 0.252" pos="-0.99 -0.46 0.252" material="steel"/>
+      <geom name="belt_top" type="box" size="1.15 0.485 0.003" pos="-0.85 0 0.559" material="belt"/>
+      <geom name="belt_bed" class="deco" type="box" size="1.13 0.45 0.025" pos="-0.85 0 0.531" material="steel"/>
+      <geom name="roller_in" class="deco" type="cylinder" size="0.032 0.485" pos="-2.00 0 0.530" euler="1.5708 0 0" material="roller"/>
+      <geom name="roller_out" class="deco" type="cylinder" size="0.032 0.485" pos="0.30 0 0.530" euler="1.5708 0 0" material="roller"/>
+      <geom name="belt_leg_0" class="deco" type="box" size="0.03 0.03 0.25" pos="-1.90 0.41 0.25" material="steel"/>
+      <geom name="belt_leg_1" class="deco" type="box" size="0.03 0.03 0.25" pos="-1.90 -0.41 0.25" material="steel"/>
+      <geom name="belt_leg_2" class="deco" type="box" size="0.03 0.03 0.25" pos="0.20 0.41 0.25" material="steel"/>
+      <geom name="belt_leg_3" class="deco" type="box" size="0.03 0.03 0.25" pos="0.20 -0.41 0.25" material="steel"/>
+      <!-- The press columns stand on these, where the press table used to be.
+           xfold.line moves the columns out to y = +/-0.54 to clear the belt. -->
+      <geom name="press_post_l" class="deco" type="box" size="0.04 0.04 0.252" pos="-0.99 0.54 0.252" material="steel"/>
+      <geom name="press_post_r" class="deco" type="box" size="0.04 0.04 0.252" pos="-0.99 -0.54 0.252" material="steel"/>
 
-      <geom name="belt_slat_0" class="deco" type="box" size="0.010 0.432 0.0006" pos="-2.00 0 0.5626" material="slat"/>
-      <geom name="belt_slat_1" class="deco" type="box" size="0.010 0.432 0.0006" pos="-1.85 0 0.5626" material="slat"/>
-      <geom name="belt_slat_2" class="deco" type="box" size="0.010 0.432 0.0006" pos="-1.70 0 0.5626" material="slat"/>
-      <geom name="belt_slat_3" class="deco" type="box" size="0.010 0.432 0.0006" pos="-1.55 0 0.5626" material="slat"/>
-      <geom name="belt_slat_4" class="deco" type="box" size="0.010 0.432 0.0006" pos="-1.40 0 0.5626" material="slat"/>
-      <geom name="belt_slat_5" class="deco" type="box" size="0.010 0.432 0.0006" pos="-1.25 0 0.5626" material="slat"/>
-      <geom name="belt_slat_6" class="deco" type="box" size="0.010 0.432 0.0006" pos="-1.10 0 0.5626" material="slat"/>
-      <geom name="belt_slat_7" class="deco" type="box" size="0.010 0.432 0.0006" pos="-0.95 0 0.5626" material="slat"/>
-      <geom name="belt_slat_8" class="deco" type="box" size="0.010 0.432 0.0006" pos="-0.80 0 0.5626" material="slat"/>
-      <geom name="belt_slat_9" class="deco" type="box" size="0.010 0.432 0.0006" pos="-0.65 0 0.5626" material="slat"/>
-      <geom name="belt_slat_10" class="deco" type="box" size="0.010 0.432 0.0006" pos="-0.50 0 0.5626" material="slat"/>
-      <geom name="belt_slat_11" class="deco" type="box" size="0.010 0.432 0.0006" pos="-0.35 0 0.5626" material="slat"/>
-      <geom name="belt_slat_12" class="deco" type="box" size="0.010 0.432 0.0006" pos="-0.20 0 0.5626" material="slat"/>
-      <geom name="belt_slat_13" class="deco" type="box" size="0.010 0.432 0.0006" pos="-0.05 0 0.5626" material="slat"/>
-      <geom name="belt_slat_14" class="deco" type="box" size="0.010 0.432 0.0006" pos="0.10 0 0.5626" material="slat"/>
-      <geom name="belt_slat_15" class="deco" type="box" size="0.010 0.432 0.0006" pos="0.25 0 0.5626" material="slat"/>
+      <geom name="belt_slat_0" class="deco" type="box" size="0.010 0.480 0.0006" pos="-2.00 0 0.5626" material="slat"/>
+      <geom name="belt_slat_1" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.85 0 0.5626" material="slat"/>
+      <geom name="belt_slat_2" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.70 0 0.5626" material="slat"/>
+      <geom name="belt_slat_3" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.55 0 0.5626" material="slat"/>
+      <geom name="belt_slat_4" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.40 0 0.5626" material="slat"/>
+      <geom name="belt_slat_5" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.25 0 0.5626" material="slat"/>
+      <geom name="belt_slat_6" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.10 0 0.5626" material="slat"/>
+      <geom name="belt_slat_7" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.95 0 0.5626" material="slat"/>
+      <geom name="belt_slat_8" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.80 0 0.5626" material="slat"/>
+      <geom name="belt_slat_9" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.65 0 0.5626" material="slat"/>
+      <geom name="belt_slat_10" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.50 0 0.5626" material="slat"/>
+      <geom name="belt_slat_11" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.35 0 0.5626" material="slat"/>
+      <geom name="belt_slat_12" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.20 0 0.5626" material="slat"/>
+      <geom name="belt_slat_13" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.05 0 0.5626" material="slat"/>
+      <geom name="belt_slat_14" class="deco" type="box" size="0.010 0.480 0.0006" pos="0.10 0 0.5626" material="slat"/>
+      <geom name="belt_slat_15" class="deco" type="box" size="0.010 0.480 0.0006" pos="0.25 0 0.5626" material="slat"/>
     </body>
 
     <!--
-      Folder, x = 0.305 .. 0.965. The shirt stops with its hem just inside
-      the upstream edge, so the hem flap's hinge (x = 0.605) sits at about
-      half the shirt's 0.61 m length, and the side hinges (y = +/-0.15)
-      leave a 0.30 m wide pack. The fixed plate reaches 2 cm past each
-      hinge line and the flaps start there, so the rounded crease a flip
-      leaves behind still lies on the plate. Boards are thick so folded
-      layers pressed down onto them cannot tunnel through.
+      Folder, x = 0.305 .. 0.98. The shirt stops with its hem just inside
+      the upstream edge, so the hem flap's hinge (x = 0.642) sits at about
+      half the shirt's 0.65 m length, and the side hinges (y = +/-0.16)
+      leave a 0.32 m wide pack: the sleeve tips reach 0.456 m from the spine
+      and must land inside the far hinge. The peel reaches 2 cm past each hinge line
+      and the flaps start there, so the rounded crease a flip leaves behind
+      still lies on the peel. Its collision slab is thick so folded layers
+      pressed down onto it cannot tunnel through; what you see is a 12 mm
+      plate sliding on the table.
     -->
     <body name="folder">
-      <geom name="fold_plate" type="box" size="0.19 0.17 0.02" pos="0.775 0 0.542" material="plate"/>
-      <geom name="fold_frame" class="deco" type="box" size="0.33 0.40 0.020" pos="0.635 0 0.500" material="steel"/>
+      <geom name="fold_frame" class="deco" type="box" size="0.3375 0.40 0.020" pos="0.6425 0 0.528" material="steel"/>
       <geom name="fold_leg_0" class="deco" type="box" size="0.03 0.03 0.25" pos="0.34 0.36 0.25" material="steel"/>
       <geom name="fold_leg_1" class="deco" type="box" size="0.03 0.03 0.25" pos="0.34 -0.36 0.25" material="steel"/>
-      <geom name="fold_leg_2" class="deco" type="box" size="0.03 0.03 0.25" pos="0.93 0.36 0.25" material="steel"/>
-      <geom name="fold_leg_3" class="deco" type="box" size="0.03 0.03 0.25" pos="0.93 -0.36 0.25" material="steel"/>
+      <geom name="fold_leg_2" class="deco" type="box" size="0.03 0.03 0.25" pos="0.95 0.36 0.25" material="steel"/>
+      <geom name="fold_leg_3" class="deco" type="box" size="0.03 0.03 0.25" pos="0.95 -0.36 0.25" material="steel"/>
+    </body>
+
+    <!-- Pizza peel: carries the folded shirt into the bag, then slides back out. -->
+    <body name="peel" mocap="true" pos="0.801 0 0.556">
+      <geom name="peel_slab" size="0.179 0.18 0.02" pos="0 0 -0.014" type="box"
+            contype="0" conaffinity="2" group="3"/>
+      <geom name="peel_plate" class="deco" type="box" size="0.179 0.18 0.006" material="plate"/>
     </body>
 
     <!-- Left of the collar looking downstream (+y). Swings over about +x. -->
-    <body name="flap_left" mocap="true" pos="0.635 0.15 0.569">
-      <geom name="flap_left" class="flap" size="0.33 0.145 0.012" pos="0 0.165 -0.019"/>
+    <body name="flap_left" mocap="true" pos="0.6425 0.16 0.569">
+      <geom name="flap_left" class="flap" size="0.3375 0.145 0.012" pos="0 0.165 -0.019"/>
     </body>
     <!-- Right (-y), second: its hinge is one layer higher. -->
-    <body name="flap_right" mocap="true" pos="0.635 -0.15 0.573">
-      <geom name="flap_right" class="flap" size="0.33 0.145 0.012" pos="0 -0.165 -0.023"/>
+    <body name="flap_right" mocap="true" pos="0.6425 -0.16 0.573">
+      <geom name="flap_right" class="flap" size="0.3375 0.145 0.012" pos="0 -0.165 -0.023"/>
     </body>
     <!-- Hem flap, last: lifts the lower half over three layers. -->
-    <body name="flap_bottom" mocap="true" pos="0.605 0 0.585">
-      <geom name="flap_bottom" class="flap" size="0.14 0.17 0.012" pos="-0.16 0 -0.035"/>
+    <body name="flap_bottom" mocap="true" pos="0.642 0 0.585">
+      <geom name="flap_bottom" class="flap" size="0.1585 0.18 0.012" pos="-0.1785 0 -0.035"/>
+    </body>
+
+    <!--
+      Belt 2, x = 0.985 .. 2.10, top at z = 0.548. It carries the bag, and only
+      the bag: the shirt is held inside it. Like belt 1 its slats are visual.
+    -->
+    <body name="belt2">
+      <geom name="belt2_top" type="box" size="0.5575 0.26 0.003" pos="1.5425 0 0.545" material="belt"/>
+      <geom name="belt2_bed" class="deco" type="box" size="0.55 0.235 0.020" pos="1.5425 0 0.522" material="steel"/>
+      <geom name="belt2_roller_in" class="deco" type="cylinder" size="0.030 0.26" pos="0.985 0 0.520" euler="1.5708 0 0" material="roller"/>
+      <geom name="belt2_roller_out" class="deco" type="cylinder" size="0.030 0.26" pos="2.10 0 0.520" euler="1.5708 0 0" material="roller"/>
+      <geom name="belt2_leg_0" class="deco" type="box" size="0.03 0.03 0.25" pos="1.06 0.29 0.25" material="steel"/>
+      <geom name="belt2_leg_1" class="deco" type="box" size="0.03 0.03 0.25" pos="1.06 -0.29 0.25" material="steel"/>
+      <geom name="belt2_leg_2" class="deco" type="box" size="0.03 0.03 0.25" pos="2.00 0.29 0.25" material="steel"/>
+      <geom name="belt2_leg_3" class="deco" type="box" size="0.03 0.03 0.25" pos="2.00 -0.29 0.25" material="steel"/>
+      <geom name="belt2_slat_0" class="deco" type="box" size="0.010 0.256 0.0006" pos="0.9850 0 0.5486" material="slat"/>
+      <geom name="belt2_slat_1" class="deco" type="box" size="0.010 0.256 0.0006" pos="1.1244 0 0.5486" material="slat"/>
+      <geom name="belt2_slat_2" class="deco" type="box" size="0.010 0.256 0.0006" pos="1.2637 0 0.5486" material="slat"/>
+      <geom name="belt2_slat_3" class="deco" type="box" size="0.010 0.256 0.0006" pos="1.4031 0 0.5486" material="slat"/>
+      <geom name="belt2_slat_4" class="deco" type="box" size="0.010 0.256 0.0006" pos="1.5425 0 0.5486" material="slat"/>
+      <geom name="belt2_slat_5" class="deco" type="box" size="0.010 0.256 0.0006" pos="1.6819 0 0.5486" material="slat"/>
+      <geom name="belt2_slat_6" class="deco" type="box" size="0.010 0.256 0.0006" pos="1.8213 0 0.5486" material="slat"/>
+      <geom name="belt2_slat_7" class="deco" type="box" size="0.010 0.256 0.0006" pos="1.9606 0 0.5486" material="slat"/>
+
+      <!--
+        Side rails the peel slides between, into the bag. Their inner faces
+        (|y| = 0.193) clear the bag's 0.37 m width.
+      -->
+      <geom name="rail_l" class="deco" type="box" size="0.265 0.012 0.012" pos="1.235 0.205 0.560" material="chrome"/>
+      <geom name="rail_r" class="deco" type="box" size="0.265 0.012 0.012" pos="1.235 -0.205 0.560" material="chrome"/>
+    </body>
+
+    <!--
+      The bag, 0.46 x 0.37 m, closed at its far (+x) end and open at the mouth
+      (-x) where the peel comes in. A dynamic body, so belt 2 can carry it and
+      gravity can drop it. Its one collision box is invisible and is as tall as
+      the sealed bag (45 mm); the films are visual and are re-posed by
+      xfold.line: the top film is hinged at the far end and held open, then
+      lowered onto the shirt. The lip is the sealed edge, hidden until sealing.
+    -->
+    <body name="bag" pos="1.25 0 0.5705">
+      <freejoint name="bag_free"/>
+      <inertial pos="0 0 0" mass="0.45" diaginertia="0.0052 0.0080 0.0131"/>
+      <geom name="bag_hull" type="box" size="0.23 0.185 0.0225" contype="4" conaffinity="1" group="3"/>
+      <geom name="bag_bottom" class="deco" type="box" size="0.23 0.185 0.0008" pos="0 0 -0.0215" material="film"/>
+      <geom name="bag_top" class="deco" type="box" size="0.205 0.185 0.0008" pos="0.025 0 0.0183" material="film"/>
+      <geom name="bag_lip" class="deco" type="box" size="0.0315 0.185 0.0008" pos="-0.205 0 -0.0016"
+            quat="0.9472 0 -0.3206 0" material="film_sealed" rgba="0.70 0.84 0.95 0"/>
+      <geom name="bag_sticker" class="deco" type="box" size="0.032 0.022 0.0006" pos="-0.10 0 0.0197"
+            material="sticker" rgba="0.97 0.97 0.94 0"/>
+      <geom name="bag_antenna" class="deco" type="box" size="0.024 0.014 0.0002" pos="-0.10 0 0.0204"
+            material="antenna" rgba="0.20 0.25 0.35 0"/>
+    </body>
+
+    <!--
+      Gantry over the bag: a heat-seal bar for the mouth and a sticker stamp
+      for the top, hanging from one beam. Both are mocap bodies that xfold.line
+      lowers together; neither collides with anything.
+    -->
+    <body name="gantry">
+      <geom name="gantry_post_l" class="deco" type="box" size="0.02 0.02 0.41" pos="1.10 0.31 0.41" material="steel"/>
+      <geom name="gantry_post_r" class="deco" type="box" size="0.02 0.02 0.41" pos="1.10 -0.31 0.41" material="steel"/>
+      <geom name="gantry_beam" class="deco" type="box" size="0.075 0.33 0.018" pos="1.10 0 0.83" material="steel"/>
+    </body>
+    <body name="seal_bar" mocap="true" pos="1.045 0 0.700">
+      <geom name="seal_bar_head" class="deco" type="box" size="0.020 0.20 0.010" material="hot_dark"/>
+      <geom name="seal_bar_rod" class="deco" type="cylinder" size="0.012 0.16" pos="0 0 0.17" material="chrome"/>
+    </body>
+    <body name="stamp" mocap="true" pos="1.15 0 0.700">
+      <geom name="stamp_head" class="deco" type="box" size="0.040 0.030 0.012" material="steel"/>
+      <geom name="stamp_rod" class="deco" type="cylinder" size="0.010 0.16" pos="0 0 0.17" material="chrome"/>
+      <geom name="stamp_sticker" class="deco" type="box" size="0.032 0.022 0.0006" pos="0 0 -0.0126" material="sticker"/>
+      <geom name="stamp_antenna" class="deco" type="box" size="0.024 0.014 0.0002" pos="0 0 -0.0133" material="antenna"/>
+    </body>
+
+    <!--
+      Carton, inner 0.68 x 0.64 m, past the end of belt 2. The bag comes off
+      the belt at x = 2.10 and drops in. Its flaps are folded back and are
+      only for show.
+    -->
+    <body name="carton">
+      <geom name="carton_floor" type="box" size="0.348 0.328 0.008" pos="2.46 0.0 0.008" material="cardboard"/>
+      <geom name="carton_near" type="box" size="0.008 0.328 0.162" pos="2.112 0.0 0.178" material="cardboard"/>
+      <geom name="carton_far" type="box" size="0.008 0.328 0.162" pos="2.808 0.0 0.178" material="cardboard"/>
+      <geom name="carton_left" type="box" size="0.348 0.008 0.162" pos="2.46 0.328 0.178" material="cardboard"/>
+      <geom name="carton_right" type="box" size="0.348 0.008 0.162" pos="2.46 -0.328 0.178" material="cardboard"/>
+      <geom name="carton_flap_far" class="deco" type="box" size="0.085 0.328 0.003" pos="2.893 0.0 0.376" quat="0.9763 0 -0.2164 0" material="cardboard"/>
+      <geom name="carton_flap_left" class="deco" type="box" size="0.348 0.085 0.003" pos="2.46 0.413 0.376" quat="0.9763 0.2164 0 0" material="cardboard"/>
+      <geom name="carton_flap_right" class="deco" type="box" size="0.348 0.085 0.003" pos="2.46 -0.413 0.376" quat="0.9763 -0.2164 0 0" material="cardboard"/>
     </body>
   </worldbody>
 </mujoco>
