@@ -16,7 +16,9 @@ Paleta tomada de `src/dashboard/src/app/globals.css`.
 | Monocromo marrón, crema o naranja | `xfold-{logo,mark}-{ink,cream,orange}.svg` |
 | SVG inline que hereda el color CSS | `xfold-mark-current.svg` |
 | Favicon con fondo marrón | `xfold-favicon.svg` |
+| Favicon `.ico` multi-tamaño (16/32/48, copia en `src/app/favicon.ico`) | `xfold-favicon.ico` |
 | Iconos PNG con fondo | `xfold-app-icon-{32,180,192,512}.png` |
+| Imagen Open Graph / Twitter 1200 × 630 | `xfold-og.png` |
 | Símbolos PNG transparentes | `xfold-mark-*-512.png` |
 | Logos PNG transparentes | `xfold-logo-*-1600.png` |
 | Lámina de presentación | `xfold-brand-preview.png` |
@@ -71,6 +73,10 @@ paquetes. Genera SVG y PNG a partir de la misma geometría.
 
 **Consumo en el dashboard (ya cableado):**
 
-- Favicon / PWA icons → `src/dashboard/src/app/layout.tsx` (`metadata.icons`)
+- Favicon / PWA icons → `src/dashboard/src/app/layout.tsx` (`metadata.icons`) y `src/app/favicon.ico`
+- Open Graph / Twitter card → `metadata.openGraph` / `metadata.twitter` (`/brand/xfold-og.png`)
+- `theme-color` → `viewport.themeColor` en `layout.tsx` (crema)
+- Web app manifest → `src/dashboard/src/app/manifest.ts` (`/manifest.webmanifest`)
 - Wordmark del sidebar → `FoldLogo` en `AppShell`
 - Marca móvil en header → `FoldMark` (`/brand/xfold-mark-primary.svg`)
+- Estado vacío de la lista de ejecuciones → `FoldMark` en `HistoryView`

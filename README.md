@@ -1,3 +1,5 @@
+<p align="center"><img src="src/dashboard/public/brand/xfold-logo-primary.svg" alt="XFOLD" width="320"></p>
+
 # XFOLD
 
 HackSpain '26 · THEKER — automate the shirt press, ninja fold, and bag line.

@@ -56,6 +56,39 @@ for (const size of [32, 180, 192, 512]) {
   await sharp(Buffer.from(favicon)).resize(size, size).png().toFile(path.join(out, `xfold-app-icon-${size}.png`));
 }
 
+// ICO container with PNG-encoded entries (ICONDIR + ICONDIRENTRY per image).
+// Written both to /brand and to app/favicon.ico, the Next.js file convention
+// that otherwise ships the framework's stock icon.
+const icoSizes = [16, 32, 48];
+const icoPngs = await Promise.all(icoSizes.map((s) => sharp(Buffer.from(favicon)).resize(s, s).png().toBuffer()));
+const icoHeader = Buffer.alloc(6 + 16 * icoSizes.length);
+icoHeader.writeUInt16LE(0, 0);
+icoHeader.writeUInt16LE(1, 2);
+icoHeader.writeUInt16LE(icoSizes.length, 4);
+let icoOffset = icoHeader.length;
+icoSizes.forEach((s, i) => {
+  const entry = 6 + 16 * i;
+  icoHeader.writeUInt8(s, entry);
+  icoHeader.writeUInt8(s, entry + 1);
+  icoHeader.writeUInt8(0, entry + 2);
+  icoHeader.writeUInt8(0, entry + 3);
+  icoHeader.writeUInt16LE(1, entry + 4);
+  icoHeader.writeUInt16LE(32, entry + 6);
+  icoHeader.writeUInt32LE(icoPngs[i].length, entry + 8);
+  icoHeader.writeUInt32LE(icoOffset, entry + 12);
+  icoOffset += icoPngs[i].length;
+});
+const ico = Buffer.concat([icoHeader, ...icoPngs]);
+await fs.writeFile(path.join(out, 'xfold-favicon.ico'), ico);
+await fs.writeFile(path.join(root, 'src/dashboard/src/app/favicon.ico'), ico);
+
+// Open Graph card: reverse wordmark on ink.
+const og = svg(1200, 630, `
+  <rect width="1200" height="630" fill="${ink}"/>
+  <g transform="translate(240 207) scale(2.25)">${mark(cream, orange)}<g transform="translate(112 29)">${lettering(cream)}</g></g>
+  <text x="600" y="500" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" font-size="30" letter-spacing="6" fill="${cream}" opacity=".7">CENTRO DE CONTROL</text>`);
+await sharp(Buffer.from(og)).png().toFile(path.join(out, 'xfold-og.png'));
+
 const board = svg(1440, 1040, `
   <rect width="1440" height="1040" fill="#f4ecd8"/>
   <g font-family="Helvetica,Arial,sans-serif" fill="${ink}">

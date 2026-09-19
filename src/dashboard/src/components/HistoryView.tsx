@@ -7,6 +7,7 @@ import { ArrowUpRight } from "lucide-react";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "./ui/table";
 import { AppShell } from "@/components/AppShell";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
+import { FoldMark } from "@/components/FoldMark";
 import { NewExperimentDialog } from "@/components/NewExperimentDialog";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useDashboard } from "@/lib/dashboard-context";
@@ -119,6 +120,7 @@ export function HistoryView() {
 
       {rows.length === 0 ? (
         <div className="border border-divider bg-surface px-6 py-10">
+          <FoldMark size={32} className="mb-4 opacity-40" />
           <h2 className="text-lg font-semibold">Sin ejecuciones</h2>
           <p className="mt-2 max-w-lg text-sm text-muted-foreground">
             {history.length
