@@ -82,6 +82,22 @@ from .steam import SteamField
 
 LINE_PATH = Path(__file__).resolve().parents[2] / "models" / "line.xml"
 
+LINE_PHASES = (
+    {"state": "LOAD", "label": "Carga", "station": "infeed"},
+    {"state": "TO_PRESS", "label": "A prensa", "station": "belt"},
+    {"state": "PRESS", "label": "Prensado", "station": "press"},
+    {"state": "TO_QC", "label": "A cámara QC", "station": "belt"},
+    {"state": "PHOTO", "label": "Foto de producto", "station": "qc"},
+    {"state": "TO_FOLDER", "label": "A plegador", "station": "belt"},
+    {"state": "FOLD", "label": "Plegado de palas", "station": "folder"},
+    {"state": "INSERT", "label": "Inserción en bolsa", "station": "bagger"},
+    {"state": "TO_SEAL", "label": "A selladora", "station": "belt2"},
+    {"state": "SEAL", "label": "Sellado y etiqueta", "station": "sealer"},
+    {"state": "TO_CARTON", "label": "A cartón", "station": "belt2"},
+    {"state": "DONE", "label": "Fin de ciclo", "station": "outfeed"},
+)
+_PHASES = {phase["state"]: phase for phase in LINE_PHASES}
+
 # Belt top and folder plates, from line.xml.
 SURFACE_Z = 0.562
 BELT_X = (-2.00, 0.30)
@@ -343,6 +359,7 @@ class Line:
         skewed: bool = False,
         seed: int = 0,
         on_photo=None,
+        on_event=None,
     ) -> None:
         import mujoco
 
@@ -351,6 +368,8 @@ class Line:
         self.data = data
         self.repeat = repeat
         self.log = log
+        self.on_event = on_event
+        self.phase = "LOAD"
         self.skewed = skewed
         self.seed = int(seed)
         self._skew_yaw = 0.0
@@ -586,33 +605,38 @@ class Line:
             if self.skewed
             else "flat shirt on the belt"
         )
-        yield from self._hold("LOAD", load_msg, 0.6)
+        self.phase = "LOAD"
+        yield from self._hold("LOAD", load_msg, 0.6,
+                              measurements={"spawnYawRad": self._skew_yaw, "spawnOffsetYM": self._skew_y})
 
-        self._enter("BELT", "carry the shirt under the press")
+        self._enter("BELT", "carry the shirt under the press", phase="TO_PRESS")
         yield from self._belt_until(lambda pos: PRESS_X - float(pos[:, 0].mean()))
 
-        self._enter("PRESS", "platen down on the belt")
+        self._enter("PRESS", "platen down on the belt", phase="PRESS",
+                    measurements={"flatnessPreM": float(np.std(self.positions()[:, 2]))})
         yield from self._ramp_stroke(STROKE_PRESSED, 2.5)
         self._enter("STEAM", "steam under the platen")
         yield from self._steam_for(3.0)
         self._enter("LIFT", "platen up")
         yield from self._ramp_stroke(STROKE_OPEN, 2.0)
 
-        self._enter("BELT", "carry the pressed shirt to the inspection station")
+        self._enter("BELT", "carry the pressed shirt to the inspection station", phase="TO_QC",
+                    measurements={"flatnessPostM": float(np.std(self.positions()[:, 2]))})
         yield from self._belt_until(lambda pos: QC_X - float(pos[:, 0].mean()))
         yield from self._shoot()
 
-        self._enter("BELT", "run the shirt off the belt onto the folder")
+        self._enter("BELT", "run the shirt off the belt onto the folder", phase="TO_FOLDER")
         self._drive_to = FOLDER_X[1]
         yield from self._belt_until(lambda pos: FOLDER_X[0] + HEM_INSET - float(pos[:, 0].min()))
         self._drive_to = BELT_X[1]
         # The bagger gets a bag ready while the folder works.
         self._bagger = self._prepare_bag()
-        yield from self._hold("SETTLE", "shirt on the folder", 0.5)
+        yield from self._hold("SETTLE", "shirt on the folder", 0.5, phase="FOLD")
 
         self._layers = _Layers(self.model, self.data, thickness=0.5 * LAYER_GAP)
         for flap in FLAPS:
-            self._enter("FOLD", flap.body.replace("flap_", "") + " flap over")
+            self._enter("FOLD", flap.body.replace("flap_", "") + " flap over",
+                        operation=flap.body.upper())
             yield from self._flip(flap)
             yield from self._hold("FOLD", "", 0.3, quiet=True)
 
@@ -622,6 +646,8 @@ class Line:
             "FOLD",
             f"folded pack {size[0] * 100:.0f} x {size[1] * 100:.0f} cm, "
             f"{size[2] * 1000:.0f} mm tall",
+            operation="PACK_MEASURED",
+            measurements={"packLengthM": float(size[0]), "packWidthM": float(size[1]), "packHeightM": float(size[2])},
         )
         yield from self._hold("FOLD", "", 0.6, quiet=True)
 
@@ -630,7 +656,7 @@ class Line:
             while not self._bag_ready:
                 yield
 
-        self._enter("BAG", "peel runs out on its slides and carries the pack into the open bag")
+        self._enter("BAG", "peel runs out on its slides and carries the pack into the open bag", phase="INSERT")
         travel = BAG_X + BAG_HALF_LENGTH - BAG_END_MARGIN - float(pos[:, 0].max())
         yield from self._move_peel(travel, 0.0, 2.4, carry=True)
         self._enter(
@@ -649,14 +675,14 @@ class Line:
 
         self._enter("RELEASE", "fingers and mouth cup let go, the film settles on the pack")
         yield from self._release_bag(self._settled_height())
-        self._enter("INDEX", "belt 2 moves the bag on to the seal station")
+        self._enter("INDEX", "belt 2 moves the bag on to the seal station", phase="TO_SEAL")
         yield from self._index_bag(SEAL_X)
-        self._enter("SEAL", "seal bar presses the mouth flat and welds it, stamp puts the label on")
+        self._enter("SEAL", "seal bar presses the mouth flat and welds it, stamp puts the label on", phase="SEAL")
         yield from self._seal_and_tag()
 
-        self._enter("BELT", "belt 2 carries the bag to the carton")
+        self._enter("BELT", "belt 2 carries the bag to the carton", phase="TO_CARTON")
         yield from self._convey()
-        yield from self._hold("DONE", "bagged, sealed, tagged, boxed", 2.5)
+        yield from self._hold("DONE", "sequence complete; packaging quality not validated", 2.5, phase="DONE")
 
     def _set_flash(self, level: float) -> None:
         """0 dark, 1 full. Lamps, bulbs and the scene dip move together."""
@@ -679,7 +705,7 @@ class Line:
         shows. `on_photo` is optional: without it the flash still fires, which
         is what makes the stop legible in the live viewport.
         """
-        self._enter("PHOTO", "shirt stopped square under the QC camera")
+        self._enter("PHOTO", "shirt stopped square under the QC camera", phase="PHOTO")
         yield from self._hold("PHOTO", "", 0.45, quiet=True)
         for blend in self._tween(FLASH_RISE):
             self._set_flash(blend)
@@ -694,6 +720,7 @@ class Line:
                     try:
                         self.on_photo()
                     except Exception as exc:  # noqa: BLE001 — a bad shot is not a bad cycle
+                        self._observe("PHOTO_FAILED", f"camera failed: {exc}", level="warning")
                         self.log(f"[line {self.cycles}] PHOTO  camera failed: {exc}")
             yield
         for blend in self._tween(FLASH_FALL):
@@ -716,6 +743,7 @@ class Line:
         if self.skewed:
             yaw, y = skew_pose(self.seed)
         self._skew_yaw = yaw
+        self._skew_y = y
         world = flat_shirt(SPAWN_X, yaw=yaw, y=y)
         ids = np.arange(len(world))
         self._pin(ids, world, None)
@@ -733,14 +761,36 @@ class Line:
         self._set_flash(0.0)
         mujoco.mj_forward(self.model, self.data)
 
-    def _enter(self, stage: str, message: str) -> None:
+    def _observe(self, operation: str, message: str, *, station: str | None = None,
+                 parallel: bool = False, measurements: dict[str, float] | None = None,
+                 level: str = "info") -> None:
+        if self.on_event is not None:
+            self.on_event({
+                "state": self.phase,
+                "operation": operation,
+                "station": station or _PHASES[self.phase]["station"],
+                "parallel": parallel,
+                "message": message,
+                "level": level,
+                "t": float(self.data.time),
+                "measurements": measurements or {},
+            })
+
+    def _enter(self, stage: str, message: str, *, phase: str | None = None,
+               operation: str | None = None, measurements: dict[str, float] | None = None) -> None:
+        if phase is not None:
+            if phase not in _PHASES:
+                raise ValueError(f"Unknown line phase: {phase}")
+            self.phase = phase
         self.stage = stage
+        self._observe(operation or stage, message, measurements=measurements)
         if message:
             self.log(f"[line {self.cycles}] {stage:<6} {message}")
 
-    def _hold(self, stage: str, message: str, seconds: float, quiet: bool = False):
+    def _hold(self, stage: str, message: str, seconds: float, quiet: bool = False, *,
+              phase: str | None = None, measurements: dict[str, float] | None = None):
         if not quiet:
-            self._enter(stage, message)
+            self._enter(stage, message, phase=phase, measurements=measurements)
         for _ in range(self._steps(seconds)):
             yield
 
@@ -860,16 +910,17 @@ class Line:
         """
         model, data = self.model, self.data
 
-        def log(message: str) -> None:
+        def log(operation: str, message: str) -> None:
+            self._observe(operation, message, station="bagger", parallel=True)
             self.log(f"[line {self.cycles}] BAGGER {message}")
 
-        log("picker takes the top bag off the magazine")
+        log("BAG_PICK", "picker takes the top bag off the magazine")
         grip_mag = MAG_BAG_Z + BAG_FLOOR + BAG_FLAT + FILM
         yield from self._move_picker(MAG_Y, PICKER_PARK_Z, grip_mag, 0.6)
         yield from self._hold("", "", 0.25, quiet=True)  # vacuum builds
         grip = BAG_FLOOR + BAG_FLAT + FILM  # cups' lips above the bag's centre
         yield from self._move_picker(MAG_Y, grip_mag, CARRY_BAG_Z + grip, 0.6, carry=True)
-        log("picker carries it over belt 2 and lays it down, mouth toward the folder")
+        log("BAG_PLACE", "picker carries it over belt 2 and lays it down, mouth toward the folder")
         yield from self._move_picker(MAG_Y, CARRY_BAG_Z + grip, CARRY_BAG_Z + grip, 1.2,
                                      carry=True, to_y=0.0)
         yield from self._move_picker(0.0, CARRY_BAG_Z + grip, BELT2_BAG_Z + grip, 0.6, carry=True)
@@ -879,7 +930,7 @@ class Line:
         yield from self._hold("", "", 0.2, quiet=True)
         yield from self._move_picker(0.0, BELT2_BAG_Z + grip, PICKER_PARK_Z, 0.5)
 
-        log("mouth cup lifts the top lip, air knife blows the bag open")
+        log("BAG_OPEN", "mouth cup lifts the top lip, air knife blows the bag open")
         cup = self._mouth_cup
         bag_z = float(data.qpos[self._bag_qadr + 2])
         park_back = self._move_picker(0.0, PICKER_PARK_Z, PICKER_PARK_Z, 1.2, to_y=MAG_Y)
@@ -897,7 +948,7 @@ class Line:
         for _ in park_back:
             yield
 
-        log("spreader fingers drop into the mouth's corners and hold it square")
+        log("BAG_HOLD", "spreader fingers drop into the mouth's corners and hold it square")
         for blend in self._tween(0.5):
             self._set_fingers(FINGER_IN_Y, FINGER_PARK_Z + (FINGER_DOWN_Z - FINGER_PARK_Z) * blend)
             yield
@@ -905,7 +956,7 @@ class Line:
             self._set_fingers(FINGER_IN_Y + (FINGER_OUT_Y - FINGER_IN_Y) * blend, FINGER_DOWN_Z)
             yield
         model.geom_rgba[jet, 3] = 0.0
-        log("bag open, ready for the pack")
+        log("BAG_READY", "bag open, ready for the pack")
         self._bag_ready = True
 
     def _move_picker(self, y: float, z0: float, z1: float, seconds: float,

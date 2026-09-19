@@ -49,6 +49,18 @@ dashboard shows it. The dip is not decoration: the overview lighting blows a
 white garment to flat white from 1 m up, taking the print and any stain with
 it. The image is a file, never a journal event — same rule as the viewport.
 
+`LineDriver` logs which input a cycle got as its first console line and stores the effective per-run garment, mesh, texture, condition and seed usage in `run.config.inputs`.
+
+### Simulator-defined process (0.2)
+
+`xfold.line.LINE_PHASES` is the sole line phase catalogue. The driver registers it with Runtime and forwards `Line.on_event` observations; the browser consumes `run.stages` and simulator labels. `/capabilities.process` advertises the scenario/catalogue/seed support before launch; `run_started` journals `stages`, `inputs` and `driver` for traceability. The old six-state mapping is no longer used for the line. Main phases distinguish conveyor trips (including `TO_QC`), the `PHOTO` stop, insertion, sealing and completion. Photo outcomes (`PHOTO_SAVED`, `PHOTO_UNAVAILABLE`, `PHOTO_FAILED`) retain structured phase/station/timestamp context; unavailable/failed captures are warnings. Flatness post is sampled immediately after the press raises, before transport to QC. Sub-operations distinguish each flap, press motion and peel action. Bag preparation logs `parallel: true`, without advancing the main phase.
+
+Structured log context: `stage`, `operation`, `station`, `parallel`, plus existing `source`, `level`, `t`. Run snapshots preserve it for history/reconnect. The console uses complete `run.events` plus journal command events, rather than replacing history with a partial SSE tail. SSE cursors advance only on received events; snapshot sequence numbers cannot skip unread facts. Snapshot refreshes are coalesced and a 1 Hz refresh keeps the sim clock current between observations.
+
+Metrics are observations only: z-standard-deviation before/after the press (`flatnessPreM`, `flatnessPostM`) and folded AABB dimensions (`packLengthM`, `packWidthM`, `packHeightM`). All units are metres on the wire. No hard-coded flatness or bag success; unknown containment is null. Completing the script is not quality validation. Wall time includes pauses. The process advertises seed support; each run records whether selection, stain variant or skewed pose actually uses it. Fixed clean/torn selections do not vary with seed. `spawnYawRad` and `spawnOffsetYM` record the actual seeded heading and lateral offset at LOAD.
+
+Timeline final markers have no phase. Replay follows the supplied phase catalogue, including failed/cancelled endings, and labels qpos-only line reconstruction as partial. The console silence warning means **no signal**, not physical jam detection. Full replay fidelity, durable restart recovery and measured progress/quality gates are not implemented by this change.
+
 The line's input garment is chosen at **launch**, not only at process start.
 `POST /runs` and `POST /batches` carry cloth type + condition; `random` draws
 use `seed` and optional `clothTypeWeights` / `clothConditionWeights` (0 = never).
@@ -57,6 +69,7 @@ the SKU mesh or texture changes. Pose-only `skewed` does not rebuild: the shirt
 stays flat on the belt and `seed` picks the heading. `GET /capabilities` lists
 `clothTypes` and `clothConditions` for the dashboard form. `XFOLD_GARMENT`
 and `[garment] type` in `shirt.toml` remain the compile-time default.
+
 ## Why this shape (and not WS / gRPC)
 
 | Need | Choice |
@@ -164,8 +177,8 @@ Python models live in [`src/sim/src/xfold/bridge/schema.py`](../src/sim/src/xfol
 | `type` | Meaning |
 |--------|---------|
 | `run_started` | New run entered `running` |
-| `state_changed` | FSM stage changed (`PICK`…`BAG`) |
-| `metric_sample` | Throttled metrics (flatness, bag flag) |
+| `state_changed` | Simulator phase entry (`state`, `label`, `station`, `t`, `cycle`); no fixed six-stage cycle for line |
+| `metric_sample` | Measured metrics (`measurements` with unit-suffixed keys; nullable flatness/bag flag) |
 | `run_finished` | Terminal lifecycle + reason |
 | `command_accepted` | Command passed validation |
 | `command_rejected` | Invalid / unsupported |
@@ -177,7 +190,7 @@ Envelope on every event: `seq`, `tsIso`, `runId`, `batchId`.
 
 ### Console (dashboard)
 
-`bridge-client` keeps a ring buffer (2000) of journal facts; `ControlRoom` renders them for the open run in `ConsolePanel` (`src/dashboard/src/lib/console.ts` maps each `type` to a line; `metric_sample`/`batch_updated` are hidden). A UI **stall watchdog** flags a `running` run with no fact for `STALL_AFTER_S` (8 s) — so drivers should log at stage granularity, not stay silent for long phases.
+`bridge-client` keeps a ring buffer (2000) of journal facts; `ControlRoom` renders them for the open run in `ConsolePanel` (`src/dashboard/src/lib/console.ts` maps each `type` to a line; `metric_sample`/`batch_updated` are hidden). A UI **silence watchdog** flags a `running` run with no console fact for `STALL_AFTER_S` (8 s). It is a signal-health warning, not a physical stall detector; heartbeats do not prove material progress.
 
 ## Invariants
 

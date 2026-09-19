@@ -3,6 +3,7 @@ import {
   CLOTH_CONDITION_KEYS,
   CLOTH_TYPE_KEYS,
   type CellState,
+  type PhaseDefinition,
   type ClothCondition,
   type ClothType,
 } from "@xfold/protocol";
@@ -17,8 +18,8 @@ function formatEs(value: number, fractionDigits: number): string {
   return trimmed ? `${withSep},${trimmed}` : withSep;
 }
 
-export function stageLabel(state: CellState): string {
-  return CELL_STAGE_LABELS[state];
+export function stageLabel(state: string, stages?: readonly PhaseDefinition[]): string {
+  return stages?.find((s) => s.state === state)?.label ?? CELL_STAGE_LABELS[state as CellState] ?? state;
 }
 
 export function formatPercent(
@@ -36,7 +37,7 @@ export function formatSeconds(value: number | null | undefined): string {
 
 export function formatFlatness(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
-  return `${formatEs(value, 3)} m`;
+  return `${formatEs(value * 1000, 2)} mm`;
 }
 
 /** Deterministic UTC stamp — avoids SSR/client locale hydration drift. */

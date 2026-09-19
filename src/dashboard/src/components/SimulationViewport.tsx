@@ -17,7 +17,7 @@ import {
 import { CellSchematic } from "./CellSchematic";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/button";
-import { STAGE_ICONS } from "@/lib/stage-icons";
+import { STAGE_ICONS, DEFAULT_STAGE_ICON } from "@/lib/stage-icons";
 import { formatFlatness, formatSeconds, lifecycleLabel, stageLabel } from "@/lib/format";
 import {
   useLiveViewport,
@@ -60,7 +60,7 @@ export function SimulationViewport({
     !replay && streamAvailable && Boolean(bridgeUrl) && provenance !== "fixture";
   const live = running && showLive;
   const stage = replay ? replay.active : run?.currentState ?? null;
-  const StageIcon = stage ? STAGE_ICONS[stage] : null;
+  const StageIcon = stage ? STAGE_ICONS[stage] ?? DEFAULT_STAGE_ICON : null;
 
   const viewport = useLiveViewport({
     enabled: showLive,
@@ -125,7 +125,7 @@ export function SimulationViewport({
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center p-6">
-              <CellSchematic stage={stage} />
+              <CellSchematic stage={stage} stages={run?.stages} />
             </div>
           )
         ) : showLive ? (
@@ -152,7 +152,7 @@ export function SimulationViewport({
           )
         ) : (
           <div className="absolute inset-0 flex items-center justify-center p-6">
-            <CellSchematic stage={stage} />
+            <CellSchematic stage={stage} stages={run?.stages} />
           </div>
         )}
 
@@ -164,7 +164,7 @@ export function SimulationViewport({
                 className="hud-flash flex items-center gap-2 border border-hud/40 bg-black/50 px-2 py-1"
               >
                 <StageIcon className="size-3.5" strokeWidth={1.75} aria-hidden />
-                {stage ? stageLabel(stage) : null}
+                {stage ? stageLabel(stage, run?.stages) : null}
               </span>
             ) : (
               <span className="text-hud-dim">standby</span>
@@ -174,7 +174,7 @@ export function SimulationViewport({
             {replay ? (
               <>
                 <History className="size-3.5" strokeWidth={1.75} aria-hidden />
-                <span>replay{replay.hasTrajectory ? " · mujoco" : " · fsm"}</span>
+                <span>replay{replay.hasTrajectory ? run?.config.inputs?.driver === "line" ? " parcial · qpos" : " · mujoco" : " · fases"}</span>
               </>
             ) : live ? (
               <>
@@ -198,14 +198,20 @@ export function SimulationViewport({
           </div>
         </div>
 
+        {!replay && run?.telemetry?.operation ? (
+          <div className="pointer-events-none absolute inset-x-6 top-16 max-w-xl bg-black/50 px-2 py-1 font-mono text-[11px] text-hud">
+            <p>{run.telemetry.operation.message}</p>
+            {run.telemetry.activities?.map((activity) => <p key={activity.station} className="text-hud-dim">{activity.station} · último hito paralelo: {activity.message}</p>)}
+          </div>
+        ) : null}
         {replay ? (
           <ReplayControls replay={replay} />
         ) : run?.telemetry ? (
           <dl className="pointer-events-none absolute inset-x-0 bottom-0 grid grid-cols-5 gap-x-3 border-t border-hud/15 bg-black/60 px-6 py-2.5 text-left backdrop-blur-[2px]">
-            <Metric label="fase" value={stageLabel(run.telemetry.state)} />
+            <Metric label="operación" value={run.telemetry.operation?.id ?? stageLabel(run.telemetry.state, run.stages)} />
             <Metric label="ciclo" value={String(run.telemetry.cycle)} />
             <Metric label="planitud" value={formatFlatness(run.telemetry.flatness)} />
-            <Metric label="en bolsa" value={run.telemetry.shirt_in_bag ? "sí" : "no"} />
+            <Metric label="en bolsa" value={run.telemetry.shirt_in_bag == null ? "no medido" : run.telemetry.shirt_in_bag ? "sí" : "no"} />
             <Metric label="t sim" value={formatSeconds(run.telemetry.t)} />
           </dl>
         ) : !run && !showLive ? (

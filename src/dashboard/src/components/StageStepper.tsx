@@ -1,9 +1,9 @@
 "use client";
 
-import { PRODUCTIVE_CYCLE, type CellState } from "@xfold/protocol";
-import { Check, X } from "lucide-react";
+import type { PhaseId } from "@xfold/protocol";
+import { Check, X, type LucideIcon } from "lucide-react";
 import { stageLabel, formatSeconds } from "@/lib/format";
-import { STAGE_ICONS } from "@/lib/stage-icons";
+import { STAGE_ICONS, DEFAULT_STAGE_ICON } from "@/lib/stage-icons";
 import type { StageProgress } from "@/lib/types";
 
 /**
@@ -16,17 +16,10 @@ export function StageStepper({
   onSelect,
 }: {
   stages: StageProgress[] | null;
-  selected: CellState | null;
-  onSelect: (state: CellState) => void;
+  selected: PhaseId | null;
+  onSelect: (state: PhaseId) => void;
 }) {
-  const items =
-    stages ??
-    PRODUCTIVE_CYCLE.map((state) => ({
-      state,
-      status: "pending" as const,
-      startedAtSimS: null,
-      durationSimS: null,
-    }));
+  const items = stages ?? [];
 
   const done = items.filter((s) => s.status === "completed").length;
 
@@ -38,19 +31,19 @@ export function StageStepper({
           {done}/{items.length}
         </span>
       </div>
-      <ol className="flex items-stretch" aria-label="Etapas del ciclo">
+      <ol className="flex items-stretch overflow-x-auto" aria-label="Etapas del ciclo">
         {items.map((stage, index) => {
           const isSelected = selected === stage.state;
           const isLast = index === items.length - 1;
-          const Icon = STAGE_ICONS[stage.state];
+          const Icon = STAGE_ICONS[stage.state] ?? DEFAULT_STAGE_ICON;
           const status = stage.status;
           return (
-            <li key={stage.state} className="flex min-w-0 flex-1 items-start">
+            <li key={stage.state} className="flex min-w-24 flex-1 items-start">
               <button
                 type="button"
                 onClick={() => onSelect(stage.state)}
                 aria-pressed={isSelected}
-                aria-label={`${stageLabel(stage.state)} · ${statusLabel(stage)}`}
+                aria-label={`${stageLabel(stage.state, items)} · ${statusLabel(stage)}`}
                 className={`group flex w-full min-w-0 flex-col items-center gap-1.5 rounded-[var(--radius-sm)] px-1 py-1.5 text-center outline-none transition-colors duration-[var(--motion-feedback)] ease-[var(--motion-ease)] hover:bg-canvas focus-visible:ring-2 focus-visible:ring-ink ${
                   isSelected ? "bg-canvas" : ""
                 }`}
@@ -81,7 +74,7 @@ export function StageStepper({
                           : "text-ink"
                   }`}
                 >
-                  {stageLabel(stage.state)}
+                  {stageLabel(stage.state, items)}
                 </span>
                 <span className="font-mono text-[11px] tabular text-muted-foreground">
                   {status === "completed"
@@ -121,7 +114,7 @@ function Node({
   Icon,
 }: {
   status: StageProgress["status"];
-  Icon: (typeof STAGE_ICONS)[CellState];
+  Icon: LucideIcon;
 }) {
   const base =
     "relative inline-flex size-8 shrink-0 items-center justify-center rounded-full border transition-colors duration-[var(--motion-feedback)]";

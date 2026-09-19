@@ -12,9 +12,9 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from xfold.bridge.journal import Journal
-from xfold.bridge.schema import BridgeCapabilities, CatalogOption, CommandKind, CommandRequest
+from xfold.bridge.schema import BridgeCapabilities, CatalogOption, CommandKind, CommandRequest, ProcessDefinition
 from xfold.fsm import CYCLE, CellState
-from xfold.garments import public_catalog, resolve_launch
+from xfold.garments import public_catalog, resolve_garment, resolve_launch
 
 # Productive stages for the control-room stepper (matches @xfold/protocol).
 PRODUCTIVE = tuple(CYCLE)
@@ -30,6 +30,8 @@ class StageProgress:
     status: Literal["completed", "active", "pending", "failed", "skipped"]
     startedAtSimS: float | None
     durationSimS: float | None
+    label: str | None = None
+    station: str | None = None
 
 
 @dataclass
@@ -47,7 +49,11 @@ class RunRecord:
     t: float = 0.0
     cycle: int = 1
     flatness: float | None = None
-    shirt_in_bag: bool = False
+    shirt_in_bag: bool | None = None
+    measurements: dict[str, float] = field(default_factory=dict)
+    inputs: dict[str, Any] = field(default_factory=dict)
+    operation: dict[str, Any] | None = None
+    activities: dict[str, dict[str, Any]] = field(default_factory=dict)
     stages: list[StageProgress] = field(default_factory=list)
     events: list[dict[str, Any]] = field(default_factory=list)
     paused: bool = False
@@ -60,15 +66,17 @@ class RunRecord:
     skewed: bool = False
 
     def telemetry(self) -> dict[str, Any] | None:
-        if self.currentState is None and self.lifecycle == "queued":
+        if self.currentState is None:
             return None
-        state = self.currentState or "PICK"
+        state = self.currentState
         return {
             "t": round(self.t, 3),
             "state": state,
             "cycle": self.cycle,
             "flatness": self.flatness,
             "shirt_in_bag": self.shirt_in_bag,
+            "operation": self.operation,
+            "activities": list(self.activities.values()),
         }
 
     def to_detail(self) -> dict[str, Any]:
@@ -89,16 +97,21 @@ class RunRecord:
             "hasPhoto": self.hasPhoto,
             "metrics": {
                 "cycleTimeSimS": self.t if self.lifecycle in {"succeeded", "failed", "cancelled"} else None,
-                "cycleTimeWallS": None,
-                "flatnessPre": None,
-                "flatnessPost": self.flatness,
-                "shirtInBag": self.shirt_in_bag if self.lifecycle == "succeeded" else None,
+                "cycleTimeWallS": (
+                    (datetime.fromisoformat(self.finishedAtIso) - datetime.fromisoformat(self.startedAtIso)).total_seconds()
+                    if self.finishedAtIso and self.startedAtIso else None
+                ),
+                "flatnessPre": self.measurements.get("flatnessPreM"),
+                "flatnessPost": self.measurements.get("flatnessPostM"),
+                "shirtInBag": self.shirt_in_bag,
+                "measurements": dict(self.measurements),
             },
             "config": {
                 "name": self.name,
                 "seed": self.seed,
                 "scenario": self.scenario,
                 "notes": self.driverLabel,
+                "inputs": dict(self.inputs),
                 "garment": self.garment,
                 "clothType": self.clothType,
                 "clothCondition": self.clothCondition,
@@ -107,6 +120,8 @@ class RunRecord:
             "stages": [
                 {
                     "state": s.state,
+                    "label": s.label,
+                    "station": s.station,
                     "status": s.status,
                     "startedAtSimS": s.startedAtSimS,
                     "durationSimS": s.durationSimS,
@@ -192,6 +207,23 @@ class Runtime:
         self._wake = threading.Event()
         # Set by app.py once a driver is chosen; shown as a run's `notes`.
         self.driver_label = "Bridge mock driver"
+        self.stage_definitions = tuple({"state": s.value} for s in PRODUCTIVE)
+        self.process_scenario: str | None = None
+        self.process_config: dict[str, Any] = {}
+
+    def configure_process(self, stages, *, scenario: str, config: dict[str, Any]) -> None:
+        with self._lock:
+            if self.runs:
+                raise ValueError("Process must be configured before launching runs")
+            states = [s["state"] for s in stages]
+            if not states or len(states) != len(set(states)):
+                raise ValueError("Process requires unique phase IDs")
+            self.stage_definitions = tuple(dict(s) for s in stages)
+            self.process_scenario = scenario
+            self.process_config = dict(config)
+            self.capabilities.process = ProcessDefinition(
+                scenario=scenario, stages=list(self.stage_definitions), seedApplied=config.get("seedApplied")
+            )
 
     def wake_driver(self) -> None:
         self._wake.set()
@@ -212,11 +244,11 @@ class Runtime:
 
     def _fresh_stages(self) -> list[StageProgress]:
         return [
-            StageProgress(state=s.value, status="pending", startedAtSimS=None, durationSimS=None)
-            for s in PRODUCTIVE
+            StageProgress(**s, status="pending", startedAtSimS=None, durationSimS=None)
+            for s in self.stage_definitions
         ]
 
-    def _ui_event(self, run: RunRecord, message: str, level: str = "info") -> None:
+    def _ui_event(self, run: RunRecord, message: str, level: str = "info", **context: Any) -> None:
         run.events.append(
             {
                 "id": f"{run.id}-e{len(run.events)+1}",
@@ -225,6 +257,7 @@ class Runtime:
                 "stage": run.currentState,
                 "message": message,
                 "level": level,
+                **context,
             }
         )
 
@@ -328,6 +361,7 @@ class Runtime:
                 cloth_type=cloth,
                 cloth_condition=cond,
                 skewed=pick.skewed,
+                seed_applied=cloth_mix == "random" or cond_mix == "random" or cond in {"notgood", "skewed"},
             )
             self.active_run_id = run.id
             self.active_batch_id = None
@@ -391,6 +425,7 @@ class Runtime:
                     cloth_type=cloth,
                     cloth_condition=cond,
                     skewed=pick.skewed,
+                    seed_applied=cloth_mix != "same" or condition_mix != "same" or cond in {"notgood", "skewed"},
                 )
                 batch.run_ids.append(run.id)
             first = self.runs[batch.run_ids[0]]
@@ -413,15 +448,24 @@ class Runtime:
         cloth_type: str = "tee",
         cloth_condition: str = "good",
         skewed: bool = False,
+        seed_applied: bool = False,
     ) -> RunRecord:
+        item = resolve_garment(garment)
+        inputs = {
+            **self.process_config,
+            "garment": item.key, "mesh": item.mesh, "texture": item.texture,
+            "clothType": cloth_type, "clothCondition": cloth_condition,
+            "skewed": skewed, "seed": seed, "seedApplied": seed_applied,
+        }
         run = RunRecord(
             id=self._next_run_id(),
             batchId=batch_id,
             seed=seed,
             name=name,
-            scenario=scenario,
+            scenario=self.process_scenario or scenario,
             stages=self._fresh_stages(),
             driverLabel=self.driver_label,
+            inputs=inputs,
             garment=garment,
             clothType=cloth_type,
             clothCondition=cloth_condition,
@@ -433,15 +477,15 @@ class Runtime:
     def _start_run_locked(self, run: RunRecord) -> None:
         run.lifecycle = "running"
         run.startedAtIso = _iso_now()
-        run.currentState = CellState.PICK.value
+        run.currentState = None
         run.t = 0.0
         run.flatness = None
-        run.shirt_in_bag = False
+        run.shirt_in_bag = None
         run.paused = False
         run.cancel_requested = False
         for stage in run.stages:
-            stage.status = "active" if stage.state == CellState.PICK.value else "pending"
-            stage.startedAtSimS = 0.0 if stage.state == CellState.PICK.value else None
+            stage.status = "pending"
+            stage.startedAtSimS = None
             stage.durationSimS = None
         self._ui_event(run, "Ejecución iniciada en el bridge")
         self.journal.append(
@@ -452,18 +496,13 @@ class Runtime:
             name=run.name,
             scenario=run.scenario,
             cycle=run.cycle,
+            stages=[{"state": s.state, "label": s.label, "station": s.station} for s in run.stages],
+            inputs=dict(run.inputs),
+            driver=run.driverLabel,
             garment=run.garment,
             clothType=run.clothType,
             clothCondition=run.clothCondition,
             skewed=run.skewed,
-        )
-        self.journal.append(
-            "state_changed",
-            run_id=run.id,
-            batch_id=run.batchId,
-            state=CellState.PICK.value,
-            t=0.0,
-            cycle=run.cycle,
         )
 
     def handle_command(self, req: CommandRequest) -> dict[str, Any]:
@@ -622,7 +661,7 @@ class Runtime:
                 return None
             return run
 
-    def emit_state(self, run_id: str, state: CellState, t: float) -> None:
+    def emit_state(self, run_id: str, state: CellState | str, t: float) -> None:
         """Record an FSM stage transition (journal + snapshot).
 
         AGENT (arm/cloth): call this after each productive stage change — see
@@ -632,40 +671,45 @@ class Runtime:
             run = self.runs.get(run_id)
             if not run or run.lifecycle not in {"running", "paused"}:
                 return
-            prev = run.currentState
-            if prev and prev != state.value:
-                for stage in run.stages:
-                    if stage.state == prev and stage.status == "active":
-                        stage.status = "completed"
-                        if stage.startedAtSimS is not None:
-                            stage.durationSimS = round(t - stage.startedAtSimS, 3)
-            run.currentState = state.value
-            run.t = t
+            state = str(state)
+            target = next((s for s in run.stages if s.state == state), None)
+            if target is None:
+                raise ValueError(f"Undeclared simulator phase: {state}")
+            if run.currentState == state:
+                return
             for stage in run.stages:
-                if stage.state == state.value:
-                    stage.status = "active"
-                    stage.startedAtSimS = t
-            flatness = 0.002 if state in {CellState.FOLD, CellState.CHUTE, CellState.BAG} else None
-            run.flatness = flatness
-            run.shirt_in_bag = state is CellState.BAG
-            self._ui_event(run, f"Fase {state.value}")
+                if stage.status == "active":
+                    stage.status = "completed"
+                    if stage.startedAtSimS is not None:
+                        stage.durationSimS = round(t - stage.startedAtSimS, 3)
+            run.currentState = state
+            run.operation = None
+            run.t = t
+            target.status = "active"
+            target.startedAtSimS = t
+            self._ui_event(run, f"Fase {target.label or state}", source="fsm")
             self.journal.append(
-                "state_changed",
-                run_id=run.id,
-                batch_id=run.batchId,
-                state=state.value,
-                t=round(t, 3),
-                cycle=run.cycle,
+                "state_changed", run_id=run.id, batch_id=run.batchId,
+                state=state, label=target.label, station=target.station,
+                t=round(t, 3), cycle=run.cycle,
             )
+
+    def emit_metrics(self, run_id: str, t: float, measurements: dict[str, float]) -> None:
+        import math
+
+        with self._lock:
+            run = self.runs.get(run_id)
+            if not run or run.lifecycle not in {"running", "paused"}:
+                return
+            if not all(math.isfinite(value) for value in measurements.values()):
+                raise ValueError("Simulator measurements must be finite")
+            run.measurements.update(measurements)
+            run.flatness = run.measurements.get("flatnessPostM", run.measurements.get("flatnessPreM"))
+            run.t = t
             self.journal.append(
-                "metric_sample",
-                run_id=run.id,
-                batch_id=run.batchId,
-                t=round(t, 3),
-                flatness=flatness,
-                shirt_in_bag=run.shirt_in_bag,
-                cycle=run.cycle,
-                state=state.value,
+                "metric_sample", run_id=run.id, batch_id=run.batchId,
+                t=round(t, 3), flatness=run.flatness, shirt_in_bag=run.shirt_in_bag,
+                cycle=run.cycle, state=run.currentState, measurements=dict(measurements),
             )
 
     def emit_log(
@@ -675,6 +719,10 @@ class Runtime:
         level: str = "info",
         source: str = "sim",
         t: float | None = None,
+        *,
+        operation: str | None = None,
+        station: str | None = None,
+        parallel: bool = False,
     ) -> None:
         """Append a free-form simulator log line (journal ``log`` + run events).
 
@@ -686,10 +734,17 @@ class Runtime:
             run = self.runs.get(run_id) if run_id else None
             if run_id is not None and run is None:
                 return
+            context = {"source": source, "operation": operation, "station": station, "parallel": parallel}
             if run is not None:
                 if t is not None and run.lifecycle in {"running", "paused"}:
                     run.t = float(t)
-                self._ui_event(run, message, level if level in {"info", "warning", "error"} else "info")
+                if operation and run.lifecycle in {"running", "paused"}:
+                    activity = {"id": operation, "station": station, "message": message, "t": run.t, "parallel": parallel}
+                    if parallel:
+                        run.activities[station or source] = activity
+                    else:
+                        run.operation = activity
+                self._ui_event(run, message, level, **context)
             at = float(t) if t is not None else (run.t if run else None)
             self.journal.append(
                 "log",
@@ -697,8 +752,9 @@ class Runtime:
                 batch_id=run.batchId if run else None,
                 level=level,
                 message=message,
-                source=source,
+                stage=run.currentState if run else None,
                 t=round(at, 3) if at is not None else None,
+                **context,
             )
 
     def mark_photo(self, run_id: str) -> None:

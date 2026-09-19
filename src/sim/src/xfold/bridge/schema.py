@@ -54,8 +54,30 @@ BatchLifecycle = Literal[
 ]
 
 CellState = Literal["PICK", "SPREAD", "PRESS", "FOLD", "CHUTE", "BAG", "RESET"]
+PhaseId = str
 
-BRIDGE_VERSION = "0.1.0"
+
+class PhaseDefinition(BaseModel):
+    state: PhaseId
+    label: str | None = None
+    station: str | None = None
+
+
+class ProcessDefinition(BaseModel):
+    scenario: str
+    stages: list[PhaseDefinition]
+    seedApplied: bool | None = None
+
+
+class SimOperation(BaseModel):
+    id: str
+    station: str | None
+    message: str
+    t: float
+    parallel: bool
+
+
+BRIDGE_VERSION = "0.2.0"
 
 
 class CatalogOption(BaseModel):
@@ -64,6 +86,7 @@ class CatalogOption(BaseModel):
 
 
 class BridgeCapabilities(BaseModel):
+    process: ProcessDefinition | None = None
     liveTelemetry: bool = True
     viewportStream: bool = False
     recordingSeek: bool = False

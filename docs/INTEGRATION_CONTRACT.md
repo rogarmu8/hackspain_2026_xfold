@@ -35,6 +35,22 @@ Driver ──emit_*──► Runtime ──append──► Journal ──SSE─�
 
 ## 2. Stable wire contract
 
+### Simulator authority (bridge 0.2)
+
+The running simulator is the source of truth for phases, operations and measurements. For the line, `xfold.line.LINE_PHASES` declares the ordered `{state, label, station}` catalogue; `Line._enter` emits observations via `on_event`. `LineDriver` queues them under the simulation lock and publishes after releasing it. It must not translate these observations into the legacy six-state cycle or suppress backward-looking names.
+
+The line emits `LOAD → TO_PRESS → PRESS → TO_QC → PHOTO → TO_FOLDER → FOLD → INSERT → TO_SEAL → SEAL → TO_CARTON → DONE`. Sub-operations preserve the physical stage (`PRESS/STEAM/LIFT`, each flap, `BAG/TILT/PEEL/RELEASE`, etc.). Bag preparation emits parallel operations on station `bagger`, without replacing the main operation. QC transport and the photo stop have separate timings; photo outcomes (`PHOTO_SAVED`, `PHOTO_UNAVAILABLE`, `PHOTO_FAILED`) are structured observations on station `qc`. Missing GL/capture failures emit warnings, not a false successful photo; image bytes remain outside the journal.
+
+`/capabilities.process` (also in snapshot capabilities) advertises `{scenario, stages, seedApplied}` before launch. `run.stages` supplies phase IDs, labels, stations and timings to the UI; live consumers never construct a cycle from `PRODUCTIVE_CYCLE`. `PhaseId` is a string supplied by the simulator; `CellState`/`PRODUCTIVE_CYCLE` remain legacy types for press/mock and fixtures. Unknown, undeclared runtime phases fail explicitly. Launch does not imply physical phase entry; only the driver's first observation does. Repeated observations in the same phase do not restart its timer.
+
+A `log` additionally carries `stage`, `operation`, `station`, `parallel`. These fields and the original `source`/`level` survive in `run.events`. Observations use the simulation timestamp captured at the operation boundary, not the time the driver flushes them. A phase transition is published before its operation log. Telemetry optionally includes `operation` and `activities` (latest parallel milestone per station, not a claim that it is still moving).
+
+`metric_sample.measurements` contains measured scalar values with units in their keys. Current line measurements: `flatnessPreM` and `flatnessPostM` are standard deviation of vertex z immediately before lowering and after raising the platen; `packLengthM`, `packWidthM`, `packHeightM` are folded AABB dimensions. These are observations, not quality gates. Missing measurements stay null; `shirt_in_bag` is nullable and is not inferred from phase. `succeeded` means the programmed sequence completed, not that containment or seal quality was validated. `cycleTimeWallS` is elapsed wall time including pauses.
+
+`config.inputs` stores the effective per-run garment/mesh/texture/cloth/solver configuration, condition, pose flag, seed and whether it is actually applied. `/capabilities.process.seedApplied: true` advertises seed support; per-run `seedApplied` is true for random/list selections, stain variants or skewed poses, and false for fixed clean/torn selections. `spawnYawRad` and `spawnOffsetYM` are emitted at LOAD from the actual initial pose. Inputs are resolved for each run, not copied from the garment compiled at process startup. Scenario is `line`, regardless of stale UI launch defaults. Legacy drivers retain their own process catalogue. `run_started` persists the run's `stages`, `inputs` and `driver` in the journal as well, so configuration is not confined to the in-memory snapshot.
+
+Timeline terminal markers have `state: null`; they must not overwrite phase start markers. Replay uses `run.stages`, not a hard-coded sequence. Trajectory remains qpos-only: line replay is explicitly **partial**, because mocap and mutable visual geometry are not recorded. Durable run recovery and geometric quality gates remain separate work.
+
 ### Shared package
 
 - TypeScript: `@xfold/protocol` — **canonical names** for agents generating code.
@@ -49,7 +65,7 @@ Driver ──emit_*──► Runtime ──append──► Journal ──SSE─�
 | `type` | When to emit |
 |--------|----------------|
 | `run_started` | Run enters running |
-| `state_changed` | FSM stage changes (`PICK`…`BAG`) |
+| `state_changed` | Simulator phase entry (`state`, optional `label` / `station`, `t`, `cycle`); line catalogue comes from `LINE_PHASES` |
 | `metric_sample` | Metrics tick (may be coalesced; never instead of `state_changed`) |
 | `run_finished` | Terminal lifecycle |
 | `command_accepted` / `command_rejected` / `command_applied` | Command pipeline |

@@ -1,6 +1,6 @@
 # AGENTS.md — contexto para Cursor
 
-You are helping the XFOLD HackSpain '26 team. Read `SOLUTION.md` before inventing architecture.
+You are helping the XFOLD HackSpain '26 team. Read `SOLUTION.md` before inventing architecture. The running simulation is authoritative for the current process: `xfold.line.LINE_PHASES` + `Line.on_event`. Older design prose and legacy fixtures must not override its phases or measurements.
 
 ## Integration (sim ↔ dashboard) — mandatory
 
@@ -17,7 +17,7 @@ Bridge + dashboard work does **not** own arm IK or `flexcomp` physics. Integrate
 | Your track | Own these paths | How to talk to the dashboard |
 |------------|-----------------|------------------------------|
 | **Arm / FSM sequence** | controller Python, Menagerie overlays, arm MJCF | After each **stage change**, call `runtime.emit_state(run_id, CellState.…, t=data.time)`. Copy [`mock_driver.py`](src/sim/src/xfold/bridge/mock_driver.py). Respect `runtime.driver_active_run()` pause/cancel. |
-| **Press / line** | `xfold/line.py`, `line.xml`, `shirt.*` | **Ya integrado:** la `Line` vive en [`line_driver.py`](src/sim/src/xfold/bridge/line_driver.py) y loguea con `runtime.emit_log(...)`. ¿Añades una etapa a `Line`? Añádela también a `_STAGE_STATE`. |
+| **Press / line** | `xfold/line.py`, `line.xml`, `shirt.*` | **Fuente de verdad:** `xfold.line.LINE_PHASES` + `Line.on_event`. [`line_driver.py`](src/sim/src/xfold/bridge/line_driver.py) solo transmite observaciones al Runtime. Añade fases/operaciones en la simulación, no un mapa paralelo en bridge/UI. Métricas no medidas = null. |
 | **Cloth / shirt physics** | `flexcomp` MJCF, cloth params, mesh later | Keep cloth stable in **your** model. When ready for Control 3D, either merge into the scene that [`viewport_mujoco.py`](src/sim/src/xfold/bridge/viewport_mujoco.py) loads (`MODEL_PATH`) **or** point `MODEL_PATH` at your XML. Do **not** put cloth verts in the journal. |
 | **Shared plant stub** | [`src/sim/models/cell.xml`](src/sim/models/cell.xml) | Small shared file. Keep `camera name="overview"` and prefer additive bodies. If you replace `shirt_proxy`, update viewport pose map or stop using the proxy. Note merges in `TRACKING.md`. |
 
@@ -64,6 +64,14 @@ data/
 - Block criteria in `SOLUTION.md` §9 / `TRACKING.md`.
 - Demo target: one unattended, repeatable full cycle.
 - Stretch only after block 6: size variants / T-mesh.
+
+## Observability verification
+
+- `pixi run -e mujoco python -B scripts/test-sim-observability.py` — runtime/observer regression tests.
+- `XFOLD_TEST_PHYSICS=1 pixi run -e mujoco python -B scripts/test-sim-observability.py` — isolated full headless cycle (no live server commands or trajectory overwrite).
+- `node scripts/test-dashboard-observability.mjs` — replay, labels, console history, SSE cursor and snapshot coalescing.
+- `bash scripts/check-bridge-contract.sh` — event/command names only; not semantic correctness.
+- `./node_modules/.bin/tsc --noEmit --incremental false -p src/dashboard/tsconfig.json` and `npm run lint --workspace @xfold/dashboard`.
 
 ## When stuck
 

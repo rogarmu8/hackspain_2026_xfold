@@ -13,6 +13,10 @@ export type ConsoleLine = {
   /** Emitter: "fsm", "press-driver", "line", "bridge", "ui"… */
   source: string;
   message: string;
+  stage?: string | null;
+  operation?: string | null;
+  station?: string | null;
+  parallel?: boolean;
 };
 
 /** Seconds of silence (no journal fact) after which a running run counts as stalled. */
@@ -22,7 +26,7 @@ export function lineFromJournal(event: JournalEvent): ConsoleLine | null {
   const base = { id: `j${event.seq}`, tsIso: event.tsIso };
   switch (event.type) {
     case "log":
-      return { ...base, atSimS: event.t, level: event.level, source: event.source, message: event.message };
+      return { ...base, atSimS: event.t, level: event.level, source: event.source, message: event.message, stage: event.stage, operation: event.operation, station: event.station, parallel: event.parallel };
     case "run_started":
       return {
         ...base,
@@ -34,7 +38,7 @@ export function lineFromJournal(event: JournalEvent): ConsoleLine | null {
         }`,
       };
     case "state_changed":
-      return { ...base, atSimS: event.t, level: "info", source: "fsm", message: `→ ${stageLabel(event.state)}` };
+      return { ...base, atSimS: event.t, level: "info", source: "fsm", message: `→ ${event.label ?? stageLabel(event.state)}` };
     case "run_finished":
       return {
         ...base,
@@ -65,8 +69,12 @@ export function lineFromRunEvent(event: RunEvent): ConsoleLine {
     tsIso: event.atWallIso,
     atSimS: event.atSimS,
     level: event.level,
-    source: event.stage ? stageLabel(event.stage).toLowerCase() : "run",
+    source: event.source ?? "run",
     message: event.message,
+    stage: event.stage,
+    operation: event.operation,
+    station: event.station,
+    parallel: event.parallel,
   };
 }
 
@@ -74,5 +82,9 @@ export function lineFromRunEvent(event: RunEvent): ConsoleLine {
 export function consoleLines(run: RunDetail | null, journal: JournalEvent[]): ConsoleLine[] {
   if (!run) return [];
   const fromJournal = journal.map(lineFromJournal).filter((l): l is ConsoleLine => l !== null);
-  return fromJournal.length ? fromJournal : run.events.map(lineFromRunEvent);
+  if (!run.events.length) return fromJournal;
+  const extras = journal.filter((e) => e.type.startsWith("command_") || e.runId == null)
+    .map(lineFromJournal).filter((l): l is ConsoleLine => l !== null);
+  return [...run.events.map(lineFromRunEvent), ...extras]
+    .sort((a, b) => (a.tsIso ?? "").localeCompare(b.tsIso ?? ""));
 }

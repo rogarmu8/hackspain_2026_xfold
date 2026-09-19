@@ -23,7 +23,7 @@ export function RunSummaryPanel({ run }: { run: RunDetail }) {
         </p>
         <div className="mt-1.5 flex items-start justify-between gap-2">
           <h2 className="min-w-0 truncate text-[17px] font-semibold leading-tight">{run.name ?? run.id}</h2>
-          <StatusBadge tone={tone}>{lifecycleLabel(run.lifecycle)}</StatusBadge>
+          <StatusBadge tone={tone}>{run.lifecycle === "succeeded" ? "Ciclo completado" : lifecycleLabel(run.lifecycle)}</StatusBadge>
         </div>
         <p className="mt-0.5 font-mono text-xs text-muted-foreground">
           {run.id} · seed {run.seed}
@@ -46,11 +46,27 @@ export function RunSummaryPanel({ run }: { run: RunDetail }) {
       <dl className="grid grid-cols-3 gap-x-3 gap-y-2 border-t border-divider pt-3">
         <Metric label="t sim" value={formatSeconds(run.metrics.cycleTimeSimS)} />
         <Metric label="t pared" value={formatSeconds(run.metrics.cycleTimeWallS)} />
-        <Metric label="en bolsa" value={run.metrics.shirtInBag == null ? "—" : run.metrics.shirtInBag ? "sí" : "no"} />
+        <Metric label="en bolsa" value={run.metrics.shirtInBag == null ? "no medido" : run.metrics.shirtInBag ? "sí" : "no"} />
         <Metric label="planitud pre" value={formatFlatness(run.metrics.flatnessPre)} />
         <Metric label="planitud post" value={formatFlatness(run.metrics.flatnessPost)} />
         <Metric label="fin" value={formatIso(run.finishedAtIso)} />
       </dl>
+
+      {run.metrics.measurements?.packLengthM != null ? (
+        <p className="font-mono text-xs">
+          Paquete: {formatFlatness(run.metrics.measurements.packLengthM)} × {formatFlatness(run.metrics.measurements.packWidthM)} × {formatFlatness(run.metrics.measurements.packHeightM)}
+        </p>
+      ) : null}
+      {run.config.inputs?.driver === "line" ? (
+        <p className="text-xs text-muted-foreground">Planitud = desviación de altura de vértices (σz). Completar la secuencia no valida la calidad del sellado ni la contención.</p>
+      ) : null}
+      {run.config.inputs ? (
+        <details className="text-xs">
+          <summary className="cursor-pointer font-semibold">Entrada y parámetros de simulación</summary>
+          <dl className="mt-2 grid grid-cols-2 gap-1 font-mono">{Object.entries(run.config.inputs).map(([key, value]) => <div key={key} className="contents"><dt className="truncate text-muted-foreground">{key}</dt><dd className="truncate" title={String(value)}>{String(value)}</dd></div>)}</dl>
+          {run.config.inputs.seedApplied === false ? <p className="mt-2 text-muted-foreground">Esta ejecución usa una entrada fija: la seed no la modifica.</p> : null}
+        </details>
+      ) : null}
 
       <NewExperimentDialog
         defaults={{

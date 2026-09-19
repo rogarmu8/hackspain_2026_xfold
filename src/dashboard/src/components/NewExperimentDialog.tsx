@@ -209,6 +209,8 @@ function NewExperimentDialogBody({
     setError(null);
   }
 
+  const process = snapshot.capabilities.process;
+  const scenario = snapshot.provenance === "fixture" ? "openarm-ninja-bag" : process?.scenario ?? "default";
   const batch = count > 1;
   const canLaunch = batch
     ? snapshot.capabilities.startBatch
@@ -297,7 +299,7 @@ function NewExperimentDialogBody({
               count,
               seedStrategy: "sequential",
               baseSeed: seed,
-              scenario: "openarm-ninja-bag",
+              scenario,
               clothMix,
               clothTypes: clothMix === "random" ? [] : clothTypes,
               conditionMix,
@@ -313,7 +315,7 @@ function NewExperimentDialogBody({
               mode: "individual",
               name: name.trim(),
               seed,
-              scenario: "openarm-ninja-bag",
+              scenario,
               clothType: clothMix === "random" ? "random" : clothTypes[0],
               clothCondition:
                 conditionMix === "random" ? "random" : conditions[0],
@@ -343,7 +345,7 @@ function NewExperimentDialogBody({
       <DialogHeader>
         <DialogTitle>Nuevo experimento</DialogTitle>
         <DialogDescription>
-          Prenda, condición y cuántas camisas van en fila · cola secuencial
+          Prenda, condición y cuántas camisas van en fila · {process?.scenario ?? "configuración activa del simulador"}
         </DialogDescription>
       </DialogHeader>
 
@@ -362,7 +364,7 @@ function NewExperimentDialogBody({
               id={`${formId}-name`}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="p. ej. Smoke OpenArm"
+              placeholder="p. ej. Comprobación de ciclo"
             />
             <FieldDescription>Visible en Experimentos e Historial.</FieldDescription>
           </Field>
@@ -382,7 +384,7 @@ function NewExperimentDialogBody({
             />
             <FieldDescription>
               Entero ≥ 0. Sortea prenda y condición al azar, y si va torcida
-              el rumbo inicial (sigue plana).
+              el rumbo inicial (sigue plana). Con prenda y condición fija limpia, no varía la entrada.
             </FieldDescription>
           </Field>
 
@@ -453,9 +455,7 @@ function NewExperimentDialogBody({
               Opciones avanzadas
             </summary>
             <p className="mt-2 text-sm text-muted-foreground">
-              Escenario fijo:{" "}
-              <code className="font-mono">openarm-ninja-bag</code> (PICK →
-              SPREAD → PRESS → FOLD → CHUTE → BAG).
+              {process?.stages.map((s) => s.label ?? s.state).join(" → ") ?? "Las fases y los parámetros los determina el simulador activo."}
             </p>
           </details>
         </FieldGroup>
@@ -463,7 +463,7 @@ function NewExperimentDialogBody({
         <div className="rounded-[var(--radius-sm)] bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
           <p className="font-semibold text-foreground">Resumen</p>
           <p className="mt-1">
-            {batch ? `Fila ×${count}` : "1 camisa"} · semilla {seed}
+            {batch ? `Fila ×${count}` : "1 camisa"} · semilla {seed} · {scenario}
             {" · "}
             {summarizeMix(clothMix, clothTypes, clothTypeLabel, "catálogo")}
             {" · "}

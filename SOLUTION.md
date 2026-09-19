@@ -2,6 +2,8 @@
 
 THEKER Robotics · HackSpain '26 · Team reference
 
+> **Current implementation (2026-09-19): the simulation is authoritative.** `xfold.line.Line` runs a robot-free belt → press → flap folder → bagger → seal/tag → carton line. Its `LINE_PHASES` catalogue and `on_event` observations define the live dashboard, not the earlier arm/ninja/chute design below. That earlier material is retained as design history, not evidence of implemented functionality. Measured geometry is distinct from script completion; seal quality and containment are not validated. See `docs/INTEGRATION_CONTRACT.md` §2.
+
 **One-line pitch:** a crumpled shirt is stretched onto a press by two OpenArm hands, ironed, folded with the Japanese / ninja method, then the press bed tips and the packet slides down a chute into a packaging bag — no human in the loop.
 
 This document is the source of truth for the task, the technical approach, and what we reuse vs. build.

@@ -2,7 +2,7 @@
 
 HackSpain '26 · THEKER — automate the shirt press, ninja fold, and bag line.
 
-A crumpled shirt is stretched onto a press by **two OpenArm hands**, ironed, folded with the Japanese / ninja method, then dumped down a chute into a packaging bag — no human in the loop.
+The current simulation runs a **robot-free line**: a flat shirt rides a belt through a press, a flap folder, a bagger, a seal/label station and into a carton. The simulator's `xfold.line.LINE_PHASES` and observations are the source of truth for the live dashboard. Arm/ninja-fold descriptions below are earlier design context, not the current implementation.
 
 - Plan (source of truth): [SOLUTION.md](SOLUTION.md)
 - Brief: [CHALLENGE.md](CHALLENGE.md)
