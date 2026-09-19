@@ -95,17 +95,19 @@ Always from the repo root.
 
 | What | Command |
 |------|---------|
-| Dashboard at [localhost:3000](http://localhost:3000) | `moon run dashboard:dev` |
-| **Bridge** (journal + REST/SSE on :8765) | `moon run sim:bridge` |
+| **Everything (bridge + dashboard)** | `moon run pack` · `npm run pack` |
+| Same as pack | `moon run dev` · `npm run dev` |
+| Dashboard only ([localhost:3000](http://localhost:3000)) | `moon run dashboard:dev` |
+| **Bridge** only (journal + REST/SSE on :8765) | `moon run sim:bridge` |
 | **MuJoCo window (the actual scene)** | `moon run sim:view` |
 | Mock cell cycle (JSON lines to stdout) | `moon run sim:mock` |
 | Dashboard lint | `moon run dashboard:lint` |
 | Production dashboard build | `moon run dashboard:build` |
 | List projects / tasks | `moon query projects` · `moon query tasks` |
 
-On macOS, `sim:view` runs under `mjpython` (Cocoa main thread). Elsewhere it uses `python -m xfold.view`.
+On macOS, `sim:view` runs under `mjpython` (Cocoa main thread). Elsewhere it uses `python -m xfold.view`. Keep it in a second terminal — it is not part of `pack` / `dev`.
 
-**Live monitor:** start `sim:bridge`, then `dashboard:dev`. The UI probes `http://127.0.0.1:8765` (override with `NEXT_PUBLIC_XFOLD_BRIDGE_URL`). If the bridge is down, the dashboard keeps honest **fixtures**.
+**Live monitor:** `moon run pack` starts bridge + dashboard together. The UI probes `http://127.0.0.1:8765` (override with `NEXT_PUBLIC_XFOLD_BRIDGE_URL`). If the bridge is down, the dashboard keeps honest **fixtures**.
 
 - **Binding contract (teammates & agents):** [docs/INTEGRATION_CONTRACT.md](docs/INTEGRATION_CONTRACT.md)
 - Transport detail: [docs/BRIDGE.md](docs/BRIDGE.md) · OpenAPI: http://127.0.0.1:8765/docs

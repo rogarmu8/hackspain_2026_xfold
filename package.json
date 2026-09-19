@@ -7,7 +7,8 @@
   ],
   "scripts": {
     "setup": "moon run setup",
-    "dev": "moon run dashboard:dev",
+    "dev": "moon run xfold:dev",
+    "pack": "moon run xfold:pack",
     "sim": "moon run sim:mock",
     "build": "moon run dashboard:build"
   },

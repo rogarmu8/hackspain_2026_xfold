@@ -21,3 +21,17 @@ tasks:
     options:
       cache: false
       runFromWorkspaceRoot: true
+  # Live stack: bridge (:8765) + dashboard (:3000) in one process group.
+  # MuJoCo window stays separate (`moon run sim:view`) — Cocoa/mjpython.
+  dev:
+    command: "noop"
+    deps:
+      - sim:bridge
+      - dashboard:dev
+    preset: server
+    options:
+      persistent: true
+      cache: false
+      runFromWorkspaceRoot: true
+  pack:
+    extends: dev
