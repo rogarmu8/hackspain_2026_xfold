@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Camera, Loader2, Shirt } from "lucide-react";
+import { Camera, Shirt } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { XFoldLoader } from "@/components/XFoldLoader";
 import type { RunDetail } from "@/lib/types";
 
 /**
@@ -97,7 +98,7 @@ export function ProductShotPanel({ run }: { run: RunDetail }) {
           ) : (
             <div className="flex aspect-square w-full items-center justify-center border border-dashed border-divider text-muted-foreground">
               {busy ? (
-                <Loader2 className="size-5 animate-spin" aria-hidden />
+                <XFoldLoader size={64} decorative surface="var(--card)" />
               ) : (
                 <Shirt className="size-5" strokeWidth={1.5} aria-hidden />
               )}

@@ -15,6 +15,7 @@ import {
   Radio,
 } from "lucide-react";
 import { CellSchematic } from "./CellSchematic";
+import { XFoldLoader } from "@/components/XFoldLoader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { STAGE_ICONS, DEFAULT_STAGE_ICON } from "@/lib/stage-icons";
@@ -138,6 +139,9 @@ export function SimulationViewport({
             />
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center font-mono text-[12px] uppercase tracking-[0.12em] text-hud-dim">
+              {viewport.status !== "offline" ? (
+                <XFoldLoader size={72} decorative tone="dark" surface="var(--viewport)" />
+              ) : null}
               <span>
                 {viewport.status === "offline"
                   ? viewport.error ?? "No viewport signal"

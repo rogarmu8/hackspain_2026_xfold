@@ -5,7 +5,6 @@ import { useRef, useState } from "react";
 import {
   ArrowUpRight,
   Layers,
-  LoaderCircle,
   Pause,
   Play,
   Plug,
@@ -24,6 +23,7 @@ import {
   AlertDialogAction,
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
+import { XFoldLoader } from "@/components/XFoldLoader";
 import { StatusBadge } from "./ui/StatusBadge";
 import { lifecycleLabel } from "@/lib/format";
 import type { PendingCommand } from "@/lib/adapter";
@@ -216,7 +216,7 @@ export function BatchContextPanel({
 
       {pendingCommand && (
         <p role="status" className="flex items-center gap-2 text-xs text-active-ink">
-          <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+          <XFoldLoader size={14} decorative className="shrink-0" />
           Sending · {pendingCommand.scopeLabel}
         </p>
       )}
@@ -237,7 +237,7 @@ export function BatchContextPanel({
 
 function ActionIcon({ busy, Icon }: { busy: boolean; Icon: typeof Pause }) {
   return busy ? (
-    <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+    <XFoldLoader size={14} decorative className="shrink-0" />
   ) : (
     <Icon className="size-3.5" aria-hidden />
   );
