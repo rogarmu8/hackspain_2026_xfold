@@ -55,6 +55,8 @@ BatchLifecycle = Literal[
 
 CellState = Literal["PICK", "SPREAD", "PRESS", "FOLD", "CHUTE", "BAG", "RESET"]
 
+GarmentKind = Literal["tshirt", "polo", "tank"]
+
 BRIDGE_VERSION = "0.1.0"
 
 
@@ -87,6 +89,8 @@ class LaunchRunRequest(BaseModel):
     name: str = ""
     seed: int = 0
     scenario: str = "mock"
+    garmentKind: GarmentKind = "tshirt"
+    garmentId: str | None = None
 
 
 class LaunchBatchRequest(BaseModel):
@@ -95,6 +99,8 @@ class LaunchBatchRequest(BaseModel):
     baseSeed: int = 0
     seedStrategy: Literal["sequential"] = "sequential"
     scenario: str = "mock"
+    garmentKind: GarmentKind = "tshirt"
+    garmentId: str | None = None
 
 
 class HealthResponse(BaseModel):

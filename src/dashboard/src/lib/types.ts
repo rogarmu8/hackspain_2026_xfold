@@ -104,6 +104,8 @@ export type RunConfig = {
   seed: number;
   scenario: string;
   notes: string | null;
+  garmentKind?: string | null;
+  garmentId?: string | null;
 };
 
 export type RunSummary = {
@@ -187,6 +189,8 @@ export type LaunchRequest =
       name: string;
       seed: number;
       scenario: string;
+      garmentKind?: string;
+      garmentId?: string | null;
     }
   | {
       mode: "batch";
@@ -195,4 +199,6 @@ export type LaunchRequest =
       seedStrategy: "sequential" | "list";
       baseSeed: number;
       scenario: string;
+      garmentKind?: string;
+      garmentId?: string | null;
     };

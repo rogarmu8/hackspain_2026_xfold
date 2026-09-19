@@ -198,10 +198,22 @@ export type BridgeHealth = {
   version: string;
 };
 
+/** Laid-flat photo projected onto the T flex (Grigorev clothing-dataset CC0). */
+export const GARMENT_KINDS = ["tshirt", "polo", "tank"] as const;
+export type GarmentKind = (typeof GARMENT_KINDS)[number];
+
+export const GARMENT_KIND_LABELS: Record<GarmentKind, string> = {
+  tshirt: "Camiseta",
+  polo: "Polo",
+  tank: "Tirantes",
+};
+
 export type BridgeLaunchRun = {
   name?: string;
   seed: number;
   scenario?: string;
+  garmentKind?: GarmentKind;
+  garmentId?: string | null;
 };
 
 export type BridgeLaunchBatch = {
@@ -210,4 +222,6 @@ export type BridgeLaunchBatch = {
   baseSeed: number;
   seedStrategy?: "sequential";
   scenario?: string;
+  garmentKind?: GarmentKind;
+  garmentId?: string | null;
 };

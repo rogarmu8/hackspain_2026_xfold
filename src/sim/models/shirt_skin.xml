@@ -2,7 +2,7 @@
      python -m xfold.generate_shirt_skin -->
 <mujoco>
   <asset>
-    <texture name="shirt_knit" type="2d" file="shirt_knit.png"/>
+    <texture name="shirt_knit" type="2d" file="garments/projected.png"/>
     <material name="shirt_knit" texture="shirt_knit"
               specular="0.02" shininess="0.01" reflectance="0"/>
   </asset>

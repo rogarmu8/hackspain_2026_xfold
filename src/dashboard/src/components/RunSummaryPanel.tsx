@@ -6,7 +6,7 @@ import { NewExperimentDialog } from "@/components/NewExperimentDialog";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { formatFlatness, formatIso, formatSeconds, lifecycleLabel } from "@/lib/format";
-import type { RunDetail } from "@/lib/types";
+import { GARMENT_KIND_LABELS, type GarmentKind } from "@xfold/protocol";
 
 /** Compact result card for a finished run; the event log lives in the console below. */
 export function RunSummaryPanel({ run }: { run: RunDetail }) {
@@ -26,6 +26,9 @@ export function RunSummaryPanel({ run }: { run: RunDetail }) {
         </div>
         <p className="mt-0.5 font-mono text-xs text-muted-foreground">
           {run.id} · seed {run.seed} · {run.config.scenario}
+          {run.config.garmentKind
+            ? ` · ${GARMENT_KIND_LABELS[run.config.garmentKind as GarmentKind] ?? run.config.garmentKind}`
+            : null}
           {run.batchId ? (
             <>
               {" · "}

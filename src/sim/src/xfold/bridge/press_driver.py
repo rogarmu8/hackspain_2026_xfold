@@ -159,6 +159,18 @@ class PressBridgeDriver:
         try:
             self.session.reset_time()
             self.session.reset_shirt(seed)
+            run = self.runtime.driver_active_run()
+            kind = getattr(run, "garmentKind", "tshirt") if run else "tshirt"
+            garment_id = getattr(run, "garmentId", None) if run else None
+            try:
+                sample = self.session.apply_garment(kind, garment_id, seed)
+                if sample:
+                    self._log(
+                        run_id,
+                        f"prenda {sample['kind']} · {sample['id']} proyectada en el flex",
+                    )
+            except Exception as exc:  # noqa: BLE001
+                self._log(run_id, f"proyección de prenda falló: {exc}", level="warning")
             self._log(
                 run_id,
                 f"ciclo iniciado · seed {seed} · timestep {self.session.model.opt.timestep:g}s · nq={self.session.model.nq}",

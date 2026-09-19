@@ -14,7 +14,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from xfold.bridge.journal import Journal
 from xfold.bridge.mock_driver import MockDriver
@@ -344,10 +344,31 @@ def create_app(*, persist: bool = True) -> FastAPI:
     def experiments() -> list:
         return runtime.list_experiments()
 
+    @app.get("/garments")
+    def garments() -> dict:
+        from xfold.garment import catalog
+
+        return catalog()
+
+    @app.get("/garments/{sample_id}/image")
+    def garment_image(sample_id: str):
+        from xfold.garment import sample_path
+
+        path = sample_path(sample_id)
+        if path is None:
+            raise HTTPException(404, "garment sample not found")
+        return FileResponse(path, media_type="image/jpeg")
+
     @app.post("/runs", status_code=201)
     def post_run(body: LaunchRunRequest) -> dict:
         try:
-            return runtime.launch_run(name=body.name, seed=body.seed, scenario=body.scenario)
+            return runtime.launch_run(
+                name=body.name,
+                seed=body.seed,
+                scenario=body.scenario,
+                garmentKind=body.garmentKind,
+                garmentId=body.garmentId,
+            )
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 
@@ -359,6 +380,8 @@ def create_app(*, persist: bool = True) -> FastAPI:
                 count=body.count,
                 base_seed=body.baseSeed,
                 scenario=body.scenario,
+                garmentKind=body.garmentKind,
+                garmentId=body.garmentId,
             )
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc

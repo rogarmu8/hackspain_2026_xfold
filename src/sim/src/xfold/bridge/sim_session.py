@@ -209,6 +209,28 @@ class SimSession:
             self.data.qvel[:] = 0.0
             self._mujoco.mj_forward(self.model, self.data)
 
+    def apply_garment(
+        self,
+        kind: str | None,
+        garment_id: str | None,
+        seed: int,
+    ) -> dict[str, str] | None:
+        """Project a catalog photo onto the shirt skin / cloth material."""
+        from xfold.garment import apply_to_model, project_for_run
+
+        rgb, sample = project_for_run(kind, garment_id, seed)
+        with self.lock:
+            if not self._ok:
+                return None
+            apply_to_model(self.model, rgb)
+            for renderer in list(self._renderers.values()):
+                try:
+                    renderer.close()
+                except Exception:
+                    pass
+            self._renderers.clear()
+        return sample
+
     def seek_render(
         self, qpos: np.ndarray
     ) -> tuple[bytes, str] | None:

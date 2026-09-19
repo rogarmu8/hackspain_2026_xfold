@@ -72,7 +72,9 @@ Every event has: `seq`, `tsIso`, `type`, `runId`, `batchId`.
 | GET | `/runs/{id}/timeline` | FSM markers for scrubber |
 | GET | `/runs/{id}/recording` | Trajectory metadata |
 | GET | `/runs/{id}/recording/frame?t=` | Replay seek (JPEG + state) |
-| POST | `/runs`, `/batches` | Launch |
+| POST | `/runs`, `/batches` | Launch (`garmentKind`, `garmentId` optional) |
+| GET | `/garments` | Catalog of laid-flat sample photos |
+| GET | `/garments/{id}/image` | JPEG preview (CC0 samples) |
 | POST | `/commands` | `{ clientCommandId, kind, runId?, batchId? }` |
 
 **Two planes (do not mix):**

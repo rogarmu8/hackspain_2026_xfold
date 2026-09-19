@@ -270,6 +270,8 @@ export class BridgeClient {
           name: request.name,
           seed: request.seed,
           scenario: request.scenario,
+          garmentKind: request.garmentKind as BridgeLaunchRun["garmentKind"],
+          garmentId: request.garmentId,
         };
         const res = await fetch(`${this.baseUrl}/runs`, {
           method: "POST",
@@ -287,6 +289,8 @@ export class BridgeClient {
         baseSeed: request.baseSeed,
         seedStrategy: "sequential",
         scenario: request.scenario,
+        garmentKind: request.garmentKind as BridgeLaunchBatch["garmentKind"],
+        garmentId: request.garmentId,
       };
       const res = await fetch(`${this.baseUrl}/batches`, {
         method: "POST",

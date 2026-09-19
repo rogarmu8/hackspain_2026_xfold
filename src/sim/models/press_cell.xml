@@ -12,6 +12,8 @@
        not inherit armature/damping, which read as slow-motion drag. CG is
        ~2x faster than Newton on this equality-heavy flex. -->
   <include file="shirt.xml"/>
+  <!-- Visual-only dual-mesh skin (UVs). Texture is garments/projected.png. -->
+  <include file="shirt_skin.xml"/>
   <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast"
           solver="CG" cone="elliptic" impratio="10"/>
 

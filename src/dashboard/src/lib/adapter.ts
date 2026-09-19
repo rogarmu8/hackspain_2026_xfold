@@ -72,10 +72,10 @@ export class DashboardAdapter {
     } catch { /* An unreadable local demo starts from clean fixtures. */ }
   }
 
-  private freshRun(id: string, seed: number, name: string, scenario: string, batchId: string | null): RunDetail {
+  private freshRun(id: string, seed: number, name: string, scenario: string, batchId: string | null, garmentKind?: string | null): RunDetail {
     return { id, seed, name: name || null, batchId, lifecycle: "running", currentState: "PICK",
       startedAtIso: FIXTURE_CLOCK, finishedAtIso: null, failReason: null,
-      config: { name: name || null, seed, scenario, notes: "Demostración local, sin conexión al simulador." },
+      config: { name: name || null, seed, scenario, notes: "Demostración local, sin conexión al simulador.", garmentKind: garmentKind ?? "tshirt", garmentId: null },
       metrics: { cycleTimeSimS: null, cycleTimeWallS: null, flatnessPre: null, flatnessPost: null, shirtInBag: null },
       telemetry: { t: 0, state: "PICK", cycle: 1, flatness: null, shirt_in_bag: false },
       stages: PRODUCTIVE_CYCLE.map((state, i) => ({ state, status: i === 0 ? "active" : "pending", startedAtSimS: i === 0 ? 0 : null, durationSimS: null })),
@@ -339,7 +339,7 @@ export class DashboardAdapter {
       ];
       this.scenario = "active";
       this.fixtureBatch = null;
-      this.fixtureRun = this.freshRun(id, request.seed, request.name, request.scenario, null);
+      this.fixtureRun = this.freshRun(id, request.seed, request.name, request.scenario, null, request.garmentKind);
       this.remember();
       return { ok: true, id };
     }
@@ -381,9 +381,9 @@ export class DashboardAdapter {
       seedStrategy: request.seedStrategy,
       baseSeed: request.baseSeed,
     };
-    this.fixtureRun = this.freshRun(firstRunId, request.baseSeed, request.name, request.scenario, id);
+    this.fixtureRun = this.freshRun(firstRunId, request.baseSeed, request.name, request.scenario, id, request.garmentKind);
     for (let i = 1; i < request.count; i++) {
-      const queued = this.freshRun(`${firstRunId}-${i + 1}`, request.baseSeed + i, request.name, request.scenario, id);
+      const queued = this.freshRun(`${firstRunId}-${i + 1}`, request.baseSeed + i, request.name, request.scenario, id, request.garmentKind);
       queued.lifecycle = "queued"; queued.startedAtIso = null; queued.currentState = null; queued.events = []; queued.telemetry = null;
       queued.stages = queued.stages.map((stage) => ({ ...stage, status: "pending", startedAtSimS: null }));
       this.runs[queued.id] = queued;

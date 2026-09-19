@@ -38,6 +38,8 @@ class RunRecord:
     seed: int
     name: str | None
     scenario: str
+    garmentKind: str = "tshirt"
+    garmentId: str | None = None
     lifecycle: str = "queued"
     currentState: str | None = None
     startedAtIso: str | None = None
@@ -91,6 +93,8 @@ class RunRecord:
                     if self.scenario == "mock"
                     else "PressBridgeDriver (PressCycle + SimSession)"
                 ),
+                "garmentKind": self.garmentKind,
+                "garmentId": self.garmentId,
             },
             "stages": [
                 {
@@ -272,18 +276,42 @@ class Runtime:
             items.sort(key=lambda x: x.get("startedAtIso") or "", reverse=True)
             return items
 
-    def launch_run(self, *, name: str, seed: int, scenario: str) -> dict[str, Any]:
+    def launch_run(
+        self,
+        *,
+        name: str,
+        seed: int,
+        scenario: str,
+        garmentKind: str = "tshirt",
+        garmentId: str | None = None,
+    ) -> dict[str, Any]:
         with self._lock:
             if self.active_run_id and self.runs[self.active_run_id].lifecycle in {"running", "paused"}:
                 raise ValueError("Ya hay una ejecución activa")
-            run = self._create_run(name=name or None, seed=seed, scenario=scenario, batch_id=None)
+            run = self._create_run(
+                name=name or None,
+                seed=seed,
+                scenario=scenario,
+                batch_id=None,
+                garmentKind=garmentKind,
+                garmentId=garmentId,
+            )
             self.active_run_id = run.id
             self.active_batch_id = None
             self._start_run_locked(run)
             self.wake_driver()
             return {"ok": True, "id": run.id}
 
-    def launch_batch(self, *, name: str, count: int, base_seed: int, scenario: str) -> dict[str, Any]:
+    def launch_batch(
+        self,
+        *,
+        name: str,
+        count: int,
+        base_seed: int,
+        scenario: str,
+        garmentKind: str = "tshirt",
+        garmentId: str | None = None,
+    ) -> dict[str, Any]:
         with self._lock:
             if self.active_run_id and self.runs[self.active_run_id].lifecycle in {"running", "paused"}:
                 raise ValueError("Ya hay una ejecución activa")
@@ -306,6 +334,8 @@ class Runtime:
                     seed=base_seed + i,
                     scenario=scenario,
                     batch_id=batch_id,
+                    garmentKind=garmentKind,
+                    garmentId=garmentId,
                 )
                 batch.run_ids.append(run.id)
             first = self.runs[batch.run_ids[0]]
@@ -317,13 +347,24 @@ class Runtime:
             self.wake_driver()
             return {"ok": True, "id": batch_id}
 
-    def _create_run(self, *, name: str | None, seed: int, scenario: str, batch_id: str | None) -> RunRecord:
+    def _create_run(
+        self,
+        *,
+        name: str | None,
+        seed: int,
+        scenario: str,
+        batch_id: str | None,
+        garmentKind: str = "tshirt",
+        garmentId: str | None = None,
+    ) -> RunRecord:
         run = RunRecord(
             id=self._next_run_id(),
             batchId=batch_id,
             seed=seed,
             name=name,
             scenario=scenario,
+            garmentKind=garmentKind or "tshirt",
+            garmentId=garmentId,
             stages=self._fresh_stages(),
         )
         self.runs[run.id] = run
@@ -350,6 +391,8 @@ class Runtime:
             seed=run.seed,
             name=run.name,
             scenario=run.scenario,
+            garmentKind=run.garmentKind,
+            garmentId=run.garmentId,
             cycle=run.cycle,
         )
         self.journal.append(

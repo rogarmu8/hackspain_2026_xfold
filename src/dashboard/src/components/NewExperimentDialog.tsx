@@ -28,6 +28,8 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { GARMENT_KIND_LABELS, GARMENT_KINDS, type GarmentKind } from "@xfold/protocol";
+import { samplesFor, garmentThumbSrc } from "@/lib/garments";
 import { useDashboard } from "@/lib/dashboard-context";
 
 export type NewExperimentDefaults = {
@@ -99,6 +101,8 @@ function NewExperimentDialogBody({
   const [name, setName] = useState(defaults?.name ?? "");
   const [seed, setSeed] = useState(defaults?.seed ?? 42);
   const [count, setCount] = useState(defaults?.count ?? 5);
+  const [garmentKind, setGarmentKind] = useState<GarmentKind>("tshirt");
+  const [garmentId, setGarmentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -107,6 +111,8 @@ function NewExperimentDialogBody({
     setName(defaults?.name ?? "");
     setSeed(defaults?.seed ?? 42);
     setCount(defaults?.count ?? 5);
+    setGarmentKind("tshirt");
+    setGarmentId(null);
     setError(null);
   }, [defaults?.mode, defaults?.name, defaults?.seed, defaults?.count]);
 
@@ -144,6 +150,8 @@ function NewExperimentDialogBody({
               name: name.trim(),
               seed,
               scenario: "openarm-ninja-bag",
+              garmentKind,
+              garmentId: garmentId ?? samplesFor(garmentKind)[0]?.id ?? null,
             })
           : launch({
               mode: "batch",
@@ -152,6 +160,8 @@ function NewExperimentDialogBody({
               seedStrategy: "sequential",
               baseSeed: seed,
               scenario: "openarm-ninja-bag",
+              garmentKind,
+              garmentId: garmentId ?? samplesFor(garmentKind)[0]?.id ?? null,
             }),
       );
 
@@ -214,6 +224,73 @@ function NewExperimentDialogBody({
           </Field>
 
           <Field>
+            <FieldLabel>Tipo de prenda</FieldLabel>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              value={garmentKind}
+              onValueChange={(value) => {
+                if (GARMENT_KINDS.includes(value as GarmentKind)) {
+                  setGarmentKind(value as GarmentKind);
+                  setGarmentId(null);
+                }
+              }}
+              className="grid w-full grid-cols-3 gap-2"
+              aria-label="Tipo de prenda"
+            >
+              {GARMENT_KINDS.map((kind) => {
+                const preview = samplesFor(kind)[0];
+                return (
+                  <ToggleGroupItem
+                    key={kind}
+                    value={kind}
+                    className="h-auto flex-col gap-1.5 px-2 py-2 data-[state=on]:border-active"
+                  >
+                    {preview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={garmentThumbSrc(preview)}
+                        alt=""
+                        className="h-16 w-full rounded-[var(--radius-sm)] object-cover"
+                      />
+                    ) : null}
+                    <span className="text-xs font-medium">{GARMENT_KIND_LABELS[kind]}</span>
+                  </ToggleGroupItem>
+                );
+              })}
+            </ToggleGroup>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {samplesFor(garmentKind).map((sample, index) => {
+                const selected =
+                  garmentId === sample.id || (garmentId == null && index === 0);
+                return (
+                  <button
+                    key={sample.id}
+                    type="button"
+                    onClick={() => setGarmentId(sample.id)}
+                    className={`overflow-hidden rounded-[var(--radius-sm)] border text-left ${
+                      selected ? "border-active ring-1 ring-active" : "border-border"
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={garmentThumbSrc(sample)}
+                      alt={sample.id}
+                      className="h-20 w-full object-cover"
+                    />
+                    <span className="block px-2 py-1 font-mono text-[11px] text-muted-foreground">
+                      {sample.id}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <FieldDescription>
+              Fotos en plano (CC0, dataset Grigorev). Se proyectan sobre el flex T de 151 vértices; la física no cambia.
+            </FieldDescription>
+          </Field>
+
+          <Field>
             <FieldLabel htmlFor={`${formId}-seed`}>
               {mode === "batch" ? "Semilla base" : "Semilla"}
             </FieldLabel>
@@ -267,8 +344,8 @@ function NewExperimentDialogBody({
           <p className="font-semibold text-foreground">Resumen</p>
           <p className="mt-1">
             {mode === "individual"
-              ? `1 ejecución · semilla ${seed} · openarm-ninja-bag`
-              : `Batch ×${count} · semillas ${seed}… · cola secuencial`}
+              ? `1 ejecución · ${GARMENT_KIND_LABELS[garmentKind]} · semilla ${seed} · openarm-ninja-bag`
+              : `Batch ×${count} · ${GARMENT_KIND_LABELS[garmentKind]} · semillas ${seed}… · cola secuencial`}
           </p>
         </div>
 

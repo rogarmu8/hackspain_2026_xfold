@@ -78,7 +78,9 @@ curl -sN 'http://127.0.0.1:8765/events/stream?after_seq=0'
 | `GET` | `/runs`, `/runs/{id}` | Run list / detail |
 | `GET` | `/batches/{id}` | Batch summary |
 | `GET` | `/experiments` | Launch list for Experimentos |
-| `POST` | `/runs`, `/batches` | Launch individual / batch |
+| `GET` | `/garments` | Laid-flat photo catalog (`tshirt` / `polo` / `tank`) |
+| `GET` | `/garments/{id}/image` | Sample JPEG (CC0 Grigorev clothing-dataset) |
+| `POST` | `/runs`, `/batches` | Launch individual / batch (`garmentKind`, `garmentId`) |
 | `POST` | `/commands` | Operator command (`202` / `409`) |
 | `GET` | `/viewport/meta` | Readiness: `seq`, `ageMs`, `source`, `available` |
 | `GET` | `/viewport/frame?after_seq=&wait_ms=` | **Primary** live view — long-poll JPEG (+ `X-Viewport-Seq`) |
