@@ -374,7 +374,13 @@ def create_app(*, persist: bool = True) -> FastAPI:
     @app.post("/runs", status_code=201)
     def post_run(body: LaunchRunRequest) -> dict:
         try:
-            return runtime.launch_run(name=body.name, seed=body.seed, scenario=body.scenario)
+            return runtime.launch_run(
+                name=body.name,
+                seed=body.seed,
+                scenario=body.scenario,
+                cloth_type=body.clothType,
+                cloth_condition=body.clothCondition,
+            )
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 
@@ -386,6 +392,10 @@ def create_app(*, persist: bool = True) -> FastAPI:
                 count=body.count,
                 base_seed=body.baseSeed,
                 scenario=body.scenario,
+                cloth_mix=body.clothMix,
+                cloth_types=body.clothTypes,
+                condition_mix=body.conditionMix,
+                conditions=body.conditions,
             )
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc

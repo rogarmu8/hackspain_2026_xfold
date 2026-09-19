@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@xfold/protocol": ["../../packages/protocol/src/index.ts"]
     }
   },
   "include": [

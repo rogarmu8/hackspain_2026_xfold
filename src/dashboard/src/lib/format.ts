@@ -1,6 +1,10 @@
 import {
   CELL_STAGE_LABELS,
+  CLOTH_CONDITION_KEYS,
+  CLOTH_TYPE_KEYS,
   type CellState,
+  type ClothCondition,
+  type ClothType,
 } from "@xfold/protocol";
 
 /** Manual es-ES formatting — avoids Intl SSR/client drift. */
@@ -61,3 +65,30 @@ export function absentTitle(reason: string): string {
 export function lifecycleLabel(value: string): string {
   return ({ running: "En curso", paused: "En pausa", succeeded: "Correcta", failed: "Fallida", cancelled: "Cancelada", queued: "Pendiente", partial: "Parcial", completed: "Completada", active: "Activa", pending: "Pendiente", skipped: "Omitida" } as Record<string, string>)[value] ?? value;
 }
+
+const CLOTH_TYPE_LABELS: Record<ClothType, string> = {
+  tee: "Camiseta",
+  work_tee: "Camiseta de trabajo",
+  jersey: "Jersey",
+  tank: "Tirantes",
+  polo: "Polo",
+  dress: "Pichi",
+};
+
+const CLOTH_CONDITION_LABELS: Record<ClothCondition, string> = {
+  good: "Limpia, a escuadra",
+  damaged: "Rasgada",
+  notgood: "Manchada",
+  skewed: "Colocada torcida",
+};
+
+export function clothTypeLabel(key: string): string {
+  return CLOTH_TYPE_LABELS[key as ClothType] ?? key;
+}
+
+export function clothConditionLabel(key: string): string {
+  return CLOTH_CONDITION_LABELS[key as ClothCondition] ?? key;
+}
+
+export const DEFAULT_CLOTH_TYPES: ClothType[] = [...CLOTH_TYPE_KEYS];
+export const DEFAULT_CLOTH_CONDITIONS: ClothCondition[] = [...CLOTH_CONDITION_KEYS];

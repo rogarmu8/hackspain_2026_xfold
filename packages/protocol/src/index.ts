@@ -106,6 +106,38 @@ export type BatchLifecycle =
   | "cancelled"
   | "partial";
 
+/** Foldable SKUs the operator can pick (matches `xfold.garments.CLOTH_TYPE_KEYS`). */
+export const CLOTH_TYPE_KEYS = [
+  "tee",
+  "work_tee",
+  "jersey",
+  "tank",
+  "polo",
+  "dress",
+] as const;
+
+export type ClothType = (typeof CLOTH_TYPE_KEYS)[number];
+
+/** Lay / damage / stain axes (matches `xfold.garments.CLOTH_CONDITION_KEYS`). */
+export const CLOTH_CONDITION_KEYS = [
+  "good",
+  "damaged",
+  "notgood",
+  "skewed",
+] as const;
+
+export type ClothCondition = (typeof CLOTH_CONDITION_KEYS)[number];
+
+/** How a batch row samples cloth or condition. */
+export const CLOTH_MIX_KEYS = ["same", "random", "list"] as const;
+
+export type ClothMix = (typeof CLOTH_MIX_KEYS)[number];
+
+export type CatalogOption = {
+  key: string;
+  label: string;
+};
+
 /** What the bridge actually exposes right now. */
 export type BridgeCapabilities = {
   liveTelemetry: boolean;
@@ -119,6 +151,9 @@ export type BridgeCapabilities = {
   startRun: boolean;
   startBatch: boolean;
   commands: Partial<Record<CommandKind, boolean>>;
+  /** Live catalogue for the launch form. Empty ⇒ UI uses protocol defaults. */
+  clothTypes?: CatalogOption[];
+  clothConditions?: CatalogOption[];
 };
 
 export type CommandRequest = {
@@ -144,6 +179,10 @@ export type JournalEvent =
       name: string | null;
       scenario: string;
       cycle: number;
+      garment?: string | null;
+      clothType?: string | null;
+      clothCondition?: string | null;
+      skewed?: boolean;
     })
   | (JournalEnvelope & {
       type: "state_changed";
@@ -202,6 +241,10 @@ export type BridgeLaunchRun = {
   name?: string;
   seed: number;
   scenario?: string;
+  /** Concrete type, or `"random"` to draw from the catalogue with `seed`. */
+  clothType?: ClothType | "random";
+  /** Concrete condition, or `"random"`. */
+  clothCondition?: ClothCondition | "random";
 };
 
 export type BridgeLaunchBatch = {
@@ -210,4 +253,9 @@ export type BridgeLaunchBatch = {
   baseSeed: number;
   seedStrategy?: "sequential";
   scenario?: string;
+  /** All shirts the same type, independent draws, or draws from `clothTypes`. */
+  clothMix?: ClothMix;
+  clothTypes?: ClothType[];
+  conditionMix?: ClothMix;
+  conditions?: ClothCondition[];
 };

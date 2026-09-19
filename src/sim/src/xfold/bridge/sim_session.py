@@ -55,6 +55,8 @@ class SimSession:
         # so one failure disables rendering for good and the bridge keeps
         # serving the journal without pixels.
         self._render_broken = False
+        # Last SKU compiled into line.xml. None until the first successful compile.
+        self._garment_key: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -154,6 +156,9 @@ class SimSession:
         self.static_camera = "overview"
         self.follow = FollowCam()
         self.camera = self.follow.cam
+        from xfold.shirt import shirt_config
+
+        self._garment_key = shirt_config().garment
         print("[sim-session] line.xml (belt, press, folder, bagger)", flush=True)
         return True
 
@@ -195,6 +200,45 @@ class SimSession:
         """Move the follow camera's look-at toward the cloth. No-op if fixed."""
         if self.follow is not None:
             self.follow.track(cloth, dt)
+
+    def ensure_garment(self, name: str) -> None:
+        """Recompile the line if the launch SKU is a different mesh/texture.
+
+        Different catalogue items are different flexcomps. Pose-only changes
+        (``skewed``) do not need a rebuild — ``Line`` handles those per cycle.
+        """
+        if not self._ok or self.kind != "line":
+            return
+        from xfold.shirt import select_garment
+
+        cfg = select_garment(name)
+        with self.lock:
+            if self._garment_key == cfg.garment:
+                return
+            self._rebuild_line_unlocked()
+            self._garment_key = cfg.garment
+            print(
+                f"[sim-session] rebuilt line for garment={cfg.garment} nq={self.model.nq}",
+                flush=True,
+            )
+
+    def _rebuild_line_unlocked(self) -> None:
+        """Swap MjModel/MjData after ``select_garment``. Caller holds ``lock``."""
+        for renderer in self._renderers.values():
+            try:
+                renderer.close()
+            except Exception:
+                pass
+        self._renderers.clear()
+        from xfold.line import FollowCam, build
+
+        model = build()
+        data = self._mujoco.MjData(model)
+        self._mujoco.mj_forward(model, data)
+        self.model, self.data, self.cell, self.kind = model, data, None, "line"
+        self.follow = FollowCam()
+        self.camera = self.follow.cam
+        self.static_camera = "overview"
 
     def reset_shirt(self, seed: int) -> None:
         """Respawn cloth in the bin for a new run."""

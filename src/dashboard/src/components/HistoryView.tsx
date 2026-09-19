@@ -49,6 +49,8 @@ export function HistoryView() {
       return (
         run.id.toLowerCase().includes(q) ||
         String(run.seed).includes(q) ||
+        (run.garment?.toLowerCase().includes(q) ?? false) ||
+        (run.clothType?.toLowerCase().includes(q) ?? false) ||
         (run.name?.toLowerCase().includes(q) ?? false) ||
         (run.batchId?.toLowerCase().includes(q) ?? false)
       );

@@ -117,7 +117,7 @@ class LineDriver:
             if run.paused or run.lifecycle == "paused":
                 self.runtime.wait_wake(0.25)
                 continue
-            self._run_cycle(run.id, run.seed)
+            self._run_cycle(run)
 
     # --- journal helpers ------------------------------------------------
 
@@ -150,14 +150,17 @@ class LineDriver:
 
     # --- the cycle -------------------------------------------------------
 
-    def _run_cycle(self, run_id: str, seed: int) -> None:
+    def _run_cycle(self, run) -> None:
         from xfold.line import Line
         from xfold.shirt import shirt_config
 
+        run_id = run.id
+        seed = int(run.seed)
+        garment = getattr(run, "garment", None) or shirt_config().garment
+        skewed = bool(getattr(run, "skewed", False))
         recorder = TrajectoryRecorder(run_id, sample_hz=10.0)
         session = self.session
-        dt = float(session.model.opt.timestep)
-        skewed = _skewed_default()
+        dt = float(session.model.opt.timestep) if session.ok else 0.002
 
         # Line.log fires inside session.lock; emit_log takes the runtime lock.
         # Buffer here and flush once the session lock is released, so the two
@@ -165,7 +168,9 @@ class LineDriver:
         pending: list[str] = []
 
         try:
+            session.ensure_garment(garment)
             session.reset_time()
+            dt = float(session.model.opt.timestep)
             with session.lock:
                 line = Line(
                     session.model,
