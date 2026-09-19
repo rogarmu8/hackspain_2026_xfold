@@ -22,6 +22,7 @@ import numpy as np
 
 from .shirt import (
     SHIRT_RADIUS,
+    apply_shirt_config,
     load_mujoco_plugins,
     set_shirt_world,
     shirt_band_local,
@@ -324,6 +325,56 @@ def _measure_hand() -> _Hand:
     )
 
 
+# Collision bits. The cloth only touches geoms that carry CLOTH_BIT in their
+# affinity; the hands carry HAND_BIT instead, so they still hit the press,
+# the arms and each other but pass through the shirt.
+WORLD_BIT = 1
+CLOTH_BIT = 2
+HAND_BIT = 4
+
+
+def _keep_hands_off_cloth(model) -> None:
+    """Let the shirt collide with everything except the two grippers.
+
+    The hands hold cloth through PinchHold, not through finger contact. With
+    contact on as well, the fingers close on vertices the spring is pulling
+    into them, and the 2F-85's stiff, tiny-mass linkage takes the solver
+    with it. Vertex spheres stay (cloth, world) so they hit the press and
+    floor but not each other; flex-element contacts stay off (50-pair cap).
+    """
+    import mujoco
+
+    hand_bodies = {
+        index
+        for index in range(model.nbody)
+        if model.body(index).name.startswith((ARM_PREFIX + HAND_PREFIX, HELPER_PREFIX + HAND_PREFIX))
+    }
+    for index in range(model.ngeom):
+        if model.geom_contype[index] == 0 and model.geom_conaffinity[index] == 0:
+            continue
+        body = int(model.geom_bodyid[index])
+        body_name = model.body(body).name
+        if body_name.startswith("shirt_") and model.geom_type[index] == mujoco.mjtGeom.mjGEOM_SPHERE:
+            model.geom_contype[index] = CLOTH_BIT
+            model.geom_conaffinity[index] = WORLD_BIT
+            continue
+        if body in hand_bodies:
+            model.geom_contype[index] = HAND_BIT
+            model.geom_conaffinity[index] = HAND_BIT | WORLD_BIT
+        else:
+            model.geom_conaffinity[index] |= CLOTH_BIT
+    model.flex_contype[:] = 0
+    model.flex_conaffinity[:] = 0
+    # The broadphase prunes on per-body masks the compiler ORed together from
+    # the geoms; rebuild them or the new bits are ignored.
+    model.body_contype[:] = 0
+    model.body_conaffinity[:] = 0
+    for index in range(model.ngeom):
+        body = int(model.geom_bodyid[index])
+        model.body_contype[body] |= model.geom_contype[index]
+        model.body_conaffinity[body] |= model.geom_conaffinity[index]
+
+
 def build() -> Cell:
     """Compile the cell and the matching IK-only arm model."""
     import mujoco
@@ -334,6 +385,7 @@ def build() -> Cell:
     load_mujoco_plugins()
     hand = _measure_hand()
     spec = mujoco.MjSpec.from_file(CELL_PATH.as_posix())
+    apply_shirt_config(spec, claws=False)
     half = 0.5 * PRESS_YAW
     spec.body("press_origin").quat = [math.cos(half), 0.0, 0.0, math.sin(half)]
     mounts = []
@@ -347,6 +399,7 @@ def build() -> Cell:
         spec.attach(_arm_spec(), prefix=prefix, frame=mount.add_frame())
         mounts.append((body_name, prefix, mount_pos, mount_quat))
     model = spec.compile()
+    _keep_hands_off_cloth(model)
 
     # Read the working heights off the model so the XML stays the one source.
     data = mujoco.MjData(model)
@@ -394,24 +447,26 @@ def build() -> Cell:
 
 
 def spawn_shirt_in_bin(cell: Cell, data, rng: np.random.Generator) -> None:
-    """Drop a folded cloth shirt in the middle of the crate.
+    """Lay a shirt in the crate, folded in half down the spine.
 
-    Flat, the T is wider than the crate. Folding one sleeve over the other
-    makes a pack that fits; it sits on the crate centre with the neck on
-    top so the hand can pinch it without fishing in a corner.
+    Flat, the T is wider than the crate. Folding the right half over the left
+    along the spine gives a 0.42 x 0.57 m pack, which fits the crate's
+    0.44 x 0.60 m inside once its length runs along the crate's long side.
+    The fold is true to size: squeezing the mesh smaller than its rest
+    lengths only makes the edge constraints spring it back out over the lip.
+    The right sleeve ends up on top, at the front of the crate by the low lip,
+    clear of the tall far wall.
     """
     local = cell.shirt_rest_local.copy()
-    local -= local.mean(axis=0)
-    folded = local[:, 1] > 0.0
+    folded = local[:, 1] < 0.0
     local[folded, 1] = -local[folded, 1]
     local[folded, 2] += 0.010
-    local[:, :2] *= 0.70
     local -= local.mean(axis=0)
-    local[cell.shirt_collar_ids, 2] += 0.028
-    local[:, 2] += 0.006 * np.sin(9.0 * local[:, 0])
+    local[:, 2] += 0.004 * np.sin(9.0 * local[:, 0])
 
-    # Collar toward the press / open lip, not the back wall.
-    yaw = float(rng.uniform(-0.15, 0.15))
+    # Collar toward the front wall, near the arm; the crate leaves a
+    # centimetre or two each side, so only a small twist fits.
+    yaw = -0.5 * math.pi + float(rng.uniform(-0.03, 0.03))
     cos, sin = math.cos(yaw), math.sin(yaw)
     rotation = np.array([[cos, -sin, 0.0], [sin, cos, 0.0], [0.0, 0.0, 1.0]])
     world = local @ rotation.T

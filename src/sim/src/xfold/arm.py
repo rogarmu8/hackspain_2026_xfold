@@ -138,8 +138,8 @@ class Arm:
                 return False
         return self.track(loop, settle, hold) if settle > 0 else loop.running
 
-    def close_hand(self, loop, seconds: float = 0.8, hold=()) -> bool:
-        self.cloth.grab(self.pinch_position())
+    def close_hand(self, loop, seconds: float = 0.8, hold=(), anchor: int | None = None) -> bool:
+        self.cloth.grab(self.pinch_position(), anchor)
         return self.grip(loop, HAND_SHUT, seconds, settle=0.4, hold=hold)
 
     def open_hand(self, loop, seconds: float = 0.5, hold=()) -> bool:

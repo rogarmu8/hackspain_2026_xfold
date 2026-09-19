@@ -14,9 +14,13 @@ from xfold.shirt import (
     PLAYGROUND_HI_XML,
     PLAYGROUND_PONCHO_XML,
     PLAYGROUND_XML,
+    load_mjcf,
     load_mujoco_plugins,
+    shirt_config,
 )
+from xfold.claws import ShirtClaws
 from xfold.ninja_fold import NinjaFoldDemo, button_body_id
+from xfold.self_collide import ClothLayers
 from xfold.shirt_grab import (
     KEY_DOWN,
     KEY_E,
@@ -39,9 +43,9 @@ XFOLD shirt playground — adult T-shirt (cloth physics)
 Trackpad friendly — no right-click needed.
 
   N            NINJA FOLD demo (or double-click the orange button)
-               left third → right third → hem to collar
-  G            grab / release the shirt
-               (grabs the vertex you double-clicked, else the highest one)
+               two claws: left crease → right crease → hem to collar
+  G            grab / release one claw
+               (the vertex you double-clicked, else the highest one)
   arrows       steer the grab across the floor, relative to the camera
   E / Q        lift / lower the grab
   X            stop moving
@@ -124,9 +128,28 @@ def _draw_markers(viewer, grab, demo) -> None:
         scene.ngeom = i + 1
 
     if grab.active:
-        _sphere(grab.target, 0.018, (1.0, 0.75, 0.1, 0.9))
+        _sphere(grab.target, 0.012, (1.0, 0.75, 0.1, 0.55))
     for hand in demo.hands:
-        _sphere(hand, 0.022, (0.95, 0.35, 0.12, 0.95))
+        _sphere(hand, 0.014, (0.95, 0.35, 0.12, 0.45))
+    if len(demo.hands) == 2:
+        i = scene.ngeom
+        if i < scene.maxgeom:
+            mujoco.mjv_initGeom(
+                scene.geoms[i],
+                type=mujoco.mjtGeom.mjGEOM_CAPSULE,
+                size=np.zeros(3),
+                pos=np.zeros(3),
+                mat=mat,
+                rgba=np.array([0.95, 0.35, 0.12, 0.55], dtype=np.float64),
+            )
+            mujoco.mjv_connector(
+                scene.geoms[i],
+                mujoco.mjtGeom.mjGEOM_CAPSULE,
+                0.006,
+                demo.hands[0],
+                demo.hands[1],
+            )
+            scene.ngeom = i + 1
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -134,7 +157,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--hi",
         action="store_true",
-        help="High-detail mesh (580 verts): nicer folds, ~3x slower",
+        help="High-detail mesh (stills). Much slower than the default.",
     )
     parser.add_argument(
         "--poncho",
@@ -165,10 +188,17 @@ def main(argv: list[str] | None = None) -> None:
     if not scene.is_file():
         raise SystemExit(f"Missing scene: {scene}")
 
-    model = mujoco.MjModel.from_xml_path(scene.as_posix())
-    data = mujoco.MjData(model)
-    grab = ClothGrab(model, data)
-    demo = NinjaFoldDemo(model, data)
+    model, data = load_mjcf(scene)
+    cfg = shirt_config()
+    print(
+        f"shirt.toml  mass={cfg.mass} kg  young={cfg.young:g}  "
+        f"edge_eq  bend  dt={cfg.timestep}  ({cfg.path})",
+        flush=True,
+    )
+    claws = ShirtClaws(model, data)
+    grab = ClothGrab(model, data, claws)
+    demo = NinjaFoldDemo(model, data, claws)
+    layers = ClothLayers(model, data)
     btn_id = button_body_id(model)
     btn_geom = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "ninja_button")
     paused = False
@@ -196,6 +226,7 @@ def main(argv: list[str] | None = None) -> None:
             grab.release()
             _stop_fold()
             mujoco.mj_resetData(model, data)
+            claws.hide()
             print("reset", flush=True)
             return
         if key == KEY_N:
@@ -245,8 +276,9 @@ def main(argv: list[str] | None = None) -> None:
         # Physics and rendering run at different rates. Syncing once per step
         # rendered at 500 Hz and then slept away the rest of the budget, so the
         # shirt fell at a fraction of real time and read as heavy and gooey.
+        # Cap catch-up at 1× — a 4× debt spiral freezes the viewer.
         frame_dt = 1.0 / 60.0
-        max_steps_per_frame = int(frame_dt / model.opt.timestep) * 4
+        max_steps_per_frame = max(1, int(round(frame_dt / model.opt.timestep)))
         sim_clock = time.perf_counter()
 
         while viewer.is_running():
@@ -258,19 +290,19 @@ def main(argv: list[str] | None = None) -> None:
             else:
                 steps = 0
                 while sim_clock < frame_start and steps < max_steps_per_frame:
-                    if demo.active:
-                        demo.apply(model.opt.timestep)
-                    else:
+                    demo.apply(model.opt.timestep)
+                    if not demo.active:
                         grab.apply(model.opt.timestep)
                     mujoco.mj_step(model, data)
+                    layers.separate()
                     sim_clock += model.opt.timestep
                     steps += 1
                 if steps == max_steps_per_frame:
                     # Can't keep up; drop the debt instead of spiralling.
                     sim_clock = frame_start
 
-            # sync() zeroes xfrc_applied and folds in mouse input, so the grab
-            # force is written by grab.apply() on the next step, never before.
+            # Claws are mocap connects, not xfrc. sync() still zeroes
+            # xfrc_applied; that is fine.
             viewer.sync()
             if (
                 not demo.active

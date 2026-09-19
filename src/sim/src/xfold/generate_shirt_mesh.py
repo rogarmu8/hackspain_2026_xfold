@@ -1,19 +1,16 @@
-"""Generate a flat adult T-shirt surface (OBJ) for MuJoCo flexcomp.
+"""T-shirt pattern for the two-claw ninja fold (SOLUTION.md §5.3).
 
-The outline is a real T — torso, short sleeves, crew neck — sized for the
-Japanese / ninja fold in SOLUTION.md §5.3:
+Default output is a *single* T panel — the pressed sheet the clamps crease.
+`--shell` sews a hollow front+back copy (wearable topology) but that bag
+cannot hold a Japanese fold: the layers slide and the T becomes a rag.
 
-  body 0.60 × 0.64 m  →  left/right thirds of 0.20 m, hem fold ≈ 0.28 m
-  sleeves 0.15 m      →  the bits the flip has to hide
-  packet target       →  0.20 × 0.28 m
-
-Vertex count stays near 160 so the platen can support the whole sheet
-(mjMAXCONPAIR = 50, SOLUTION.md §4.3).
+Body 0.60 × 0.64 m → thirds of 0.20 m, hem fold ≈ 0.28 m.
 """
 
 from __future__ import annotations
 
 import argparse
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -21,18 +18,23 @@ import numpy as np
 MODELS = Path(__file__).resolve().parents[2] / "models"
 DEFAULT_OUT = MODELS / "shirt_t.obj"
 
-# Rest-frame metres. X = left/right, Y = hem (−) → collar (+).
 BODY_W = 0.60
 BODY_L = 0.64
+# Laid-flat stack: two layers, not a worn torso. Wearable topology, foldable pose.
+TORSO_D = 0.012
 SLEEVE_L = 0.15
-SLEEVE_H = 0.18
+SLEEVE_H = 0.16
 NECK_W = 0.18
 NECK_D = 0.08
-DEFAULT_SPACING = 0.050
+DEFAULT_SPACING = 0.032
+DEFAULT_NX = 22
+DEFAULT_NY = 24
+DEFAULT_NS = 6
 
-# Ninja crease lines (SOLUTION.md §5.3): pinch on x = ±BODY_W/6.
 LEFT_CREASE_X = -BODY_W / 6.0
 RIGHT_CREASE_X = BODY_W / 6.0
+
+_HEM, _NECK, _LCUFF, _RCUFF, _SEAM = "hem", "neck", "lcuff", "rcuff", "seam"
 
 
 def shirt_outline() -> np.ndarray:
@@ -40,14 +42,12 @@ def shirt_outline() -> np.ndarray:
     hw = 0.5 * BODY_W
     hl = 0.5 * BODY_L
     nw = 0.5 * NECK_W
-    # Sleeve sits on the shoulder band; cuff is slightly dropped.
     y_collar = hl
     y_shoulder = hl - 0.02
     y_cuff_top = y_shoulder - 0.03
     y_armpit = y_shoulder - SLEEVE_H
     y_hem = -hl
     x_cuff = hw + SLEEVE_L
-
     return np.array(
         [
             (-nw, y_collar),
@@ -75,7 +75,6 @@ def shirt_outline() -> np.ndarray:
 
 
 def _point_in_poly(x: float, y: float, poly: np.ndarray) -> bool:
-    """Even-odd ray cast. The neck is a bite in the outline, not a hole."""
     inside = False
     n = len(poly)
     x1, y1 = poly[-1]
@@ -95,9 +94,15 @@ def _axis(lo: float, hi: float, spacing: float) -> np.ndarray:
     return start + spacing * np.arange(n)
 
 
-def build_mesh(spacing: float = DEFAULT_SPACING) -> tuple[np.ndarray, np.ndarray]:
+def _quad(faces: list[tuple[int, int, int]], a: int, b: int, c: int, d: int) -> None:
+    faces.append((a, b, c))
+    faces.append((a, c, d))
+
+
+def build_panel(spacing: float) -> tuple[np.ndarray, np.ndarray]:
+    """One T-shaped 2D panel (z = 0) from the sewing pattern."""
     poly = shirt_outline()
-    pad = 0.02
+    pad = 0.5 * spacing
     xs = _axis(float(poly[:, 0].min()) - pad, float(poly[:, 0].max()) + pad, spacing)
     ys = _axis(float(poly[:, 1].min()) - pad, float(poly[:, 1].max()) + pad, spacing)
     idx = -np.ones((len(ys), len(xs)), dtype=np.int32)
@@ -126,16 +131,145 @@ def build_mesh(spacing: float = DEFAULT_SPACING) -> tuple[np.ndarray, np.ndarray
                 faces.append((b, d, c))
 
     if not verts or not faces:
-        raise RuntimeError("T-shirt mesh is empty — check silhouette bounds")
+        raise RuntimeError("T-shirt panel is empty — check silhouette bounds")
     return np.asarray(verts, dtype=np.float64), np.asarray(faces, dtype=np.int32)
 
 
-def write_obj(path: Path, verts: np.ndarray, faces: np.ndarray) -> None:
+def _oriented_boundary(faces: np.ndarray) -> list[tuple[int, int]]:
+    seen: dict[tuple[int, int], int] = {}
+    for a, b, c in faces:
+        for u, v in ((int(a), int(b)), (int(b), int(c)), (int(c), int(a))):
+            key = (u, v) if u < v else (v, u)
+            seen[key] = seen.get(key, 0) + 1
+    edges: list[tuple[int, int]] = []
+    for a, b, c in faces:
+        for u, v in ((int(a), int(b)), (int(b), int(c)), (int(c), int(a))):
+            key = (u, v) if u < v else (v, u)
+            if seen[key] == 1:
+                edges.append((u, v))
+    return edges
+
+
+def _label_vert(x: float, y: float, xs: np.ndarray, ys: np.ndarray) -> str:
+    xmin, xmax = float(xs.min()), float(xs.max())
+    ymin, ymax = float(ys.min()), float(ys.max())
+    pad = 0.018
+    hw = 0.5 * BODY_W
+    if y <= ymin + pad:
+        return _HEM
+    if x <= xmin + pad:
+        return _LCUFF
+    if x >= xmax - pad:
+        return _RCUFF
+    if y >= ymax - NECK_D - pad and abs(x) <= 0.5 * NECK_W + pad:
+        return _NECK
+    # Neck bite sits inside the bounding box; catch the U as well.
+    if y >= 0.5 * BODY_L - NECK_D - pad and abs(x) <= 0.5 * NECK_W + 0.01:
+        return _NECK
+    if abs(x) >= hw + 0.5 * SLEEVE_L and x < 0:
+        return _LCUFF
+    if abs(x) >= hw + 0.5 * SLEEVE_L and x > 0:
+        return _RCUFF
+    return _SEAM
+
+
+def build_sewn_t(spacing: float = DEFAULT_SPACING, depth: float = TORSO_D) -> tuple[np.ndarray, np.ndarray]:
+    """Front + back panels, seams welded, four openings left open."""
+    panel, faces2 = build_panel(spacing)
+    n = len(panel)
+    front = panel.copy()
+    front[:, 2] = 0.0
+    back = panel.copy()
+    back[:, 2] = float(depth)
+    verts = np.vstack([front, back])
+    faces = [tuple(int(v) for v in f) for f in faces2]
+    faces.extend(tuple(int(v) + n for v in (a, c, b)) for a, b, c in faces2)
+
+    xs, ys = panel[:, 0], panel[:, 1]
+    labels = [_label_vert(float(x), float(y), xs, ys) for x, y in panel[:, :2]]
+    for a, b in _oriented_boundary(faces2):
+        la, lb = labels[a], labels[b]
+        opening = la == lb and la != _SEAM
+        if opening:
+            continue
+        _quad(faces, a, b, b + n, a + n)
+
+    return verts, np.asarray(faces, dtype=np.int32)
+
+
+def build_mesh(spacing: float | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """Single T panel — the foldable sheet."""
+    return build_panel(DEFAULT_SPACING if spacing is None else spacing)
+
+
+def build_shell(
+    nx: int = DEFAULT_NX, ny: int = DEFAULT_NY, ns: int = DEFAULT_NS
+) -> tuple[np.ndarray, np.ndarray]:
+    spacing = BODY_W / max(int(nx) - 1, 1)
+    return build_panel(spacing)
+
+
+def boundary_loops(faces: np.ndarray) -> list[list[int]]:
+    count: dict[tuple[int, int], int] = defaultdict(int)
+    for a, b, c in faces:
+        for u, v in ((int(a), int(b)), (int(b), int(c)), (int(c), int(a))):
+            e = (u, v) if u < v else (v, u)
+            count[e] += 1
+    adj: dict[int, list[int]] = defaultdict(list)
+    for (u, v), n in count.items():
+        if n == 1:
+            adj[u].append(v)
+            adj[v].append(u)
+    seen: set[int] = set()
+    loops: list[list[int]] = []
+    for start in adj:
+        if start in seen:
+            continue
+        loop = [start]
+        seen.add(start)
+        cur, prev = adj[start][0], start
+        while cur != start:
+            loop.append(cur)
+            seen.add(cur)
+            nxts = [w for w in adj[cur] if w != prev]
+            if not nxts:
+                break
+            prev, cur = cur, nxts[0]
+        loops.append(loop)
+    return loops
+
+
+def validate_mesh(verts: np.ndarray, faces: np.ndarray, *, shell: bool) -> list[list[int]]:
+    """One sheet, no non-manifold edges. Panel = 1 outline; shell = 4 openings."""
+    count: dict[tuple[int, int], int] = defaultdict(int)
+    for a, b, c in faces:
+        for u, v in ((int(a), int(b)), (int(b), int(c)), (int(c), int(a))):
+            e = (u, v) if u < v else (v, u)
+            count[e] += 1
+    nonman = sum(1 for n in count.values() if n > 2)
+    if nonman:
+        raise RuntimeError(f"non-manifold edges: {nonman}")
+    loops = boundary_loops(faces)
+    expect = 4 if shell else 1
+    if len(loops) != expect:
+        raise RuntimeError(
+            f"expected {expect} boundary loop(s), got {len(loops)} "
+            f"({', '.join(str(len(L)) for L in loops)})"
+        )
+    return loops
+
+
+def write_obj(path: Path, verts: np.ndarray, faces: np.ndarray, *, shell: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    loops = validate_mesh(verts, faces, shell=shell)
+    kind = "hollow shell" if shell else "single T panel (ninja fold)"
     with path.open("w", encoding="utf-8") as f:
-        f.write("# XFOLD adult T-shirt (ninja-fold proportions, sleeves + crew neck)\n")
-        f.write(f"# verts={len(verts)} faces={len(faces)}\n")
-        f.write(f"# body={BODY_W:.2f}x{BODY_L:.2f} crease_x=±{BODY_W/6:.3f}\n")
+        f.write(f"# XFOLD {kind}\n")
+        f.write(f"# verts={len(verts)} faces={len(faces)} loops={len(loops)}\n")
+        f.write(
+            f"# body={BODY_W:.2f}x{BODY_L:.2f} "
+            f"crease_x=±{BODY_W / 6:.3f}\n"
+        )
         for x, y, z in verts:
             f.write(f"v {x:.6f} {y:.6f} {z:.6f}\n")
         for a, b, c in faces:
@@ -146,13 +280,30 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("-o", "--out", type=Path, default=DEFAULT_OUT)
     p.add_argument("--spacing", type=float, default=DEFAULT_SPACING)
+    p.add_argument("--nx", type=int, default=None)
+    p.add_argument("--ny", type=int, default=None)
+    p.add_argument("--ns", type=int, default=None)
+    p.add_argument("--depth", type=float, default=TORSO_D)
+    p.add_argument(
+        "--shell",
+        action="store_true",
+        help="Sew a hollow front+back T (wearable). Not the ninja-fold default.",
+    )
     args = p.parse_args(argv)
-    verts, faces = build_mesh(args.spacing)
-    write_obj(args.out, verts, faces)
+    spacing = args.spacing
+    if args.nx:
+        spacing = BODY_W / max(int(args.nx) - 1, 1)
+    if args.shell:
+        verts, faces = build_sewn_t(spacing, depth=args.depth)
+    else:
+        verts, faces = build_panel(spacing)
+    write_obj(args.out, verts, faces, shell=args.shell)
+    loops = boundary_loops(faces)
+    span = verts.max(0) - verts.min(0)
     print(
         f"wrote {args.out}  verts={len(verts)}  faces={len(faces)}  "
-        f"span={np.ptp(verts[:, 0]):.3f}×{np.ptp(verts[:, 1]):.3f} m  "
-        f"thirds={BODY_W/3:.2f} m",
+        f"loops={len(loops)} ({', '.join(str(len(L)) for L in loops)})  "
+        f"span={span[0]:.3f}×{span[1]:.3f}×{span[2]:.3f} m",
         flush=True,
     )
 
