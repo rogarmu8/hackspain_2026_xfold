@@ -99,15 +99,35 @@ Always from the repo root.
 | Same as pack | `moon run dev` · `npm run dev` |
 | Dashboard only ([localhost:3000](http://localhost:3000)) | `moon run dashboard:dev` |
 | **Bridge** only (journal + REST/SSE on :8765) | `moon run sim:bridge` |
-| **MuJoCo window (the actual scene)** | `moon run sim:view` |
 | **The line — belt, press, folder, bagger, carton (no robots)** | `moon run sim:run` |
+| Shared plant stub only (`models/cell.xml`: floor, bin, shirt) | `moon run sim:view` |
 | Shirt playground (ninja-fold T — drag it) | `moon run sim:shirt-play` |
 | Mock cell cycle (JSON lines to stdout) | `moon run sim:mock` |
 | Dashboard lint | `moon run dashboard:lint` |
 | Production dashboard build | `moon run dashboard:build` |
 | List projects / tasks | `moon query projects` · `moon query tasks` |
 
-On macOS, `sim:view` runs under `mjpython` (Cocoa main thread). Elsewhere it uses `python -m xfold.view`. Keep it in a second terminal — it is not part of `pack` / `dev`.
+On macOS the windowed tasks run under `mjpython` (Cocoa main thread) via `scripts/run-mjpython.sh`; elsewhere it is plain `python`. Keep them in a second terminal — they are not part of `pack` / `dev`.
+
+### What goes down the line
+
+`moon run sim:run` asks for the cloth type, then its condition; `-g` skips the
+list and `--list-garments` prints all 30 SKUs.
+
+| Condition | What it is | Example |
+|---|---|---|
+| clean | the SKU as designed | `-g tee` |
+| torn | a hole / torn hem, as real geometry | `-g tee_damaged` (alias `tee_torn`) |
+| stained | coffee, grease or mud on the base mesh | `-g tee_notgood1..3` (alias `tee_stain1..3`) |
+| off square | dropped 35° rotated and 9 cm off centre | `--skewed`, on any of the above |
+
+Six clean SKUs — `tee`, `work_tee`, `jersey`, `tank`, `polo`, `dress` — times
+four conditions. The pose is separate from the SKU, so `-g dress_damaged
+--skewed` is a torn pinafore put on the belt crooked.
+
+The bridge takes the same inputs from the environment, since swapping SKU means
+recompiling the model: `XFOLD_GARMENT=tee_damaged XFOLD_SKEWED=1 moon run
+sim:bridge`. Each run's first console line says which input it got.
 
 **Live monitor:** `moon run pack` starts bridge + dashboard together. The UI probes `http://127.0.0.1:8765` (override with `NEXT_PUBLIC_XFOLD_BRIDGE_URL`). If the bridge is down, the dashboard keeps honest **fixtures**.
 
