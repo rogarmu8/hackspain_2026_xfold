@@ -119,7 +119,7 @@ export function SimulationViewport({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={viewport.src}
-              alt="Vista MuJoCo de la celda XFOLD"
+              alt="Vista MuJoCo de la celda XFold"
               className="absolute inset-0 h-full w-full object-contain"
             />
           ) : (

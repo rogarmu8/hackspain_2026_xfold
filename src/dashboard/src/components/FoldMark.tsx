@@ -1,20 +1,45 @@
-export function FoldMark({ className = "" }: { className?: string }) {
+/**
+ * XFold fold mark — prefers the brand SVG from `/brand/`.
+ * Falls back to a tiny inline stroke if the asset fails to load.
+ */
+export function FoldMark({
+  className = "",
+  size = 28,
+}: {
+  className?: string;
+  size?: number;
+}) {
   return (
-    <svg
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/brand/xfold-mark-primary.svg"
+      alt=""
+      width={size}
+      height={size}
       className={className}
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M3 16.5V4.5L10 8.2L17 4.5V16.5L10 12.8L3 16.5Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-      />
-      <path d="M10 8.2V12.8" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
+      draggable={false}
+    />
+  );
+}
+
+/** Horizontal wordmark for wider chrome (sidebar branding). */
+export function FoldLogo({
+  className = "",
+  width = 140,
+}: {
+  className?: string;
+  width?: number;
+}) {
+  const height = Math.round((width * 96) / 320);
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/brand/xfold-logo-primary.svg"
+      alt="XFold"
+      width={width}
+      height={height}
+      className={className}
+      draggable={false}
+    />
   );
 }
