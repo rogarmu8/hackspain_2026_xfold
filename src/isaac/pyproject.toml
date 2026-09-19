@@ -1,0 +1,24 @@
+[project]
+name = "xfold-isaac"
+version = "0.1.0"
+description = "The XFOLD line (xfold.line) on NVIDIA Isaac Sim / PhysX"
+# Isaac Sim 6.1 is Python 3.12 only.
+requires-python = ">=3.12,<3.13"
+# isaacsim itself is installed by scripts/install.sh (it needs NVIDIA's index
+# and a CUDA torch first); xfold-sim is installed from src/sim alongside.
+dependencies = ["numpy", "mujoco>=3.2", "pillow>=10", "imageio-ffmpeg>=0.5"]
+
+[project.optional-dependencies]
+# Enough to build and inspect the USD stage on a laptop, without Isaac.
+usd = ["usd-core>=25.5"]
+
+[project.scripts]
+xfold-isaac = "xfold_isaac.run:main"
+xfold-isaac-compare = "xfold_isaac.compare:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

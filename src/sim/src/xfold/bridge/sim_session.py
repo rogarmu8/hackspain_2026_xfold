@@ -29,7 +29,31 @@ _CELL_FALLBACK = Path(__file__).resolve().parents[3] / "models" / "cell.xml"
 
 
 class SimSession:
-    """Thread-safe shared sim: step / forward / render / qpos snapshot."""
+    """Thread-safe shared sim: step / forward / render / qpos snapshot.
+
+    The physics engine is MuJoCo. ``xfold_isaac.bridge.IsaacSession`` swaps in
+    Isaac Sim by overriding ``make_line`` and the render calls; the attributes
+    below are what the bridge asks of any session.
+    """
+
+    # Which physics engine steps the line, for /capabilities and the console.
+    engine = "mujoco"
+    # Replay can re-render any recorded qpos (GET …/recording/frame).
+    seekable = True
+    # The clock run videos are timed by; None is wall time, which is sim time
+    # here because LineDriver paces the line at realtime.
+    video_clock = None
+    # The run's video is watchable while the run is live (see /capabilities).
+    live_video = True
+    # Recording size and rate; None means the viewport's size and VIEWPORT_FPS.
+    video_size: tuple[int, int] | None = None
+    video_fps: float | None = None
+    # True if the session writes the run's video frames itself (attach_video)
+    # instead of the viewport producer sampling render_rgb on a wall clock.
+    records_video = False
+
+    def attach_video(self, video, active_run) -> None:
+        """Hand the session the run video writer (sessions that record)."""
 
     def __init__(self, *, width: int = 640, height: int = 360) -> None:
         self.width = width
@@ -201,6 +225,12 @@ class SimSession:
         self.model, self.data, self.cell, self.kind = model, data, None, "stub"
         self.camera = self.static_camera = "overview"
         self.follow = None
+
+    def make_line(self, **kwargs: Any):
+        """The Line a driver runs on this session (call with ``lock`` held)."""
+        from xfold.line import Line
+
+        return Line(self.model, self.data, **kwargs)
 
     def track_camera(self, cloth: np.ndarray, dt: float) -> None:
         """Move the follow camera's look-at toward the cloth. No-op if fixed."""

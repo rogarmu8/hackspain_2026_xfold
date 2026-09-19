@@ -94,10 +94,14 @@ class MujocoViewportProducer:
                 except Exception as exc:  # noqa: BLE001
                     print(f"[viewport] render error: {exc}", flush=True)
                     rgb = None
-                if rgb is not None:
-                    if self.video is not None:
-                        run_id = self.active_run() if self.active_run else None
+                if self.video is not None:
+                    run_id = self.active_run() if self.active_run else None
+                    if getattr(self.session, "records_video", False):
+                        # The session writes its own frames; only close runs.
+                        self.video.sync(run_id)
+                    elif rgb is not None:
                         self.video.frame(run_id, rgb)
+                if rgb is not None:
                     payload, mime = encode_frame(rgb)
                     self.hub.publish(payload, mime=mime)
                 elapsed = time.monotonic() - t0

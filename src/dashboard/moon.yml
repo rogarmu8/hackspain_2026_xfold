@@ -20,6 +20,23 @@ tasks:
       persistent: true
       cache: false
       runFromWorkspaceRoot: true
+  # The same dashboard on the Isaac bridge (moon run isaac:bridge), on :3001 so
+  # it can run next to `dev`. Bridge URL/port from the repo's .env.
+  dev-isaac:
+    script: |
+      . ./scripts/pixi-path.sh
+      . ./scripts/load-env.sh
+      eval "$(pixi shell-hook)"
+      url="${XFOLD_ISAAC_BRIDGE_URL:-http://127.0.0.1:${XFOLD_ISAAC_BRIDGE_PORT:-8766}}"
+      echo "dashboard (Isaac) -> bridge $url"
+      cd src/dashboard
+      NEXT_PUBLIC_XFOLD_BRIDGE_URL="$url" XFOLD_NEXT_DIST=.next-isaac \
+        npx next dev -p "${XFOLD_ISAAC_DASHBOARD_PORT:-3001}"
+    preset: server
+    options:
+      persistent: true
+      cache: false
+      runFromWorkspaceRoot: true
   build:
     script: |
       . ./scripts/pixi-path.sh

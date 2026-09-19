@@ -133,6 +133,22 @@ NEXT_PUBLIC_XFOLD_BRIDGE_URL=http://127.0.0.1:8765
 If unset, the UI still probes `http://127.0.0.1:8765`. If `/health` fails, it
 keeps using local **fixtures** (honest `provenance: "fixture"`).
 
+### Same bridge on Isaac Sim
+
+```bash
+moon run xfold:dev-isaac     # Isaac bridge on the GPU box (tunnelled to :8766) + dashboard (:3001)
+```
+
+`python -m xfold_isaac.bridge` (src/isaac) is this same app — `create_app(session=IsaacSession(...), start_driver=False)` —
+with Isaac Sim stepping the line. Nothing on the wire changes: same routes, journal, SSE, HLS video.
+`/capabilities.engine` says `mujoco` or `isaac`. The Isaac bridge reports `recordingSeek: false`
+(replay plays the run's video, timed by sim time) and `liveVideo: false`: at 0.2x realtime an HLS
+segment fills far slower than a player drains it, so the live view stays on JPEG frames (960x540)
+and the 1080p/24fps recording is for replay. The session writes those frames itself
+(`records_video`); the viewport thread only closes the video when the run ends.
+Kit only works on its own thread, so there the driver loop runs on the main thread (`LineDriver.run_here()`)
+and uvicorn on a background one. Box host/key/ports come from the repo's `.env` (`.env.example`).
+
 ### Smoke
 
 ```bash

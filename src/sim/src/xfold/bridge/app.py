@@ -50,27 +50,45 @@ def _repo_data_dir() -> Path:
 VIEWPORT_FPS = 12.0
 
 
-def create_app(*, persist: bool = True) -> FastAPI:
+def create_app(
+    *,
+    persist: bool = True,
+    session: SimSession | None = None,
+    start_driver: bool = True,
+) -> FastAPI:
+    """The bridge. ``session`` swaps the engine (default: MuJoCo SimSession).
+
+    With ``start_driver=False`` the driver is created but not started: the
+    caller runs ``app.state.driver.run_here()`` on a thread of its choosing
+    (Isaac Sim's Kit only works on the main thread; see xfold_isaac.bridge).
+    """
     journal = Journal(persist_dir=_repo_data_dir() if persist else None)
     runtime = Runtime(journal)
-    session = SimSession()
+    session = session if session is not None else SimSession()
     viewport_hub = ViewportHub()
     # One render per frame feeds the run's H.264 video and the JPEG hub. The
     # producer has no notion of runs, so it asks the runtime which one is live.
+    video_width, video_height = session.video_size or (session.width, session.height)
     video = VideoManager(
-        session.width, session.height, VIEWPORT_FPS, on_open=runtime.mark_video
+        video_width,
+        video_height,
+        session.video_fps or VIEWPORT_FPS,
+        on_open=runtime.mark_video,
+        clock=session.video_clock,
     )
+
+    def live_run() -> str | None:
+        run = runtime.driver_active_run()
+        return run.id if run is not None and run.lifecycle == "running" else None
+
     viewport_producer = MujocoViewportProducer(
         session,
         viewport_hub,
         fps=VIEWPORT_FPS,
         video=video,
-        active_run=lambda: (
-            run.id
-            if (run := runtime.driver_active_run()) and run.lifecycle == "running"
-            else None
-        ),
+        active_run=live_run,
     )
+    session.attach_video(video, live_run)
 
     # Driver chosen at startup once SimSession tries to load MuJoCo.
     driver: LineDriver | PressBridgeDriver | MockDriver | None = None
@@ -119,7 +137,8 @@ def create_app(*, persist: bool = True) -> FastAPI:
                 if kind == "line"
                 else PressBridgeDriver(runtime, session)
             )
-            driver.start()
+            if start_driver:
+                driver.start()
             app.state.driver = driver
             # Probe offscreen GL before the producer thread exists: on a box
             # without it, MuJoCo aborts the process rather than raising.
@@ -137,10 +156,12 @@ def create_app(*, persist: bool = True) -> FastAPI:
                     "dashboard shows FSM + console without video",
                     flush=True,
                 )
-            runtime.capabilities.recordingSeek = session.can_render
+            runtime.capabilities.recordingSeek = session.can_render and session.seekable
             runtime.capabilities.viewportVideo = bool(
                 session.can_render and video.available
             )
+            runtime.capabilities.liveVideo = bool(session.live_video)
+            runtime.capabilities.engine = session.engine
             if runtime.capabilities.viewportVideo:
                 print(
                     "[video] H.264 per run at /runs/{id}/video/index.m3u8 "
@@ -157,6 +178,8 @@ def create_app(*, persist: bool = True) -> FastAPI:
                 if kind == "line"
                 else "PressBridgeDriver (PressCycle + SimSession)"
             )
+            if session.engine != "mujoco":
+                runtime.driver_label += f" on {session.engine}"
             print(f"[bridge] {runtime.driver_label} active", flush=True)
             return
 
@@ -210,6 +233,7 @@ def create_app(*, persist: bool = True) -> FastAPI:
             else "mock"
         )
         caps["scene"] = session.kind
+        caps["engine"] = session.engine
         return caps
 
     @app.get("/snapshot")

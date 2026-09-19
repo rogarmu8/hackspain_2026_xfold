@@ -33,5 +33,17 @@ tasks:
       persistent: true
       cache: false
       runFromWorkspaceRoot: true
+  # The same stack on Isaac Sim: bridge on the GPU box (tunnelled to :8766)
+  # + dashboard on :3001. Box settings in .env (see .env.example).
+  dev-isaac:
+    command: "noop"
+    deps:
+      - isaac:bridge
+      - dashboard:dev-isaac
+    preset: server
+    options:
+      persistent: true
+      cache: false
+      runFromWorkspaceRoot: true
   pack:
     extends: dev

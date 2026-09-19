@@ -241,6 +241,8 @@ export function ControlRoom({ runId }: { runId: string }) {
             run={run}
             provenance={snapshot.provenance}
             streamAvailable={snapshot.capabilities.viewportStream}
+            liveVideo={snapshot.capabilities.liveVideo !== false}
+            engine={snapshot.capabilities.engine ?? "mujoco"}
             bridgeUrl={bridgeUrl}
             replay={finished ? replay : null}
           />

@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.next-isaac/
 /out/
 
 # production

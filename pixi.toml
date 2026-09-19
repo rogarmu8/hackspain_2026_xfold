@@ -24,6 +24,43 @@ pillow = "*"
 # The bridge falls back to an ffmpeg on PATH, and to JPEG frames without one.
 imageio-ffmpeg = ">=0.5"
 
+# The Isaac Sim port (src/isaac). `isaac` runs on any laptop: the engine
+# adapter, its tests against the native line, the USD export (usd-core).
+[feature.isaac.pypi-dependencies]
+xfold-isaac = { path = "src/isaac", editable = true }
+usd-core = ">=25.5"
+
+# `isaac-sim` is Isaac Sim itself: Linux + an NVIDIA RTX GPU only, ~25 GB.
+# A separate environment without the default feature: Isaac pins much of its
+# stack (uvicorn 0.29, below the bridge's floor) and brings its own pxr. The
+# line's code (xfold) comes from src/sim on PYTHONPATH rather than as the
+# xfold-sim package, whose bridge dependencies Isaac's pins would refuse.
+[feature.isaac-sim]
+platforms = ["linux-64"]
+
+[feature.isaac-sim.dependencies]
+python = "3.12.*"
+
+[feature.isaac-sim.activation.env]
+PYTHONPATH = "$PIXI_PROJECT_ROOT/src/sim/src"
+
+# Isaac's wheels are manylinux_2_35: Ubuntu 22.04 or newer.
+[feature.isaac-sim.system-requirements]
+libc = { family = "glibc", version = "2.35" }
+
+[feature.isaac-sim.pypi-dependencies]
+xfold-isaac = { path = "src/isaac", editable = true }
+torch = { version = "==2.11.0", index = "https://download.pytorch.org/whl/cu130" }
+isaacsim = { version = "==6.1.0.0", extras = ["all", "extscache"] }
+# Pinned by isaacsim-core; a pre-release, so it has to be asked for by name.
+tinyobjloader = "==2.0.0rc13"
+
+[feature.isaac-sim.pypi-options]
+extra-index-urls = ["https://pypi.nvidia.com"]
+index-strategy = "unsafe-best-match"
+
 [environments]
 default = { features = [], solve-group = "dev" }
 mujoco = { features = ["mujoco"], solve-group = "dev" }
+isaac = { features = ["mujoco", "isaac"], solve-group = "dev" }
+isaac-sim = { features = ["isaac-sim"], no-default-feature = true, solve-group = "isaacsim" }

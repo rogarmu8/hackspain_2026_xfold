@@ -108,6 +108,15 @@ class LineDriver:
         )
         self._thread.start()
 
+    def run_here(self) -> None:
+        """Run the driver loop on the calling thread, until ``stop()``.
+
+        For engines whose API only works on one thread (Isaac Sim's Kit): the
+        caller keeps the main thread for this and serves HTTP elsewhere.
+        """
+        self._stop.clear()
+        self._loop()
+
     def stop(self) -> None:
         self._stop.set()
         self.runtime.wake_driver()
@@ -181,7 +190,6 @@ class LineDriver:
     # --- the cycle -------------------------------------------------------
 
     def _run_cycle(self, run) -> None:
-        from xfold.line import Line
         from xfold.shirt import shirt_config
 
         run_id = run.id
@@ -215,9 +223,7 @@ class LineDriver:
             session.reset_time()
             dt = float(session.model.opt.timestep)
             with session.lock:
-                line = Line(
-                    session.model,
-                    session.data,
+                line = session.make_line(
                     repeat=False,
                     log=lambda message: None,
                     skewed=skewed,
@@ -238,12 +244,15 @@ class LineDriver:
             stage = ""
             last_event = time.monotonic()
             steps = 0
+            # Pace against one deadline for the whole cycle, not per step: a
+            # step that overruns (a rendered frame) is then made up by the
+            # cheap steps after it instead of the cycle drifting late.
+            clock = time.perf_counter()
 
             while True:
                 if not self._wait_unpaused(run_id):
                     return
 
-                started = time.perf_counter()
                 track = steps % _TRACK_EVERY == 0
                 with session.lock:
                     line.step()
@@ -286,9 +295,13 @@ class LineDriver:
                     self._log(run_id, f"{stage or '?'} in progress · t={t:.1f}s", level="debug")
                     last_event = time.monotonic()
 
-                leftover = dt - (time.perf_counter() - started)
+                leftover = clock + steps * dt - time.perf_counter()
                 if leftover > 0:
                     time.sleep(leftover)
+                elif leftover < -1.0:
+                    # Far behind (an engine slower than realtime): pace from
+                    # here rather than sprinting to catch up.
+                    clock = time.perf_counter() - steps * dt
 
             t = session.sim_time()
             if self._active(run_id) is None:

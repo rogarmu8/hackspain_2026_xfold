@@ -39,7 +39,7 @@ Do **not** origami-fold cloth with fingers. Machines do geometry; the arm handle
 
 ## Hard rules
 
-1. Stack: **MuJoCo 3 + mink + Menagerie (UR5e) + Python FSM**. No ROS, no Isaac, no RL until a scripted end-to-end cycle works.
+1. Stack: **MuJoCo 3 + mink + Menagerie (UR5e) + Python FSM**. No ROS, no RL until a scripted end-to-end cycle works. Isaac Sim lives only in `src/isaac` (see below): it runs the same `xfold.line.Line` on PhysX and must not fork phases, geometry or the bus.
 2. Cloth: MuJoCo `flexcomp` (start as **grid**, not mesh). Prefer stability over looks. If cloth explodes: coarser grid, `internal="false"`, lower Young, higher damping — do **not** add the arm.
 3. XML = plant. Python = controller. Do not put the FSM in MJCF.
 4. Stay inside your track's directories unless integrating (see `PLAN.md`).
@@ -54,6 +54,7 @@ docs/
   INTEGRATION_CONTRACT.md   # binding sim↔UI contract (agents start here)
   BRIDGE.md                 # routes, events, invariants
 src/sim/src/xfold/bridge/   # journal + runtime + HTTP + Line/Press/Mock drivers
+src/isaac/                  # the same Line on Isaac Sim 6.1 / PhysX (GPU box); README there
 src/dashboard/src/lib/      # bridge-client + fixtures fallback
 packages/protocol/          # shared wire types
 models/                     # MJCF assets
@@ -62,6 +63,10 @@ scripts/
   check-bridge-contract.sh
 data/
 ```
+
+## Isaac Sim port (`src/isaac`)
+
+`xfold_isaac` runs `xfold.line.Line` unchanged: `EngineShim` replaces `Line._mujoco`, so each `mj_step` goes to PhysX, and the stage is generated from the compiled `line.xml` (`usd_scene.py`). Change the line in `src/sim`, never in `src/isaac`. Anything Line newly reads or writes (a new joint type, a new free body, a new geom type) needs support in `engine.py` / `usd_scene.py`; `moon run isaac:test` / `isaac:parity` catch drift against the native line without a GPU. Box host/key come from env (`src/isaac/scripts/remote.sh`), never from the repo.
 
 ## Done means
 
@@ -75,6 +80,7 @@ data/
 - `XFOLD_TEST_PHYSICS=1 pixi run -e mujoco python -B scripts/test-sim-observability.py` — isolated full headless cycle (no live server commands or trajectory overwrite).
 - `node scripts/test-dashboard-observability.mjs` — replay, labels, console history, SSE cursor and snapshot coalescing.
 - `bash scripts/check-bridge-contract.sh` — event/command names only; not semantic correctness.
+- `moon run isaac:test` / `moon run isaac:parity` — Isaac port (pixi env `isaac`): adapter, USD stage, and full cycles against the native MuJoCo line, no GPU.
 - `./node_modules/.bin/tsc --noEmit --incremental false -p src/dashboard/tsconfig.json` and `npm run lint --workspace @xfold/dashboard`.
 
 ## When stuck

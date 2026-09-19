@@ -103,8 +103,16 @@ def ffmpeg_exe() -> str | None:
 class RunVideo:
     """ffmpeg writing HLS for one run. Frames in, segments out."""
 
-    def __init__(self, run_id: str, width: int, height: int, fps: float) -> None:
+    def __init__(
+        self, run_id: str, width: int, height: int, fps: float, clock=None
+    ) -> None:
         self.run_id = run_id
+        # What video time follows: wall time by default. An engine slower than
+        # realtime (Isaac) passes its sim clock, so replay, which seeks the
+        # video to sim time, lines up; frames offered faster than that clock
+        # advances are then skipped rather than stretching the video.
+        self._clock = clock or time.monotonic
+        self._sim_clock = clock is not None
         self.width = width
         self.height = height
         self.fps = max(1.0, float(fps))
@@ -112,6 +120,7 @@ class RunVideo:
         self.frames = 0
         self.padded = 0
         self._t0: float | None = None
+        self._base = 0
         self._last: bytes | None = None
         self._proc: subprocess.Popen | None = None
         self._queue: queue.Queue[bytes | None] = queue.Queue(maxsize=_QUEUE_DEPTH)
@@ -182,11 +191,16 @@ class RunVideo:
         """
         if not self.ok:
             return
-        now = time.monotonic()
-        if self._t0 is None:
+        now = self._clock()
+        if self._t0 is None or now < self._t0:
+            # A sim clock restarts at each run; carry on from the frames
+            # already written rather than waiting for the old time again.
             self._t0 = now
+            self._base = self.frames
+        want = self._base + int((now - self._t0) * self.fps)
+        if self._sim_clock and self.frames > want:
+            return
         blob = np.ascontiguousarray(rgb, dtype=np.uint8).tobytes()
-        want = int((now - self._t0) * self.fps)
         missing = want - self.frames
         if missing > 0 and self._last is not None:
             for _ in range(min(missing, int(self.fps * _MAX_PAD_SECONDS))):
@@ -284,11 +298,14 @@ class VideoManager:
     playlist into a VOD.
     """
 
-    def __init__(self, width: int, height: int, fps: float, on_open=None) -> None:
+    def __init__(
+        self, width: int, height: int, fps: float, on_open=None, clock=None
+    ) -> None:
         self.width = width
         self.height = height
         self.fps = fps
         self.on_open = on_open
+        self.clock = clock
         self.available = ffmpeg_exe() is not None
         self._lock = threading.Lock()
         self._current: RunVideo | None = None
@@ -304,7 +321,7 @@ class VideoManager:
             if run_id is None:
                 return
             if current is None:
-                fresh = RunVideo(run_id, self.width, self.height, self.fps)
+                fresh = RunVideo(run_id, self.width, self.height, self.fps, self.clock)
                 if not fresh.start():
                     self.available = False
                     return
@@ -312,6 +329,18 @@ class VideoManager:
                 if self.on_open is not None:
                     self.on_open(run_id)
             current.write(rgb)
+
+    def sync(self, run_id: str | None) -> None:
+        """Close the recording if its run is no longer the live one.
+
+        For sessions that write frames themselves: once the run ends they
+        stop writing, and this is what still closes the video (ENDLIST).
+        """
+        with self._lock:
+            current = self._current
+            if current is not None and current.run_id != run_id:
+                current.close()
+                self._current = None
 
     def close(self) -> None:
         with self._lock:

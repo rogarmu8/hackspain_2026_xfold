@@ -33,12 +33,18 @@ export function SimulationViewport({
   run,
   provenance,
   streamAvailable,
+  liveVideo = true,
+  engine = "mujoco",
   bridgeUrl,
   replay,
 }: {
   run: RunDetail | null;
   provenance: DataProvenance;
   streamAvailable: boolean;
+  /** The recording can be watched while the run is live (false: frames live, video after). */
+  liveVideo?: boolean;
+  /** Physics engine behind the view, for the labels. */
+  engine?: string;
   /** Direct bridge URL (fallback if Next proxy cannot reach it). */
   bridgeUrl?: string;
   /** When set, the viewport scrubs a finished run instead of showing the live stream. */
@@ -61,8 +67,12 @@ export function SimulationViewport({
   const running = run?.lifecycle === "running";
   // Recorded runs stay black until HLS is playing at the live edge. Showing
   // the JPEG stream first, then swapping to the playlist from t=0, looks
-  // like the video restarting.
-  const showVideo = Boolean(run?.hasVideo) && provenance !== "fixture";
+  // like the video restarting. An engine slower than realtime (Isaac) fills a
+  // segment far slower than the player drains it, so there the live view is
+  // the JPEG frames and the recording only plays once the run is over.
+  const showVideo =
+    Boolean(run?.hasVideo) && provenance !== "fixture" && !(running && !liveVideo);
+  const engineName = engine === "isaac" ? "Isaac Sim" : "MuJoCo";
   const [videoStatus, setVideoStatus] = useState<VideoStatus>("waiting");
   useEffect(() => {
     setVideoStatus("waiting");
@@ -160,7 +170,7 @@ export function SimulationViewport({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={replay.frameSrc}
-              alt={`MuJoCo frame at t=${formatSeconds(replay.t)}`}
+              alt={`${engineName} frame at t=${formatSeconds(replay.t)}`}
               className="absolute inset-0 h-full w-full object-contain"
             />
           ) : (
@@ -173,7 +183,7 @@ export function SimulationViewport({
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={viewport.src}
-              alt="MuJoCo view of the XFold cell"
+              alt={`${engineName} view of the XFold cell`}
               className="absolute inset-0 h-full w-full object-contain"
             />
           ) : (
@@ -237,7 +247,7 @@ export function SimulationViewport({
               <>
                 <Camera className="size-3.5" strokeWidth={1.75} aria-hidden />
                 <span>
-                  mujoco · long-poll
+                  {engine} · long-poll
                   {viewport.seq ? ` · #${viewport.seq}` : ""}
                 </span>
               </>

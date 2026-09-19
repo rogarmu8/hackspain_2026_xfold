@@ -1,0 +1,133 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+id: isaac
+language: python
+layer: application
+stack: backend
+
+# The line on NVIDIA Isaac Sim (README.md here). Two pixi environments:
+#   isaac      any laptop: engine adapter, tests, USD export, MuJoCo reference runs
+#   isaac-sim  Isaac Sim itself: Linux + NVIDIA RTX only (the GPU box)
+# Tasks that take `moon run isaac:<task> -- <args>` are `command: bash` +
+# scripts/pixi-run.sh, because `script` tasks drop those args.
+tasks:
+  install:
+    script: |
+      . ./scripts/pixi-path.sh
+      pixi install -e isaac
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+
+  # EngineShim, press servo, colliders, USD stage. No GPU, ~2 s.
+  test:
+    command: bash
+    args: [./scripts/pixi-run.sh, isaac, python, -B, scripts/test-isaac-port.py]
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+
+  # + two full cycles through the adapter against the native MuJoCo line (~2 min).
+  parity:
+    command: bash
+    args: [./scripts/pixi-run.sh, isaac, python, -B, scripts/test-isaac-port.py]
+    env:
+      XFOLD_TEST_PHYSICS: "1"
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+
+  # The stage Isaac would load, without Isaac: `moon run isaac:export -- -g polo`
+  # -> data/isaac/line.usda (open it in usdview or Isaac's GUI).
+  export:
+    command: bash
+    args: [./scripts/pixi-run.sh, isaac, python, -P, -m, xfold_isaac.export]
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+
+  # MuJoCo reference events: `moon run isaac:record -- -g tee --seed 7 --out data/isaac/tee_mujoco.jsonl`
+  record:
+    command: bash
+    args: [./scripts/pixi-run.sh, isaac, python, -P, -m, xfold_isaac.compare, record]
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+
+  # `moon run isaac:compare -- data/isaac/tee_mujoco.jsonl data/isaac/tee.jsonl`
+  compare:
+    command: bash
+    args: [./scripts/pixi-run.sh, isaac, python, -P, -m, xfold_isaac.compare, diff]
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+
+  # --- on the GPU box ------------------------------------------------
+
+  # Once: pixi + the isaac-sim environment (~25 GB).
+  install-sim:
+    command: bash
+    args: [./src/isaac/scripts/install.sh]
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+
+  # One cycle on Isaac: `OMNI_KIT_ACCEPT_EULA=YES moon run isaac:sim -- -g tee --seed 7
+  #   --events data/isaac/tee.jsonl --video data/isaac/tee.mp4 --photo data/isaac/tee_qc.png`
+  sim:
+    command: bash
+    args: [./scripts/pixi-run.sh, isaac-sim, python, -P, -m, xfold_isaac.run]
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+
+  # --- from a laptop, on the GPU box ----------------------------------
+  # Needs XFOLD_ISAAC_HOST / XFOLD_ISAAC_KEY (and XFOLD_ISAAC_ACCEPT_EULA=YES);
+  # see scripts/remote.sh. Syncs the working copy first.
+  #   moon run isaac:remote -- python -m xfold_isaac.run -g tee --seed 7 --video data/isaac/tee.mp4
+  #   moon run isaac:remote -- bash src/isaac/scripts/install.sh
+  remote:
+    command: bash
+    args: [./src/isaac/scripts/remote.sh]
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+
+  # Send one cycle to the box, get the video back and open it (~5 min):
+  # `moon run isaac:watch -- -g polo --seed 3`
+  watch:
+    command: bash
+    args: [./src/isaac/scripts/watch.sh]
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+
+  # Run on the box, watch here: opens http://localhost:8090 with the live camera
+  # and the current phase. `moon run isaac:live -- -g polo --seed 3 --camera overview`
+  live:
+    command: bash
+    args: [./src/isaac/scripts/live.sh]
+    options:
+      cache: false
+      persistent: true
+      runFromWorkspaceRoot: true
+
+  # The dashboard's bridge, with Isaac stepping the line, on the box and
+  # tunnelled to localhost:8766 (see .env.example). `moon run xfold:dev-isaac`
+  # runs this next to the Isaac dashboard.
+  bridge:
+    command: bash
+    args: [./src/isaac/scripts/bridge.sh]
+    preset: server
+    options:
+      cache: false
+      persistent: true
+      runFromWorkspaceRoot: true
+
+  # Copy the box's data/isaac (events, videos, photos) back here.
+  fetch:
+    command: bash
+    args: [./src/isaac/scripts/remote.sh, fetch, data/isaac]
+    options:
+      cache: false
+      runFromWorkspaceRoot: true

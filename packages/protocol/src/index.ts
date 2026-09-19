@@ -193,6 +193,10 @@ export type BridgeCapabilities = {
   recordingSeek?: boolean;
   /** Runs are recorded to H.264; the viewport plays HLS instead of frames. */
   viewportVideo?: boolean;
+  /** The recording can be watched live. False ⇒ live stays on JPEG frames, video is replay only. */
+  liveVideo?: boolean;
+  /** Physics engine stepping the line: "mujoco" or "isaac". */
+  engine?: string;
   startRun: boolean;
   startBatch: boolean;
   commands: Partial<Record<CommandKind, boolean>>;

@@ -99,6 +99,12 @@ class BridgeCapabilities(BaseModel):
     viewportStream: bool = False
     recordingSeek: bool = False
     viewportVideo: bool = False
+    # The run's video can be watched live (HLS a few segments behind). False
+    # for an engine slower than realtime: the live view stays on JPEG frames
+    # and the video is for replay.
+    liveVideo: bool = True
+    # Which physics engine steps the line: "mujoco" or "isaac".
+    engine: str = "mujoco"
     startRun: bool = True
     startBatch: bool = True
     commands: dict[str, bool] = Field(
