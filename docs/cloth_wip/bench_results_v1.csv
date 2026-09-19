@@ -1,0 +1,2 @@
+variant,shape,spacing,iterations,seed,mujoco_version,git_sha,nv,ncon_max,rt_factor,stable,settle_vmax,flatness_flat,flatness_pre,flatness_post,press_gain,span_ratio_pre,span_ratio_post,penetration_post,span_pre_y,fold_span_ratio,fold_layer_frac,fold_overlap,pass_count,error
+hybrid:medium,rect,0.035,200,0,3.13.0,51aae90,901,3238,0.123,0,0.1741,0.0075,0.022,0.0214,0.97,1.07,1.067,-0.113,0.686,0.983,0.123,0.007,0,
