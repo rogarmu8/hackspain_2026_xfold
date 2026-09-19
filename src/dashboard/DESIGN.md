@@ -18,33 +18,33 @@ colors:
   viewport: "#171918"
 typography:
   heading:
-    fontFamily: Geist
+    fontFamily: IBM Plex Sans
     fontSize: 28px
     fontWeight: 600
     lineHeight: 1.2
     letterSpacing: -0.02em
   section:
-    fontFamily: Geist
+    fontFamily: IBM Plex Sans
     fontSize: 18px
     fontWeight: 600
     lineHeight: 1.4
   body:
-    fontFamily: Geist
+    fontFamily: IBM Plex Sans
     fontSize: 16px
     fontWeight: 400
     lineHeight: 1.5
   label:
-    fontFamily: Geist
+    fontFamily: IBM Plex Sans
     fontSize: 14px
     fontWeight: 600
     lineHeight: 1.4
   caption:
-    fontFamily: Geist
+    fontFamily: IBM Plex Sans
     fontSize: 13px
     fontWeight: 400
     lineHeight: 1.4
   data:
-    fontFamily: Geist Mono
+    fontFamily: IBM Plex Mono
     fontSize: 13px
     fontWeight: 400
     lineHeight: 1.5
@@ -145,7 +145,7 @@ Contrastes sRGB de pares opacos: espresso/naranja **4,96:1**, muted/crema **5,58
 
 ## Typography
 
-Usar Geist y Geist Mono ya configuradas en `src/app/layout.tsx`, mediante sus variables de fuente. No incorporar otra fuente para reproducir literalmente los titulares de HackSpain.
+Usar **IBM Plex Sans** y **IBM Plex Mono** configuradas en `src/app/layout.tsx` (`--font-plex-sans`, `--font-plex-mono`). Elegidas frente a Geist por un tono más industrial / humano–máquina sin romper la mesa crema. No incorporar otra fuente para reproducir literalmente los titulares de HackSpain. Comparativa de candidatos: `/tipografia`.
 
 Aplicar los seis niveles del frontmatter: heading para página, section para grupos, body para formularios, label para controles, caption para metadatos y data para IDs/tiempos. Tablas: lectura a 14 px. Cifras tabulares; no truncar números ni cambiar su ancho durante actualizaciones.
 
