@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { CellSchematic } from "./CellSchematic";
 import type { ReactNode } from "react";
@@ -9,12 +11,17 @@ export function SimulationViewport({
   run,
   provenance,
   streamAvailable,
+  bridgeUrl,
 }: {
   run: RunDetail | null;
   provenance: DataProvenance;
   streamAvailable: boolean;
+  /** Base URL of the Python bridge (for MJPEG <img src>). */
+  bridgeUrl?: string;
 }) {
   const live = Boolean(run && run.lifecycle === "running" && streamAvailable);
+  const showMjpeg =
+    streamAvailable && Boolean(bridgeUrl) && provenance !== "fixture";
   const title = run
     ? `${run.id}${run.seed != null ? ` · Semilla ${run.seed}` : ""}`
     : "Sin ejecución activa";
@@ -26,6 +33,8 @@ export function SimulationViewport({
           <h2 className="font-mono text-sm font-semibold tabular">{title}</h2>
           {live ? (
             <StatusBadge tone="active">En directo</StatusBadge>
+          ) : showMjpeg ? (
+            <StatusBadge tone="neutral">Vista MuJoCo</StatusBadge>
           ) : run?.lifecycle === "running" ? (
             <StatusBadge tone="neutral">Telemetría sin imagen</StatusBadge>
           ) : run ? (
@@ -40,23 +49,48 @@ export function SimulationViewport({
       </div>
 
       <div className="relative min-h-[220px] bg-viewport text-surface viewport-focus">
-        {!run ? (
+        {!run && !showMjpeg ? (
           <Placeholder
             title="Sin ejecución activa"
-            body="Lanza un experimento para supervisar la celda OpenArm. La vista aparecerá cuando el simulador publique imagen."
+            body="Lanza un experimento para supervisar la celda OpenArm. La vista 3D aparece cuando el bridge publica /viewport/stream."
           />
-        ) : streamAvailable ? (
-          <Placeholder
-            title="Flujo de imagen"
-            body="El simulador aún no publica frames al dashboard."
-          />
+        ) : showMjpeg ? (
+          <div className="relative aspect-video w-full overflow-hidden bg-black">
+            {/* MJPEG: native <img> multipart stream — no WebSocket required */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`${bridgeUrl}/viewport/stream`}
+              alt="Vista MuJoCo de la celda XFOLD"
+              className="h-full w-full object-contain"
+            />
+            {run?.telemetry ? (
+              <dl className="pointer-events-none absolute inset-x-0 bottom-0 grid grid-cols-2 gap-x-4 gap-y-1 bg-black/55 px-3 py-2 text-left sm:grid-cols-5">
+                <Metric label="Fase" value={stageLabel(run.telemetry.state)} />
+                <Metric label="Ciclo" value={String(run.telemetry.cycle)} mono />
+                <Metric
+                  label="Planitud"
+                  value={formatFlatness(run.telemetry.flatness)}
+                  mono
+                />
+                <Metric
+                  label="En bolsa"
+                  value={run.telemetry.shirt_in_bag ? "sí" : "no"}
+                />
+                <Metric
+                  label="t sim"
+                  value={formatSeconds(run.telemetry.t)}
+                  mono
+                />
+              </dl>
+            ) : null}
+          </div>
         ) : (
           <Placeholder
             title="Celda OpenArm"
-            body="Esquema ilustrativo · sin señal de cámara"
+            body="Esquema ilustrativo · sin señal de cámara (viewportStream off)"
           >
-            <CellSchematic stage={run.currentState} />
-            {run.telemetry ? (
+            <CellSchematic stage={run?.currentState ?? null} />
+            {run?.telemetry ? (
               <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-3 text-left sm:grid-cols-5">
                 <Metric label="Fase" value={stageLabel(run.telemetry.state)} />
                 <Metric label="Ciclo" value={String(run.telemetry.cycle)} mono />
@@ -89,7 +123,11 @@ export function SimulationViewport({
         )}
 
         <div className="pointer-events-none flex justify-between gap-3 bg-viewport/90 px-4 py-2 text-[12px] text-surface/80">
-          <span>OpenArm v2 · 7-DOF × 2</span>
+          <span>
+            {showMjpeg
+              ? "MuJoCo · cámara overview · MJPEG"
+              : "OpenArm v2 · 7-DOF × 2"}
+          </span>
           <span className="tabular">
             {run?.currentState ? stageLabel(run.currentState) : "—"}
           </span>

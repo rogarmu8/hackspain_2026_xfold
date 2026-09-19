@@ -78,6 +78,7 @@ export function ControlRoom() {
             run={run}
             provenance={snapshot.provenance}
             streamAvailable={snapshot.capabilities.viewportStream}
+            bridgeUrl={bridgeUrl}
           />
 
           <section className="border border-divider bg-surface p-4">

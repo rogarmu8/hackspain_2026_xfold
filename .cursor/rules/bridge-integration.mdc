@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Bridge integration contract
 
-Before changing how the simulator and dashboard exchange data, **read and follow** [`docs/INTEGRATION_CONTRACT.md`](docs/INTEGRATION_CONTRACT.md). Detail: [`docs/BRIDGE.md`](docs/BRIDGE.md).
+Before changing how the simulator and dashboard exchange data, **read and follow** [`docs/INTEGRATION_CONTRACT.md`](docs/INTEGRATION_CONTRACT.md) (especially **§4** MuJoCo checklist and **§4b** teammate tracks). Detail: [`docs/BRIDGE.md`](docs/BRIDGE.md). Also [`AGENTS.md`](AGENTS.md) “For agents on other tracks”.
 
 ## Non-negotiables
 
@@ -13,9 +13,14 @@ Before changing how the simulator and dashboard exchange data, **read and follow
 - Layers: **Driver** (`emit_*`) → **Runtime/Journal** → **HTTP (`app.py`)** → **Dashboard (`bridge-client`)**. Do not skip layers or put FSM in route handlers.
 - Canonical types: `@xfold/protocol` and `xfold.bridge.schema` — keep in sync; run `bash scripts/check-bridge-contract.sh`.
 - MuJoCo integration = replace/extend **`MockDriver`** by calling `runtime.emit_state` / `finish_success`; do not redesign the HTTP API or scrape stdout from Next.js.
+- **Arm track:** own controller / Menagerie; emit stages only — copy `mock_driver.py`.
+- **Cloth track:** own `flexcomp`; put shirt in the MJCF that `viewport_mujoco.MODEL_PATH` loads (keep camera `overview`). Do not put verts in the journal.
+- Viewport = separate **MJPEG** (`/viewport/stream`), not journal payloads.
 - Never block physics on network. Never present fixtures as live (`provenance` must stay honest).
 - UI enables actions only from `/capabilities`.
 
 ## When touching these paths
 
 `packages/protocol/**`, `src/sim/src/xfold/bridge/**`, `src/dashboard/src/lib/bridge-client.ts`, `src/dashboard/src/lib/dashboard-context.tsx`, `docs/BRIDGE.md`, `docs/INTEGRATION_CONTRACT.md` — update the contract docs in the same change if behavior or event/command shapes change.
+
+`src/sim/models/cell.xml` — shared plant stub; prefer additive edits; preserve `camera name="overview"`.

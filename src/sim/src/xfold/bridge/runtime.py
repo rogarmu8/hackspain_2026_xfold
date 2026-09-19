@@ -514,6 +514,11 @@ class Runtime:
             return run
 
     def emit_state(self, run_id: str, state: CellState, t: float) -> None:
+        """Record an FSM stage transition (journal + snapshot).
+
+        AGENT (arm/cloth): call this after each productive stage change — see
+        docs/INTEGRATION_CONTRACT.md §4 / mock_driver.py. Do not call from FastAPI routes.
+        """
         with self._lock:
             run = self.runs.get(run_id)
             if not run or run.lifecycle not in {"running", "paused"}:

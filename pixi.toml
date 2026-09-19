@@ -7,7 +7,7 @@ version = "0.1.0"
 [dependencies]
 python = "3.12.*"
 nodejs = "22.*"
-numpy = ">=2.0"
+pillow = ">=10.0"
 
 [pypi-dependencies]
 xfold-sim = { path = "src/sim", editable = true }
@@ -19,6 +19,7 @@ pydantic = ">=2.0"
 mujoco = ">=3.2"
 mujoco-menagerie = "*"
 mink = "*"
+pillow = "*"
 
 [environments]
 default = { features = [], solve-group = "dev" }

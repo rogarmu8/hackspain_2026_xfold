@@ -102,11 +102,51 @@ Do **not** add WebSocket or gRPC to the browser without an explicit team decisio
 
 3. Respect pause/cancel: read the active run via `runtime.driver_active_run()` (or equivalent flags). If `paused` / `lifecycle == "paused"`, do not advance stages. If cancelled, stop emitting.
 4. Put flatness (or other metrics) into `emit_state` / a dedicated metric path that still ends as `metric_sample` — do not invent a parallel `/telemetry` WebSocket.
-5. Leave `viewportStream: false` until there is a **separate** image channel; do not jam JPEG into the journal.
-6. Run: bridge up → `curl /snapshot` shows your states → dashboard badge “Bridge conectado”.
+5. Viewport = **separate** image channel (`GET /viewport/stream` MJPEG). Do not jam JPEG into the journal. Set `viewportStream: true` only when MuJoCo Renderer is actually producing frames.
+6. Run: bridge up → `curl /snapshot` shows your states → dashboard badge “Bridge conectado”; with mujoco env, Control shows live 3D via `/viewport/stream`.
 7. Note the change in `TRACKING.md` (decision or obstacle).
 
 **Reference implementation to copy:** [`src/sim/src/xfold/bridge/mock_driver.py`](../src/sim/src/xfold/bridge/mock_driver.py).
+
+---
+
+## 4b. Teammate tracks — arm sequence & cloth physics (agents)
+
+Bridge/dashboard owners ship the **bus + Control UI + MJPEG viewport**. Other tracks keep ownership of physics and motion. Integrate at the Driver layer only.
+
+### Arm / scripted cycle (FSM + UR5e / peel)
+
+- **Do:** drive joints/mocap in your loop; on each **productive stage transition** call:
+
+  ```python
+  runtime.emit_state(run_id, CellState.FOLD, t=float(data.time))
+  # … later …
+  runtime.finish_success(run_id, t=float(data.time))
+  ```
+
+- **Do:** poll `runtime.driver_active_run()` — if `paused` / cancelled, do not advance.
+- **Do not:** import FastAPI, open sockets from the physics thread, or change `@xfold/protocol` event names without syncing Python schema + this doc.
+- **Reference:** replace `MockDriver` gradually; keep the same `emit_*` surface.
+
+### Cloth / flexcomp (shirt physics)
+
+- **Do:** iterate `flexcomp` (grid first) in your MJCF / scripts until stable 10s+; metrics → CSV when ready.
+- **Do:** when the shirt should appear in Control’s 3D view, ensure it lives in the model rendered by `viewport_mujoco.MODEL_PATH` (today [`src/sim/models/cell.xml`](../src/sim/models/cell.xml)), **or** change `MODEL_PATH` once and note it in `TRACKING.md`.
+- **Do not:** stream flex vertices over SSE; do not block the cloth solver on dashboard I/O.
+- **Stub note:** `shirt_proxy` (blue box + `shirt_free`) is a **placeholder** for the viewport/MockDriver. Prefer adding real cloth beside it, then remove the proxy when cloth is demo-ready.
+
+### Shared `cell.xml` etiquette
+
+- Preserve `<camera name="overview"/>` (viewport MJPEG depends on it).
+- Prefer **additive** bodies/geoms over renaming plant frames used by others.
+- If you must rename `shirt_free` / `shirt_proxy`, update `_STAGE_POSE` in `viewport_mujoco.py` or delete that pose hack once real cloth/arm drive the scene.
+
+### Viewport vs journal
+
+| Channel | Carries | Owner concern |
+|---------|---------|----------------|
+| Journal + SSE | FSM stage, metrics, commands | Arm emits stages; cloth may later emit flatness |
+| `GET /viewport/stream` | JPEG frames from `mujoco.Renderer` | Whoever owns the loaded MJCF scene |
 
 ---
 

@@ -18,8 +18,13 @@ tasks:
   bridge:
     script: |
       . ./scripts/pixi-path.sh
-      eval "$(pixi shell-hook)"
-      python -P -m xfold.bridge
+      # Prefer mujoco env so /viewport/stream can render the cell 3D view.
+      if pixi run -e mujoco python -P -c "import mujoco" >/dev/null 2>&1; then
+        pixi run -e mujoco python -P -m xfold.bridge
+      else
+        eval "$(pixi shell-hook)"
+        python -P -m xfold.bridge
+      fi
     preset: server
     options:
       cache: false

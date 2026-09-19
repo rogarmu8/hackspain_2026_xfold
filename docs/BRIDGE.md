@@ -33,8 +33,7 @@ MockDriver / MuJoCo          Runtime              Journal           Browser
 | Browser client | No gRPC-Web proxy; no custom WS framing |
 | Demo-day debug | `curl` + OpenAPI at `/docs` |
 
-WebSocket remains reserved for a future **viewport** channel (frames), not the
-control bus. gRPC is fine later between Python workers — not to the Next.js UI.
+WebSocket remains reserved for denser viewport protocols later; **today** the live 3D view is **MJPEG** over HTTP (`GET /viewport/stream`), which works in a plain `<img>` without a second bus. gRPC is fine later between Python workers — not to the Next.js UI.
 
 ## Run
 
@@ -76,6 +75,8 @@ curl -sN 'http://127.0.0.1:8765/events/stream?after_seq=0'
 | `GET` | `/experiments` | Launch list for Experimentos |
 | `POST` | `/runs`, `/batches` | Launch individual / batch |
 | `POST` | `/commands` | Operator command (`202` / `409`) |
+| `GET` | `/viewport/stream` | Live MJPEG (MuJoCo `overview` camera) — `<img src>` |
+| `GET` | `/viewport/frame` | Single latest JPEG/PNG frame |
 | `GET` | `/events/stream?after_seq=N` | SSE journal (replay + live) |
 
 Interactive schema: `http://127.0.0.1:8765/docs`.
