@@ -150,6 +150,7 @@ class SpreadStation:
             "ORIENT",
             f"dual belts: {faster} lane leads, "
             f"turns {-math.degrees(yaw0):+.0f} deg",
+            measurements={"headingRad": float(yaw0)},
         )
         yield from self._tween(line, 0.0, -yaw0, center0, goal_xy, turn)
         leftover = _heading(self._posed_world(), self._rest_local)
@@ -157,6 +158,7 @@ class SpreadStation:
             line._enter(
                 "ORIENT",
                 f"dual belts trim leftover {-math.degrees(leftover):+.0f} deg",
+                measurements={"headingRad": float(leftover)},
             )
             yield from self._tween(
                 line, self._yaw, self._yaw - leftover, self._center, goal_xy, 0.45

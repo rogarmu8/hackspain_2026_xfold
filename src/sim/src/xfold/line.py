@@ -772,6 +772,7 @@ class Line:
                 f"collar downstream ({heading:+.0f} deg), still wrinkled "
                 f"({span[0] * 100:.0f} x {span[1] * 100:.0f} cm, "
                 f"{z_span * 1000:.0f} mm crumple)",
+                measurements={"headingRad": float(math.radians(heading))},
             )
             yield from self._hold("ORIENT", "", 0.4, quiet=True)
         else:
@@ -1520,8 +1521,8 @@ def main() -> None:
     parser.add_argument(
         "--camera",
         default="follow",
-        help="follow (tracks the shirt) or a fixed one: overview, spread_cam, press_cam, "
-        "fold_cam, bagger_cam, bag_cam",
+        help="follow (tracks the shirt) or a fixed one: overview, orient_cam, spread_cam, "
+        "press_cam, fold_cam, bagger_cam, bag_cam",
     )
     args = parser.parse_args()
     chosen = garment_from_args(
