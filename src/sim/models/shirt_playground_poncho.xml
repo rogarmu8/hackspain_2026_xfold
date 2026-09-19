@@ -1,0 +1,35 @@
+<!-- CLOTH3D shirt + closest working "poncho-like" elasticity.
+     Exact upstream poncho (young=3e5, poisson=0, discrete+CG) is
+     rank-deficient on a free-falling mesh (mannequin-supported there).
+     Stable band on this mesh: young ≈ 1e3–5e3 with edge damping ≥ 1. -->
+<mujoco model="xfold-shirt-playground-poncho">
+  <option gravity="0 0 -9.81" timestep="0.002" integrator="discrete" solver="Newton" tolerance="1e-6"/>
+  <visual>
+    <headlight diffuse="0.65 0.65 0.65" ambient="0.25 0.25 0.25"/>
+  </visual>
+  <statistic center="0 0 0.12" extent="1.0"/>
+  <default>
+    <geom solref="0.005 1.2"/>
+    <joint damping="0.008"/>
+  </default>
+
+  <worldbody>
+    <light name="key" pos="0.4 0.4 2.0" dir="-0.2 -0.2 -1" diffuse="0.9 0.9 0.95"/>
+    <light name="fill" pos="-0.6 -0.4 1.5" dir="0.3 0.2 -1" diffuse="0.35 0.35 0.4"/>
+    <geom name="floor" type="plane" size="1.5 1.5 0.05"
+          rgba="0.22 0.22 0.24 1" friction="1.0 0.05 0.0001"
+          solref="0.005 1.2" solimp="0.99 0.999 0.0002"/>
+    <camera name="play" pos="0.95 -1.05 0.75" xyaxes="0.75 0.65 0 -0.25 0.3 0.92"/>
+
+    <flexcomp name="shirt" type="mesh" dim="2" file="shirt_cloth3d.obj"
+              radius="0.01" mass="0.35" flatskin="false"
+              pos="0 0 0.4" euler="0.2 0.05 0.25"
+              rgba="0.75 0.22 0.2 1">
+      <edge equality="true" damping="0.5"/>
+      <elasticity young="1e3" poisson="0" thickness="8e-3" elastic2d="bend" damping="0.02"/>
+      <contact internal="false" selfcollide="bvh"
+               solref="0.005 1.2" solimp="0.99 0.999 0.0002"
+               friction="1.0 0.05 0.0001" condim="3"/>
+    </flexcomp>
+  </worldbody>
+</mujoco>

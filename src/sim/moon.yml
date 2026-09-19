@@ -26,3 +26,53 @@ tasks:
       cache: false
       persistent: true
       runFromWorkspaceRoot: true
+  shirt-smoke:
+    script: |
+      . ./scripts/pixi-path.sh
+      pixi run --environment mujoco python -m xfold.shirt_smoke
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+  shirt-play:
+    script: |
+      . ./scripts/pixi-path.sh
+      if [ "$(uname -s)" = Darwin ]; then
+        pixi run --environment mujoco mjpython -m xfold.shirt_play
+      else
+        pixi run --environment mujoco python -m xfold.shirt_play
+      fi
+    options:
+      cache: false
+      persistent: true
+      runFromWorkspaceRoot: true
+  shirt-shot:
+    script: |
+      . ./scripts/pixi-path.sh
+      pixi run --environment mujoco python -m xfold.shirt_shot --out shots
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+  shirt-play-hi:
+    script: |
+      . ./scripts/pixi-path.sh
+      if [ "$(uname -s)" = Darwin ]; then
+        pixi run --environment mujoco mjpython -m xfold.shirt_play --hi
+      else
+        pixi run --environment mujoco python -m xfold.shirt_play --hi
+      fi
+    options:
+      cache: false
+      persistent: true
+      runFromWorkspaceRoot: true
+  shirt-play-poncho:
+    script: |
+      . ./scripts/pixi-path.sh
+      if [ "$(uname -s)" = Darwin ]; then
+        pixi run --environment mujoco mjpython -m xfold.shirt_play --poncho
+      else
+        pixi run --environment mujoco python -m xfold.shirt_play --poncho
+      fi
+    options:
+      cache: false
+      persistent: true
+      runFromWorkspaceRoot: true

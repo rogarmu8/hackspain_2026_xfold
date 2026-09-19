@@ -106,10 +106,57 @@ Enactic OpenArm v2, 7-DOF × 2 + grippers, Apache-2.0. Cite Enactic for the MJCF
 | Resource | Verdict | Notes |
 |----------|---------|-------|
 | MuJoCo `flexcomp` 2D cloth | **USE** | Start from OpenArm’s 9×9 self-colliding cloth, then coarsen if it explodes. |
-| Bundled flex models (`flag.xml`, `poncho.xml`, …) | **USE** | Poncho is the closest garment-shaped example. |
-| Elasticity shell plugin `mujoco.elasticity.shell` | **USE** | Young / Poisson / thickness for cloth bending. |
-| [Issue #1433 — Shirt/Cloth with flexcomp](https://github.com/google-deepmind/mujoco/issues/1433) | **USE** | Tunings that stop explosions: `internal="false"`, Young ~`5e3`, damping `1–10`. |
+| **Contact budget: `mjMAXCONPAIR` = 50** | **CONSTRAINT** | See below. Sets the vertex count, so decide it before anything else. |
+| Bundled flex models (`flag.xml`, `poncho.xml`, …) | **USE** | Poncho is the closest garment-shaped **param** reference (`refs/PONCHO.md`). |
+| Elasticity shell plugin `mujoco.elasticity.shell` | SKIP (3.13 pip) | Only `cable` is registered; use native `<elasticity>` (discrete) or edge equality. |
+| CLOTH3D / ClothesNet T-meshes | **USE** | Geometry only — convert with `xfold.convert_cloth3d_mesh` → `shirt_cloth3d.obj`. |
+| [Issue #1433 — Shirt/Cloth with flexcomp](https://github.com/google-deepmind/mujoco/issues/1433) | **USE** | Tunings that stop explosions: `internal="false"`, Young ~`1e3–5e3`, damping `1–10`. |
 | ICARSC 2026 *Clothing Simulation in MuJoCo* | INSPIRE | Cite on the slide. |
+
+#### The contact budget decides the mesh density
+
+MuJoCo caps **one geom pair at 50 contacts** (`mjMAXCONPAIR`), and an entire
+flex against the floor counts as a single pair. A 20×20 grid resting flat has
+394 vertices touching and still gets exactly 50 contacts — raising `nconmax`,
+`margin` or splitting the floor into tiles changes nothing.
+
+Everything above that ceiling is unsupported. Measured on the 365-vertex shirt:
+363 vertices lay on the floor competing for 50 slots, 82 of them hung through
+the plane (the “floor overlap”), and because the solver picks a different 50
+each step the sheet never stopped moving — a 7.3 Hz ripple, 9.4 mm
+peak-to-peak, that no amount of `solref`, `solimp`, friction, `impratio`,
+`noslip`, edge damping or elasticity tuning removed. Only the vertex count did.
+
+| Physics verts | Resting ripple | Verts through floor | Real-time factor |
+|---|---|---|---|
+| 385 | 1.6 mm | 82 | 0.42x |
+| 207 | 0.4 mm | 0 | 0.61x |
+| **161 (default)** | **0.15 mm** | **0** | **1.1x** |
+
+So 161 vertices is not a compromise on looks, it is the physics budget — and it
+lands inside the range §4.3 already called for (OpenArm’s 9×9 = 81, “12×16 is
+plenty” = 192). Consequences for the rest of the build:
+
+- **Two knock-on fixes:** the solver is `CG`, not Newton (~2x faster on an
+  equality-heavy flex), and there is **no** `<joint damping>` on the cloth. DOF
+  damping is absolute-frame drag: at 0.008 it stretched free fall by 1.5x,
+  which is what read as a heavy object in slow motion.
+- **Folding is the open risk.** Cloth-on-cloth is its own pair with its own
+  50-contact cap. A three-layer ninja packet may exceed it and let layers
+  interpenetrate. Test at block 5 before trusting the fold.
+- The `flatness` metric (§8) is only meaningful below the ripple floor. At 385
+  verts the cloth wobbles 1.6 mm at rest, so “the press flattened it” is not
+  measurable; at 161 the noise floor is 0.15 mm.
+
+#### Looking like cloth is shading, not triangles
+
+The “it looks like slime” feedback survived every physics fix and went away
+with a material change. A saturated `rgba` under MuJoCo’s default specular
+gives wet-looking highlights that also wash out the folds. Use a matte,
+desaturated `<material specular="0.02" shininess="0.01">` and a low-specular
+headlight. Cube textures render white on a flex, so the fabric read has to come
+from shading. Also drop `radius` to 0.004: a 2D flex draws as a slab of
+half-thickness `radius`, and 0.008 was a 16 mm yoga mat.
 
 **Working shirt XML to start from** (grid, not a mesh):
 

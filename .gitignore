@@ -10,6 +10,9 @@ Desktop.ini
 *.swo
 *~
 
+# Quiver scratch
+_quiver/
+
 # Env / secrets
 .env
 .env.*
@@ -57,3 +60,7 @@ build/
 *.log
 data/
 *.mp4
+
+# MuJoCo
+MUJOCO_LOG.TXT
+shots/

@@ -1,4 +1,4 @@
-"""Open the MuJoCo window for the press/fold cell stub."""
+"""Open the MuJoCo window for the press / fold cell (flex shirt)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,9 @@ import sys
 import time
 from pathlib import Path
 
-MODEL_PATH = Path(__file__).resolve().parents[2] / "models" / "cell.xml"
+from xfold.shirt import CELL_XML, load_mujoco_plugins
+
+MODEL_PATH = CELL_XML
 
 
 def _reexec_mjpython_on_macos() -> None:
@@ -48,6 +50,7 @@ def main() -> None:
         )
 
     _reexec_mjpython_on_macos()
+    load_mujoco_plugins()
 
     if not MODEL_PATH.is_file():
         raise SystemExit(f"Missing scene: {MODEL_PATH}")
@@ -55,7 +58,11 @@ def main() -> None:
     model = mujoco.MjModel.from_xml_path(MODEL_PATH.as_posix())
     data = mujoco.MjData(model)
     print(f"XFOLD cell  {MODEL_PATH}", flush=True)
-    print("A blue slab (stand-in shirt) falls onto the press bed above the chute. Close the window to quit.", flush=True)
+    print(
+        "Denser flex shirt drops crumpled onto the press. "
+        "Physics: gravity + soft contacts + edge cloth. Close window to quit.",
+        flush=True,
+    )
 
     with mujoco.viewer.launch_passive(model, data) as viewer:
         while viewer.is_running():

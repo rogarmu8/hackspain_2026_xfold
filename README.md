@@ -96,7 +96,11 @@ Always from the repo root.
 | What | Command |
 |------|---------|
 | Dashboard at [localhost:3000](http://localhost:3000) | `moon run dashboard:dev` |
-| **MuJoCo window (the actual scene)** | `moon run sim:view` |
+| MuJoCo viewer (full cell + flex shirt) | `moon run sim:view` |
+| Shirt playground (CLOTH3D cloth — drag it) | `moon run sim:shirt-play` |
+| Shirt playground, high-detail mesh | `moon run sim:shirt-play-hi` |
+| Shirt playground (poncho-style elasticity) | `moon run sim:shirt-play-poncho` |
+| Flex shirt 10 s stability smoke | `moon run sim:shirt-smoke` |
 | Mock cell cycle (JSON lines) | `moon run sim:mock` |
 | Dashboard lint | `moon run dashboard:lint` |
 | Production dashboard build | `moon run dashboard:build` |
@@ -107,7 +111,21 @@ On macOS, `sim:view` runs under `mjpython` (Cocoa main thread). Elsewhere it use
 ### What runs today
 
 - **Mock:** `PICK → SPREAD → PRESS → FOLD → CHUTE → BAG` — one JSON telemetry line per state (`shirt_in_bag`, same shape as `@xfold/protocol`).
-- **Viewer:** rigid stub in `src/sim/models/cell.xml` — bin, press bed + platen, chute, bag, and a blue shirt proxy that falls onto the press. No cloth mesh and no OpenArm yet.
+- **Viewer:** full cell (`moon run sim:view`) or shirt playground (`moon run sim:shirt-play`) — **CLOTH3D T-shirt** (`models/shirt_cloth3d.obj`, single layer, 161 verts / 268 tris) with poncho-style edge cloth. Both run at ~1.1x realtime.
+- **Grabbing the cloth (trackpad friendly):** press **G** to pinch (the vertex you double-clicked, else the highest one), **arrows** to steer relative to the camera, **E/Q** to lift/lower, **X** to stop, **R** to reset. Each tap adds speed — the viewer delivers no key-repeat. MuJoCo's own Ctrl+right-drag still works if you have a mouse.
+- **Why only 161 verts:** MuJoCo caps a geom pair at 50 contacts (`mjMAXCONPAIR`) and the whole cloth-vs-floor interaction is one pair. Past ~160 vertices the extra ones get no support: they hang through the floor and the sheet ripples forever because the solver picks a different 50 each step. Full measurements and the fold-time risk in [SOLUTION.md §4.3](SOLUTION.md#43-cloth--garment-simulation). Regenerate any density with `python -m xfold.convert_cloth3d_mesh <flat.obj> --spacing 0.050`.
+- **Mesh detail vs speed** (measured, self-collision on): 161 verts ≈ 1.1x realtime (default) · 385 ≈ 0.42x (`moon run sim:shirt-play-hi`, clips through the floor — stills only).
+- **Cloth tuning gotchas** (all measured on a drop test):
+  - Edge `damping` above ~0.5 makes the equality constraints pump energy and the shirt flies off the floor.
+  - **No `<joint damping>` on the cloth.** It is absolute-frame drag, so it slowed free fall by 1.5x and read as a heavy object in slow motion. It hides the ripple instead of fixing it; the vertex count is the fix.
+  - `solver="CG"` is ~2x faster than Newton on this equality-heavy flex at the same accuracy. Keep `timestep="0.002"` — a bigger step buys speed but reintroduces floor clipping.
+  - A 2D flex renders as a slab of half-thickness `radius`; 0.008 looked like a yoga mat. 0.004 is the thinnest that still never clips.
+  - **Slime is a shading bug, not a mesh bug.** Saturated `rgba` + MuJoCo's default specular = wet highlights that also flatten the folds. Use a matte `<material specular="0.02" shininess="0.01">`. Cube textures render white on a flex.
+  - `flatskin="true"` forces flat shading and makes the cloth look faceted; MuJoCo's default (`false`, smooth) is what you want.
+  - The viewer loop must render at ~60 Hz and step physics to catch up. Calling `viewer.sync()` once per 2 ms step rendered at 500 Hz and dropped the playground to a fraction of realtime.
+- **Stills for the pitch:** `moon run sim:shirt-shot` renders wide / grazing / top PNGs into `shots/` (needs a GPU context, so run it from a normal terminal).
+- **Shirt smoke:** `moon run sim:shirt-smoke` — headless 10 s stability check.
+- **Shell FEM:** not usable on pip MuJoCo 3.13 (`mujoco.elasticity.shell` removed). Default cloth = edge equality (poncho params). Native `<elasticity>` lives in the poncho playground only.
 
 Build order for cloth + dual-arm: [SOLUTION.md §9](SOLUTION.md#9-build-order-hackathon).
 

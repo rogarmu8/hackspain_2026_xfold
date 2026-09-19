@@ -1,0 +1,43 @@
+<!-- Shirt-only playground: CLOTH3D T-shirt + poncho-style edge cloth. -->
+<mujoco model="xfold-shirt-playground">
+  <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast" solver="CG"/>
+  <visual>
+    <!-- Low specular everywhere: sharp highlights are what made the cloth
+         look wet, and they wash out the folds that sell it as fabric. -->
+    <headlight diffuse="0.45 0.45 0.45" ambient="0.3 0.3 0.32" specular="0.1 0.1 0.1"/>
+    <global offwidth="1280" offheight="800"/>
+    <quality shadowsize="4096"/>
+  </visual>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" width="300" height="300"
+             rgb1="0.2 0.2 0.22" rgb2="0.24 0.24 0.26"/>
+    <material name="floor_mat" texture="grid" texrepeat="6 6"
+              specular="0.05" shininess="0.02" reflectance="0"/>
+    <material name="shirt_cloth" rgba="0.20 0.31 0.46 1"
+              specular="0.02" shininess="0.01" reflectance="0"/>
+  </asset>
+
+  <statistic center="0 0 0.12" extent="1.0"/>
+
+  <worldbody>
+    <light name="key" pos="0.4 0.4 2.0" dir="-0.2 -0.2 -1"
+           diffuse="0.75 0.75 0.78" specular="0.1 0.1 0.1"/>
+    <light name="fill" pos="-0.6 -0.4 1.5" dir="0.3 0.2 -1"
+           diffuse="0.3 0.3 0.34" specular="0 0 0"/>
+    <geom name="floor" type="plane" size="1.5 1.5 0.05"
+          material="floor_mat" friction="1.0 0.05 0.0001"
+          solref="0.005 1.2" solimp="0.99 0.999 0.0002"/>
+    <camera name="play" pos="0.95 -1.05 0.75" xyaxes="0.75 0.65 0 -0.25 0.3 0.92"/>
+
+    <flexcomp name="shirt" type="mesh" dim="2" file="shirt_cloth3d.obj"
+              radius="0.004" mass="0.22" flatskin="false"
+              pos="0 0 0.35" euler="0.2 0.05 0.3"
+              material="shirt_cloth">
+      <contact internal="false" selfcollide="bvh"
+               solref="0.005 1.2" solimp="0.99 0.999 0.0002"
+               friction="1.0 0.05 0.0001" condim="3"/>
+      <edge equality="true" damping="0.5"/>
+    </flexcomp>
+  </worldbody>
+</mujoco>

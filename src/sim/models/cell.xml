@@ -1,8 +1,13 @@
 <mujoco model="xfold-cell-stub">
-  <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast"/>
+  <!-- CG, not Newton: the cloth is equality-heavy and CG runs it ~2x faster
+       at the same accuracy. 500 Hz physics per SOLUTION.md §6. -->
+  <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast" solver="CG"/>
   <visual>
-    <headlight diffuse="0.6 0.6 0.6" ambient="0.2 0.2 0.2"/>
+    <headlight diffuse="0.45 0.45 0.45" ambient="0.3 0.3 0.32" specular="0.1 0.1 0.1"/>
   </visual>
+
+  <include file="shirt.xml"/>
+
   <worldbody>
     <light pos="0 0 2.2" dir="0 0 -1"/>
     <geom name="floor" type="plane" size="1.8 1.2 0.05" rgba="0.18 0.18 0.2 1"/>
@@ -16,16 +21,14 @@
       <geom type="box" size="0.01 0.18 0.12" pos="-0.21 0 0.12" rgba="0.32 0.24 0.18 1"/>
     </body>
 
-    <body name="shirt_proxy" pos="0.15 0 0.9">
-      <freejoint/>
-      <geom type="box" size="0.12 0.16 0.008" density="250" rgba="0.15 0.35 0.75 1"/>
-    </body>
-
     <body name="press_bed" pos="0.15 0 0.08">
-      <geom type="box" size="0.28 0.32 0.015" rgba="0.55 0.55 0.58 1"/>
+      <!-- Same contact stiffness as the shirt: a 0.04 timeconst let the cloth
+           sink ~26 mm into the bed, which reads as the platen swallowing it. -->
+      <geom type="box" size="0.35 0.35 0.015" rgba="0.55 0.55 0.58 1"
+            friction="1.2 0.05 0.0001" solref="0.005 1.2" solimp="0.99 0.999 0.0002"/>
     </body>
-    <body name="press_platen" pos="0.15 0 0.38">
-      <geom type="box" size="0.28 0.32 0.02" rgba="0.45 0.45 0.5 1"/>
+    <body name="press_platen" pos="0.15 0 0.85">
+      <geom type="box" size="0.35 0.35 0.02" rgba="0.45 0.45 0.5 1"/>
     </body>
 
     <body name="chute" pos="0.72 0 0.16" euler="0 0.65 0">
