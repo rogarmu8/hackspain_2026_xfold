@@ -10,5 +10,6 @@ alwaysApply: true
 - Stack only: MuJoCo 3, mink, mujoco-menagerie, NumPy. No ROS / Isaac / RL until scripted cycle works.
 - Cloth = `flexcomp` grid first. If unstable, simplify cloth — never compensate by adding arm complexity.
 - Own your track paths; do not rewrite another track's public API without updating `TRACKING.md`.
+- **Arm / cloth agents:** integrate via `runtime.emit_state` + shared MJCF (`overview` camera). See `docs/INTEGRATION_CONTRACT.md` §4b and banners in `mock_driver.py` / `viewport_mujoco.py` / `cell.xml`.
 - Prefer runnable demos (`scripts/demo.py`) over neat but unrunnable refactors.
 - Keep commits/PRs small and mergeable into `main` several times per day.

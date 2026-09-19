@@ -1,6 +1,7 @@
-"""FastAPI application: REST commands + SSE journal stream.
+"""FastAPI application: REST commands + SSE journal + MJPEG viewport.
 
 OpenAPI UI: http://127.0.0.1:8765/docs
+Viewport is a separate image channel (not journal). See docs/BRIDGE.md.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from xfold.bridge.journal import Journal
 from xfold.bridge.mock_driver import MockDriver
@@ -25,6 +26,8 @@ from xfold.bridge.schema import (
     LaunchBatchRequest,
     LaunchRunRequest,
 )
+from xfold.bridge.viewport import ViewportHub
+from xfold.bridge.viewport_mujoco import MujocoViewportProducer
 
 
 def _repo_data_dir() -> Path:
@@ -40,11 +43,16 @@ def create_app(*, persist: bool = True) -> FastAPI:
     journal = Journal(persist_dir=_repo_data_dir() if persist else None)
     runtime = Runtime(journal)
     driver = MockDriver(runtime)
+    viewport_hub = ViewportHub()
+    viewport_producer = MujocoViewportProducer(runtime, viewport_hub)
 
     app = FastAPI(
         title="XFOLD bridge",
         version=BRIDGE_VERSION,
-        description="Append-only run journal with REST commands and SSE live events. See docs/BRIDGE.md.",
+        description=(
+            "Append-only run journal with REST/SSE, plus optional MuJoCo MJPEG viewport. "
+            "See docs/BRIDGE.md."
+        ),
     )
     app.add_middleware(
         CORSMiddleware,
@@ -57,13 +65,26 @@ def create_app(*, persist: bool = True) -> FastAPI:
     app.state.journal = journal
     app.state.runtime = runtime
     app.state.driver = driver
+    app.state.viewport_hub = viewport_hub
+    app.state.viewport_producer = viewport_producer
 
     @app.on_event("startup")
     def _startup() -> None:
         driver.start()
+        if viewport_producer.start():
+            runtime.capabilities.viewportStream = True
+            print("[viewport] MuJoCo MJPEG stream ready at /viewport/stream", flush=True)
+        else:
+            runtime.capabilities.viewportStream = False
+            print(
+                "[viewport] MuJoCo unavailable — install with: moon run install-mujoco "
+                "and run bridge via moon run sim:bridge (mujoco env).",
+                flush=True,
+            )
 
     @app.on_event("shutdown")
     def _shutdown() -> None:
+        viewport_producer.stop()
         driver.stop()
 
     @app.get("/health", response_model=HealthResponse)
@@ -72,11 +93,58 @@ def create_app(*, persist: bool = True) -> FastAPI:
 
     @app.get("/capabilities")
     def capabilities() -> dict:
-        return runtime.capabilities.model_dump()
+        caps = runtime.capabilities.model_dump()
+        caps["viewportStream"] = bool(
+            runtime.capabilities.viewportStream and viewport_hub.available
+        )
+        caps["viewportSource"] = viewport_hub.source
+        return caps
 
     @app.get("/snapshot")
     def snapshot() -> dict:
-        return runtime.snapshot()
+        snap = runtime.snapshot()
+        # Keep capabilities honest for the control room.
+        snap["capabilities"] = {
+            **snap["capabilities"],
+            "viewportStream": bool(
+                runtime.capabilities.viewportStream and viewport_hub.available
+            ),
+        }
+        return snap
+
+    @app.get("/viewport/frame")
+    def viewport_frame() -> Response:
+        got = viewport_hub.latest()
+        if not got:
+            raise HTTPException(503, "viewport not ready")
+        payload, mime, seq = got
+        return Response(
+            content=payload,
+            media_type=mime,
+            headers={
+                "Cache-Control": "no-store",
+                "X-Viewport-Seq": str(seq),
+                "X-Viewport-Source": viewport_hub.source,
+            },
+        )
+
+    @app.get("/viewport/stream")
+    def viewport_stream() -> StreamingResponse:
+        if not runtime.capabilities.viewportStream:
+            raise HTTPException(
+                503,
+                "viewport stream unavailable (MuJoCo env / Renderer not started)",
+            )
+        return StreamingResponse(
+            viewport_hub.mjpeg_sync(fps=12.0),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+            headers={
+                "Cache-Control": "no-cache, private",
+                "Pragma": "no-cache",
+                "X-Accel-Buffering": "no",
+                "X-Viewport-Source": viewport_hub.source,
+            },
+        )
 
     @app.get("/runs")
     def list_runs() -> list:

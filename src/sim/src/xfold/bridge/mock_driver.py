@@ -1,7 +1,25 @@
 """Background mock FSM that feeds the runtime journal without touching HTTP.
 
-Integration contract: docs/INTEGRATION_CONTRACT.md §4
-This file is the reference driver to copy when wiring MuJoCo.
+Integration contract: docs/INTEGRATION_CONTRACT.md §4 / §4b
+AGENTS.md → “For agents on other tracks (arm / cloth)”
+
+=============================================================================
+AGENT NOTE — ARM / FSM TRACK
+-----------------------------------------------------------------------------
+This file is the **reference Driver**. When you wire the real arm sequence
+(Menagerie / mink / scripted peel):
+
+  1. Keep calling the same Runtime API — do NOT invent a new bus.
+       runtime.emit_state(run_id, CellState.<STAGE>, t=float(data.time))
+       runtime.finish_success(run_id, t=float(data.time))
+  2. Respect pause/cancel via runtime.driver_active_run().
+  3. You may replace this MockDriver class or run alongside it; Control and
+     Historial already consume journal events — no dashboard rewrite.
+  4. Do not import FastAPI here. Do not block mj_step on network I/O.
+
+Cloth teammates: you do not need to edit this file. Emit stages from your
+controller when the cycle advances; see viewport_mujoco.py for the 3D view.
+=============================================================================
 """
 
 from __future__ import annotations
@@ -16,7 +34,10 @@ HOLD_S = 0.35
 
 
 class MockDriver:
-    """Walks PICK→BAG for the active run; respects pause / cancel via runtime."""
+    """Walks PICK→BAG for the active run; respects pause / cancel via runtime.
+
+    Stand-in until the arm/cloth tracks drive the same emit_* API.
+    """
 
     def __init__(self, runtime: Runtime) -> None:
         self.runtime = runtime

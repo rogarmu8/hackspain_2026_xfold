@@ -1,3 +1,10 @@
+"""Cell FSM stage names shared by mock driver, Real MuJoCo controllers, and protocol.
+
+AGENT: arm track — emit these via runtime.emit_state(...). Do not invent parallel stage strings.
+AGENT: cloth track — you usually do not change this file; stages come from the cell controller.
+See docs/INTEGRATION_CONTRACT.md §4b.
+"""
+
 from enum import StrEnum
 
 
