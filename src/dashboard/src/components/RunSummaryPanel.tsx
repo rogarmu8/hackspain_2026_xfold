@@ -10,38 +10,32 @@ import type { RunDetail } from "@/lib/types";
 import type { ClothCondition, ClothType } from "@xfold/protocol";
 
 /** Compact result card for a finished run; the event log lives in the console below. */
-export function RunSummaryPanel({ run }: { run: RunDetail }) {
+export function RunSummaryPanel({ run, embed = false }: { run: RunDetail; embed?: boolean }) {
   const tone =
     run.lifecycle === "failed" ? "danger" : run.lifecycle === "succeeded" ? "success" : "neutral";
 
-  return (
-    <aside className="flex flex-col gap-3 border border-divider bg-surface p-4">
-      <header>
-        <p className="eyebrow flex items-center gap-1.5">
-          <ClipboardList className="size-3.5" strokeWidth={1.75} aria-hidden />
-          Run finished
-        </p>
-        <div className="mt-1.5 flex items-start justify-between gap-2">
-          <h2 className="min-w-0 truncate text-[17px] font-semibold leading-tight">{run.name ?? run.id}</h2>
-          <StatusBadge tone={tone}>{run.lifecycle === "succeeded" ? "Cycle completed" : lifecycleLabel(run.lifecycle)}</StatusBadge>
-        </div>
-        <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-          {run.id} · seed {run.seed}
-          {run.config.clothType ? ` · ${run.config.clothType}` : ""}
-          {run.config.clothCondition ? ` · ${run.config.clothCondition}` : ""}
-          {" · "}
-          {run.config.scenario}
-          {run.batchId ? (
-            <>
-              {" · "}
-              <Link href={`/experimentos/${run.batchId}`} className="inline-flex items-center gap-0.5 text-ink">
-                {run.batchId} <ArrowUpRight className="size-3" aria-hidden />
-              </Link>
-            </>
-          ) : null}
-        </p>
-        {run.failReason ? <p className="mt-2 text-sm text-danger">{run.failReason}</p> : null}
-      </header>
+  const body = (
+    <>
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="min-w-0 truncate text-[17px] font-semibold leading-tight">{run.name ?? run.id}</h3>
+        <StatusBadge tone={tone}>{run.lifecycle === "succeeded" ? "Cycle completed" : lifecycleLabel(run.lifecycle)}</StatusBadge>
+      </div>
+      <p className="font-mono text-xs text-muted-foreground">
+        {run.id} · seed {run.seed}
+        {run.config.clothType ? ` · ${run.config.clothType}` : ""}
+        {run.config.clothCondition ? ` · ${run.config.clothCondition}` : ""}
+        {" · "}
+        {run.config.scenario}
+        {run.batchId ? (
+          <>
+            {" · "}
+            <Link href={`/experimentos/${run.batchId}`} className="inline-flex items-center gap-0.5 text-ink">
+              {run.batchId} <ArrowUpRight className="size-3" aria-hidden />
+            </Link>
+          </>
+        ) : null}
+      </p>
+      {run.failReason ? <p className="text-sm text-danger">{run.failReason}</p> : null}
 
       <dl className="grid grid-cols-3 gap-x-3 gap-y-2 border-t border-divider pt-3">
         <Metric label="sim t" value={formatSeconds(run.metrics.cycleTimeSimS)} />
@@ -94,6 +88,22 @@ export function RunSummaryPanel({ run }: { run: RunDetail }) {
           </Button>
         }
       />
+    </>
+  );
+
+  if (embed) {
+    return <div className="flex flex-col gap-3 overflow-y-auto p-4">{body}</div>;
+  }
+
+  return (
+    <aside className="flex flex-col gap-3 border border-divider bg-surface p-4">
+      <header>
+        <p className="eyebrow flex items-center gap-1.5">
+          <ClipboardList className="size-3.5" strokeWidth={1.75} aria-hidden />
+          Run finished
+        </p>
+      </header>
+      {body}
     </aside>
   );
 }

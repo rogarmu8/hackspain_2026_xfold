@@ -18,8 +18,37 @@ function formatEn(value: number, fractionDigits: number): string {
   return trimmed ? `${withSep}.${trimmed}` : withSep;
 }
 
+/** Line phases that are not in the legacy CellState union. */
+const LINE_STEP_LABELS: Record<string, string> = {
+  LOAD: "Rotate",
+  TO_PRESS: "Press",
+  TO_QC: "Press",
+  PHOTO: "Press",
+  TO_FOLDER: "Fold",
+  INSERT: "Bag",
+  TO_SEAL: "Pack",
+  SEAL: "Pack",
+  TO_CARTON: "Pack",
+  DONE: "Pack",
+};
+
 export function stageLabel(state: string, stages?: readonly PhaseDefinition[]): string {
-  return stages?.find((s) => s.state === state)?.label ?? CELL_STAGE_LABELS[state as CellState] ?? state;
+  return (
+    stages?.find((s) => s.state === state)?.label ??
+    CELL_STAGE_LABELS[state as CellState] ??
+    LINE_STEP_LABELS[state] ??
+    state
+  );
+}
+
+/** Operator-facing cycle title. Known stations stay Rotate / Press / Fold / Bag / Pack. */
+export function operatorStepTitle(state: string, stages?: readonly PhaseDefinition[]): string {
+  return (
+    CELL_STAGE_LABELS[state as CellState] ??
+    LINE_STEP_LABELS[state] ??
+    stages?.find((s) => s.state === state)?.label ??
+    state
+  );
 }
 
 export function formatPercent(

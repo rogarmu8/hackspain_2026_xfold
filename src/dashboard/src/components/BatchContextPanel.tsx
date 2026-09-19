@@ -36,6 +36,7 @@ export function BatchContextPanel({
   pendingCommand,
   disconnected,
   onCommand,
+  embed = false,
 }: {
   batch: BatchSummary | null;
   run: RunDetail | null;
@@ -43,6 +44,7 @@ export function BatchContextPanel({
   pendingCommand: PendingCommand | null;
   disconnected: boolean;
   onCommand: (kind: CommandKind, scope: string) => void;
+  embed?: boolean;
 }) {
   const [confirm, setConfirm] = useState<"run" | "batch" | null>(null);
   const cancelTrigger = useRef<HTMLElement | null>(null);
@@ -60,7 +62,17 @@ export function BatchContextPanel({
   const pending = (kind: CommandKind) => pendingCommand?.kind === kind;
 
   return (
-    <aside className="flex flex-col gap-4 border border-divider bg-surface p-4">
+    <aside className={embed ? "flex flex-col gap-4 overflow-y-auto p-4" : "flex flex-col gap-4 border border-divider bg-surface p-4"}>
+      {embed ? (
+        <div>
+          <h3 className="truncate text-[17px] font-semibold leading-tight">
+            {batch?.name ?? run?.name ?? "No activity"}
+          </h3>
+          {(batch?.id ?? run?.id) ? (
+            <p className="mt-0.5 font-mono text-xs text-muted-foreground">{batch?.id ?? run?.id}</p>
+          ) : null}
+        </div>
+      ) : (
       <header>
         <p className="eyebrow flex items-center gap-1.5">
           <Layers className="size-3.5" strokeWidth={1.75} aria-hidden />
@@ -73,6 +85,7 @@ export function BatchContextPanel({
           <p className="mt-0.5 font-mono text-xs text-muted-foreground">{batch?.id ?? run?.id}</p>
         ) : null}
       </header>
+      )}
 
       {batch && (
         <div>

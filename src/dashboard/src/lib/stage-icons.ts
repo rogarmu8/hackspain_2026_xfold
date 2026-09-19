@@ -1,25 +1,33 @@
 import type { PhaseId } from "@xfold/protocol";
 import {
   ArrowDownToLine,
-  ArrowRightLeft,
   Circle,
   FoldVertical,
-  Funnel,
-  Hand,
   Package,
   RotateCcw,
-  StretchHorizontal,
+  RotateCw,
+  ShoppingBag,
   type LucideIcon,
 } from "lucide-react";
 
 /** One Lucide glyph per cell stage — shared by stepper, HUD and history. */
 export const STAGE_ICONS: Partial<Record<PhaseId, LucideIcon>> = {
-  PICK: Hand,
-  ORIENT: ArrowRightLeft,
-  SPREAD: StretchHorizontal,
+  LOAD: RotateCw,
+  ORIENT: RotateCw,
+  PICK: RotateCw,
+  SPREAD: RotateCw,
+  TO_PRESS: ArrowDownToLine,
   PRESS: ArrowDownToLine,
+  TO_QC: ArrowDownToLine,
+  PHOTO: ArrowDownToLine,
+  TO_FOLDER: FoldVertical,
   FOLD: FoldVertical,
-  CHUTE: Funnel,
+  INSERT: ShoppingBag,
+  CHUTE: ShoppingBag,
+  TO_SEAL: Package,
+  SEAL: Package,
+  TO_CARTON: Package,
+  DONE: Package,
   BAG: Package,
   RESET: RotateCcw,
 };

@@ -25,7 +25,7 @@ export function AppShell({
   /** Where this page came from (rendered as a back link). */
   back?: { href: string; label: string };
   actions?: ReactNode;
-  /** Lock the page to the viewport height (no page scroll) on desktop. */
+  /** Lock the page to the viewport height (no page scroll). */
   fit?: boolean;
   children: ReactNode;
 }) {
@@ -59,7 +59,7 @@ export function AppShell({
 
       <main
         id="main-content"
-        className={`flex-1 px-6 py-5 max-[768px]:px-4 ${fit ? "flex min-h-0 flex-col xl:overflow-hidden" : ""}`}
+        className={`flex-1 px-6 py-5 max-[768px]:px-4 ${fit ? "flex min-h-0 flex-col overflow-hidden" : ""}`}
       >
         {children}
       </main>

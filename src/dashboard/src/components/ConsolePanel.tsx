@@ -26,11 +26,14 @@ export function ConsolePanel({
   lines,
   running,
   className = "",
+  embed = false,
 }: {
   lines: ConsoleLine[];
   /** True while the run is running (enables the stall watchdog). */
   running: boolean;
   className?: string;
+  /** Body only — parent supplies the card chrome. */
+  embed?: boolean;
 }) {
   const [onlyProblems, setOnlyProblems] = useState(false);
   const [pinned, setPinned] = useState(true);
@@ -67,34 +70,8 @@ export function ConsolePanel({
     }
   };
 
-  return (
-    <section className={`flex min-h-0 flex-col border border-divider bg-surface ${className}`}>
-      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-divider px-3">
-        <h2 className="eyebrow flex items-center gap-1.5">
-          <TerminalSquare className="size-3.5" strokeWidth={1.75} aria-hidden />
-          Console
-        </h2>
-        <span className="font-mono text-[11px] tabular text-muted-foreground">{lines.length}</span>
-        {stalled ? (
-          <StatusBadge tone="danger" icon={<TriangleAlert className="size-3" aria-hidden />} title={`No events for ${Math.round(silenceS)} s`}>
-            No signal · {Math.round(silenceS)} s
-          </StatusBadge>
-        ) : running ? (
-          <StatusBadge tone="active" pulse>live</StatusBadge>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => setOnlyProblems((v) => !v)}
-          aria-pressed={onlyProblems}
-          className={`ml-auto rounded-[var(--radius-sm)] border px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.08em] ${
-            onlyProblems ? "border-ink bg-canvas text-ink" : "border-divider text-muted-foreground hover:text-ink"
-          }`}
-          title="Show warnings and errors only"
-        >
-          alerts {problems ? `· ${problems}` : ""}
-        </button>
-      </header>
-
+  const body = (
+    <>
       <ol
         ref={bodyRef}
         onScroll={onScroll}
@@ -148,6 +125,65 @@ export function ConsolePanel({
           </Button>
         </div>
       ) : null}
+    </>
+  );
+
+  if (embed) {
+    return (
+      <div className={`flex min-h-0 flex-1 flex-col ${className}`}>
+        <div className="flex h-9 shrink-0 items-center gap-2 border-b border-divider px-3">
+          {stalled ? (
+            <StatusBadge tone="danger" icon={<TriangleAlert className="size-3" aria-hidden />} title={`No events for ${Math.round(silenceS)} s`}>
+              No signal · {Math.round(silenceS)} s
+            </StatusBadge>
+          ) : running ? (
+            <StatusBadge tone="active" pulse>live</StatusBadge>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setOnlyProblems((v) => !v)}
+            aria-pressed={onlyProblems}
+            className={`ml-auto rounded-[var(--radius-sm)] border px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.08em] ${
+              onlyProblems ? "border-ink bg-canvas text-ink" : "border-divider text-muted-foreground hover:text-ink"
+            }`}
+            title="Show warnings and errors only"
+          >
+            alerts {problems ? `· ${problems}` : ""}
+          </button>
+        </div>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <section className={`flex min-h-0 flex-col border border-divider bg-surface ${className}`}>
+      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-divider px-3">
+        <h2 className="eyebrow flex items-center gap-1.5">
+          <TerminalSquare className="size-3.5" strokeWidth={1.75} aria-hidden />
+          Console
+        </h2>
+        <span className="font-mono text-[11px] tabular text-muted-foreground">{lines.length}</span>
+        {stalled ? (
+          <StatusBadge tone="danger" icon={<TriangleAlert className="size-3" aria-hidden />} title={`No events for ${Math.round(silenceS)} s`}>
+            No signal · {Math.round(silenceS)} s
+          </StatusBadge>
+        ) : running ? (
+          <StatusBadge tone="active" pulse>live</StatusBadge>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setOnlyProblems((v) => !v)}
+          aria-pressed={onlyProblems}
+          className={`ml-auto rounded-[var(--radius-sm)] border px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.08em] ${
+            onlyProblems ? "border-ink bg-canvas text-ink" : "border-divider text-muted-foreground hover:text-ink"
+          }`}
+          title="Show warnings and errors only"
+        >
+          alerts {problems ? `· ${problems}` : ""}
+        </button>
+      </header>
+      {body}
     </section>
   );
 }

@@ -2,13 +2,13 @@
 
 import type { PhaseId } from "@xfold/protocol";
 import { Check, X, type LucideIcon } from "lucide-react";
-import { stageLabel, formatSeconds } from "@/lib/format";
+import { operatorStepTitle, formatSeconds } from "@/lib/format";
 import { STAGE_ICONS, DEFAULT_STAGE_ICON } from "@/lib/stage-icons";
 import type { StageProgress } from "@/lib/types";
 
 /**
- * Single process strip: node + connector rail per stage. Status is encoded by
- * icon + rail texture + label, never by colour alone.
+ * Single process strip: node + connector rail per operator step.
+ * Consecutive simulator phases that share a title (Rotate → Pack) collapse.
  */
 export function StageStepper({
   stages,
@@ -19,9 +19,12 @@ export function StageStepper({
   selected: PhaseId | null;
   onSelect: (state: PhaseId) => void;
 }) {
-  const items = stages ?? [];
+  const items = groupOperatorSteps(stages ?? []);
 
-  const done = items.filter((s) => s.status === "completed").length;
+  const done = items.filter((s) => s.status === "completed" || s.status === "skipped").length;
+  const running = items.some((s) => s.status === "active");
+  const failed = items.some((s) => s.status === "failed");
+  const fill = cycleFill(items);
 
   return (
     <div>
@@ -32,36 +35,36 @@ export function StageStepper({
         </span>
       </div>
       <ol className="flex items-stretch overflow-x-auto" aria-label="Cycle stages">
-        {items.map((stage, index) => {
-          const isSelected = selected === stage.state;
+        {items.map((step, index) => {
+          const isSelected = selected != null && step.states.includes(selected);
           const isLast = index === items.length - 1;
-          const Icon = STAGE_ICONS[stage.state] ?? DEFAULT_STAGE_ICON;
-          const status = stage.status;
+          const Icon = STAGE_ICONS[step.state] ?? DEFAULT_STAGE_ICON;
+          const status = step.status;
+          const reached = status !== "pending";
+          const passed = status === "completed" || status === "skipped";
           return (
-            <li key={stage.state} className="flex min-w-24 flex-1 items-start">
+            <li key={step.states.join("-")} className="flex min-w-24 flex-1 items-start">
               <button
                 type="button"
-                onClick={() => onSelect(stage.state)}
+                onClick={() => onSelect(step.state)}
                 aria-pressed={isSelected}
-                aria-label={`${stageLabel(stage.state, items)} · ${statusLabel(stage)}`}
+                aria-label={`${step.label} · ${statusLabel(step)}`}
                 className={`group flex w-full min-w-0 flex-col items-center gap-1.5 rounded-[var(--radius-sm)] px-1 py-1.5 text-center outline-none transition-colors duration-[var(--motion-feedback)] ease-[var(--motion-ease)] hover:bg-canvas focus-visible:ring-2 focus-visible:ring-ink ${
                   isSelected ? "bg-canvas" : ""
                 }`}
               >
                 <span className="flex w-full items-center">
-                  <span
-                    className={`h-px flex-1 ${
-                      index === 0 ? "bg-transparent" : status === "pending" ? "bg-divider" : "bg-active"
-                    }`}
-                    aria-hidden
-                  />
+                  {index === 0 ? (
+                    <span className="h-px flex-1 bg-transparent" aria-hidden />
+                  ) : (
+                    <FillRail filled={reached ? 1 : 0} from="right" />
+                  )}
                   <Node status={status} Icon={Icon} />
-                  <span
-                    className={`h-px flex-1 ${
-                      isLast ? "bg-transparent" : status === "completed" ? "bg-active" : "bg-divider"
-                    }`}
-                    aria-hidden
-                  />
+                  {isLast ? (
+                    <span className="h-px flex-1 bg-transparent" aria-hidden />
+                  ) : (
+                    <FillRail filled={passed ? 1 : 0} from="left" />
+                  )}
                 </span>
                 <span
                   className={`truncate text-[12px] font-semibold ${
@@ -74,11 +77,11 @@ export function StageStepper({
                           : "text-ink"
                   }`}
                 >
-                  {stageLabel(stage.state, items)}
+                  {step.label}
                 </span>
                 <span className="font-mono text-[11px] tabular text-muted-foreground">
                   {status === "completed"
-                    ? formatSeconds(stage.durationSimS)
+                    ? formatSeconds(step.durationSimS)
                     : status === "active"
                       ? "running"
                       : status === "failed"
@@ -90,19 +93,111 @@ export function StageStepper({
           );
         })}
       </ol>
-      {items.some((s) => s.status === "active") ? (
-        <div className="mt-2 h-0.5 w-full overflow-hidden bg-divider" aria-hidden>
+      <div
+        className="relative mt-2 h-0.5 w-full overflow-hidden bg-divider"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(fill * 100)}
+        aria-label="Cycle progress"
+      >
+        <div
+          className={`absolute inset-y-0 left-0 w-full origin-left transition-transform duration-[var(--motion-progress)] ease-[var(--motion-ease)] ${
+            failed && !running ? "bg-danger" : "bg-active"
+          }`}
+          style={{ transform: `scaleX(${fill})` }}
+        />
+        {running ? (
           <div
-            className="rail-active h-full"
-            style={{ width: `${((done + 0.5) / items.length) * 100}%` }}
+            className="rail-active absolute inset-y-0 left-0 w-full origin-left transition-transform duration-[var(--motion-progress)] ease-[var(--motion-ease)]"
+            style={{ transform: `scaleX(${fill})` }}
           />
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
 }
 
-function statusLabel(stage: StageProgress): string {
+function cycleFill(items: OperatorStep[]): number {
+  if (items.length === 0) return 0;
+  let units = 0;
+  for (const step of items) {
+    if (step.status === "completed" || step.status === "skipped") {
+      units += 1;
+      continue;
+    }
+    if (step.status === "active" || step.status === "failed") {
+      units += 0.55;
+    }
+    break;
+  }
+  return units / items.length;
+}
+
+function FillRail({ filled, from }: { filled: number; from: "left" | "right" }) {
+  return (
+    <span className="relative h-px flex-1 overflow-hidden bg-divider" aria-hidden>
+      <span
+        className={`absolute inset-0 bg-active transition-transform duration-[var(--motion-progress)] ease-[var(--motion-ease)] ${
+          from === "left" ? "origin-left" : "origin-right"
+        }`}
+        style={{ transform: `scaleX(${filled})` }}
+      />
+    </span>
+  );
+}
+
+type OperatorStep = {
+  label: string;
+  state: PhaseId;
+  states: PhaseId[];
+  status: StageProgress["status"];
+  durationSimS: number | null;
+};
+
+function groupOperatorSteps(stages: StageProgress[]): OperatorStep[] {
+  const groups: OperatorStep[] = [];
+  for (const stage of stages) {
+    const label = operatorStepTitle(stage.state, stages);
+    const prev = groups.at(-1);
+    if (prev && prev.label === label) {
+      prev.states.push(stage.state);
+      prev.status = combineStatus(prev.status, stage.status);
+      prev.durationSimS = sumDuration(prev.durationSimS, stage);
+      if (stage.status === "active") prev.state = stage.state;
+      continue;
+    }
+    groups.push({
+      label,
+      state: stage.state,
+      states: [stage.state],
+      status: stage.status,
+      durationSimS: stage.status === "completed" ? stage.durationSimS : null,
+    });
+  }
+  return groups;
+}
+
+function combineStatus(
+  a: StageProgress["status"],
+  b: StageProgress["status"],
+): StageProgress["status"] {
+  if (a === "failed" || b === "failed") return "failed";
+  if (a === "active" || b === "active") return "active";
+  if (a === "completed" && b === "pending") return "active";
+  if (a === "pending" && b === "completed") return "active";
+  if (a === "completed" && (b === "completed" || b === "skipped")) return "completed";
+  if (a === "skipped" && b === "completed") return "completed";
+  if (a === "skipped" && b === "skipped") return "skipped";
+  return b;
+}
+
+function sumDuration(current: number | null, stage: StageProgress): number | null {
+  if (stage.status !== "completed" || stage.durationSimS == null) return current;
+  return (current ?? 0) + stage.durationSimS;
+}
+
+function statusLabel(stage: { status: StageProgress["status"]; durationSimS: number | null }): string {
   if (stage.status === "completed") return `completed in ${formatSeconds(stage.durationSimS)}`;
   if (stage.status === "active") return "running";
   if (stage.status === "failed") return "failed";

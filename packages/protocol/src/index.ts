@@ -51,15 +51,15 @@ export const PRODUCTIVE_CYCLE = [
   "BAG",
 ] as const satisfies readonly CellState[];
 
-/** Fallback labels for the OpenArm → ninja fold → bag chute cell. */
+/** Operator step titles. Consecutive phases that share a title collapse in the stepper. */
 export const CELL_STAGE_LABELS: Record<CellState, string> = {
-  PICK: "Pick",
-  ORIENT: "Orient",
-  SPREAD: "Spread",
+  PICK: "Rotate",
+  ORIENT: "Rotate",
+  SPREAD: "Rotate",
   PRESS: "Press",
-  FOLD: "Ninja fold",
-  CHUTE: "Chute",
-  BAG: "Bag",
+  FOLD: "Fold",
+  CHUTE: "Bag",
+  BAG: "Pack",
   RESET: "Reset",
 };
 

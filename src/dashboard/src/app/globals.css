@@ -36,6 +36,7 @@
   --hud-dim: #6f7a74;
   --motion-feedback: 120ms;
   --motion-panel: 180ms;
+  --motion-progress: 480ms;
   --motion-ease: cubic-bezier(.2, .8, .2, 1);
 }
 
@@ -111,8 +112,37 @@
 @keyframes rail-flow { to { background-position: 16px 0; } }
 .rail-active { background-image: repeating-linear-gradient(90deg, var(--active) 0 8px, transparent 8px 16px); background-size: 16px 100%; animation: rail-flow .9s linear infinite; }
 
-@keyframes hud-flash { 0% { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--active) 80%, transparent); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
-.hud-flash { animation: hud-flash .6s var(--motion-ease) 1; }
+@keyframes chart-bar-in {
+  from { transform: scaleY(0); }
+}
+.chart-bar {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: chart-bar-in var(--motion-progress) var(--motion-ease) both;
+}
+.chart-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: chart-line-in 700ms var(--motion-ease) forwards;
+}
+@keyframes chart-line-in {
+  to { stroke-dashoffset: 0; }
+}
+.chart-area {
+  opacity: 0;
+  animation: chart-area-in 600ms var(--motion-ease) 80ms both;
+}
+@keyframes chart-area-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.chart-arc {
+  animation: chart-arc-in 700ms var(--motion-ease) both;
+}
+@keyframes chart-arc-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
 @keyframes value-tick { 0% { color: var(--active); } 100% { color: inherit; } }
 .value-tick { animation: value-tick .5s ease-out 1; }

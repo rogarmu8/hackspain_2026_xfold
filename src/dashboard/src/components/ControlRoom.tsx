@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { PhaseId } from "@xfold/protocol";
 import { AppShell } from "@/components/AppShell";
 import { BatchContextPanel } from "@/components/BatchContextPanel";
 import { ConsolePanel } from "@/components/ConsolePanel";
+import { InspectorSection } from "@/components/InspectorSection";
 import { ProductShotPanel } from "@/components/ProductShotPanel";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
 import { RunSummaryPanel } from "@/components/RunSummaryPanel";
@@ -13,11 +14,11 @@ import { StageStepper } from "@/components/StageStepper";
 import { useDashboard } from "@/lib/dashboard-context";
 import type { FixtureScenario } from "@/lib/adapter";
 import { consoleLines } from "@/lib/console";
-import { formatSeconds, stageLabel } from "@/lib/format";
+import { formatSeconds, operatorStepTitle } from "@/lib/format";
 import type { RunLifecycle } from "@/lib/types";
 import { useRunReplay } from "@/lib/use-run-replay";
 import Link from "next/link";
-import { ArrowUpRight, TriangleAlert } from "lucide-react";
+import { ArrowUpRight, Camera, ClipboardList, Layers, TerminalSquare, TriangleAlert } from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./ui/sheet";
@@ -101,6 +102,14 @@ function useInspectorWidth() {
 
 const FINISHED = new Set<RunLifecycle>(["succeeded", "failed", "cancelled"]);
 
+type InspectorPane = "context" | "photo" | "logs";
+
+function autoInspectorPane(run: { lifecycle: RunLifecycle; hasPhoto?: boolean } | null): InspectorPane {
+  if (run && FINISHED.has(run.lifecycle)) return "context";
+  if (run?.hasPhoto) return "photo";
+  return "logs";
+}
+
 /**
  * Single run view. The active run gets the live stream + commands; a finished
  * run becomes a scrubbable replay of the same layout.
@@ -118,6 +127,8 @@ export function ControlRoom({ runId }: { runId: string }) {
     getJournal,
   } = useDashboard();
   const [selectedStage, setSelectedStage] = useState<PhaseId | null>(null);
+  const [autoInspector, setAutoInspector] = useState(true);
+  const [inspectorPane, setInspectorPane] = useState<InspectorPane | null>(null);
   const stageTrigger = useRef<HTMLElement | null>(null);
   const inspector = useInspectorWidth();
 
@@ -128,6 +139,22 @@ export function ControlRoom({ runId }: { runId: string }) {
   const replay = useRunReplay({ run, enabled: finished, bridgeUrl });
   const isActive = Boolean(run && run.id === snapshot.activeRun?.id);
   const notFound = !run;
+
+  useEffect(() => {
+    setAutoInspector(true);
+    setInspectorPane(null);
+  }, [runId]);
+
+  const derivedPane = autoInspectorPane(run);
+  const openPane = autoInspector ? derivedPane : inspectorPane;
+
+  function toggleInspector(pane: InspectorPane) {
+    setAutoInspector(false);
+    setInspectorPane((current) => {
+      const shown = autoInspector ? derivedPane : current;
+      return shown === pane ? null : pane;
+    });
+  }
 
   const stageDetail =
     run && selectedStage
@@ -222,7 +249,7 @@ export function ControlRoom({ runId }: { runId: string }) {
             <Sheet open={Boolean(selectedStage && run && !finished)} onOpenChange={(open) => { if (!open) setSelectedStage(null); }}>
               <SheetContent onCloseAutoFocus={(event) => { event.preventDefault(); stageTrigger.current?.focus(); }}>
                 <SheetHeader>
-                  <SheetTitle>{selectedStage ? stageLabel(selectedStage, run?.stages) : "Stage detail"}</SheetTitle>
+                  <SheetTitle>{selectedStage ? operatorStepTitle(selectedStage, run?.stages) : "Stage detail"}</SheetTitle>
                   <SheetDescription>{run?.id} · Stage trace</SheetDescription>
                 </SheetHeader>
                 <div className="flex flex-col gap-6 overflow-y-auto px-4 pb-6">
@@ -255,10 +282,24 @@ export function ControlRoom({ runId }: { runId: string }) {
           <span className="h-10 w-1 rounded-full bg-border opacity-70 transition-[background,opacity] duration-[var(--motion-feedback)]" />
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-col gap-3">
-          <div className="shrink-0 xl:max-h-[45%] xl:overflow-y-auto">
+        <div
+          className={
+            openPane === "logs"
+              ? run?.hasPhoto
+                ? "grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3"
+                : "grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-3"
+              : "grid h-full min-h-0 min-w-0 auto-rows-auto content-start gap-3"
+          }
+        >
+          <InspectorSection
+            id="inspector-context"
+            title={finished ? "Run finished" : snapshot.activeBatch && isActive ? "Batch" : "Run"}
+            icon={finished ? ClipboardList : Layers}
+            open={openPane === "context"}
+            onToggle={() => toggleInspector("context")}
+          >
             {run && finished ? (
-              <RunSummaryPanel run={run} />
+              <RunSummaryPanel run={run} embed />
             ) : (
               <BatchContextPanel
                 batch={isActive ? snapshot.activeBatch : null}
@@ -267,15 +308,40 @@ export function ControlRoom({ runId }: { runId: string }) {
                 pendingCommand={pendingCommand}
                 disconnected={snapshot.connection === "disconnected"}
                 onCommand={requestCommand}
+                embed
               />
             )}
-          </div>
-          {run?.hasPhoto ? <ProductShotPanel key={run.id} run={run} /> : null}
-          <ConsolePanel
-            lines={consoleRows}
-            running={run?.lifecycle === "running"}
-            className="min-h-[220px] flex-1"
-          />
+          </InspectorSection>
+          {run?.hasPhoto ? (
+            <InspectorSection
+              id="inspector-photo"
+              title="Product photo"
+              icon={Camera}
+              open={openPane === "photo"}
+              onToggle={() => toggleInspector("photo")}
+            >
+              <ProductShotPanel key={run.id} run={run} embed />
+            </InspectorSection>
+          ) : null}
+          <InspectorSection
+            id="inspector-logs"
+            title="Console"
+            icon={TerminalSquare}
+            open={openPane === "logs"}
+            onToggle={() => toggleInspector("logs")}
+            fill
+            trailing={
+              <span className="font-mono text-[11px] tabular text-muted-foreground">
+                {consoleRows.length}
+              </span>
+            }
+          >
+            <ConsolePanel
+              lines={consoleRows}
+              running={run?.lifecycle === "running"}
+              embed
+            />
+          </InspectorSection>
         </div>
       </div>
 

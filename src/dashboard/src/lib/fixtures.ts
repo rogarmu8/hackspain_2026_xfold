@@ -83,6 +83,9 @@ export const FIXTURE_ACTIVE_RUN: RunDetail = {
   lifecycle: "running",
   seed: 42,
   name: "Standard fold",
+  garment: "tee",
+  clothType: "tee",
+  clothCondition: "good",
   currentState: "FOLD",
   startedAtIso: "2026-09-18T22:13:26.000Z",
   finishedAtIso: null,
@@ -131,6 +134,9 @@ export const FIXTURE_FAILED_RUN: RunDetail = {
   lifecycle: "failed",
   seed: 40,
   name: null,
+  garment: "jersey",
+  clothType: "jersey",
+  clothCondition: "damaged",
   currentState: "SPREAD",
   startedAtIso: "2026-09-18T22:08:01.000Z",
   finishedAtIso: "2026-09-18T22:08:19.000Z",
@@ -169,6 +175,9 @@ export const FIXTURE_SUCCEEDED_RUN: RunDetail = {
   lifecycle: "succeeded",
   seed: 39,
   name: null,
+  garment: "tee",
+  clothType: "tee",
+  clothCondition: "good",
   currentState: "BAG",
   startedAtIso: "2026-09-18T22:06:40.000Z",
   finishedAtIso: "2026-09-18T22:07:22.000Z",
@@ -212,6 +221,8 @@ export const FIXTURE_HISTORY: RunSummary[] = [
     lifecycle: "succeeded",
     seed: 12,
     name: "Smoke individual",
+    clothType: "work_tee",
+    clothCondition: "notgood",
     currentState: "BAG",
     startedAtIso: "2026-09-18T21:50:00.000Z",
     finishedAtIso: "2026-09-18T21:50:44.000Z",
@@ -230,6 +241,8 @@ export const FIXTURE_HISTORY: RunSummary[] = [
     lifecycle: "cancelled",
     seed: 7,
     name: "Cancellation test",
+    clothType: "tank",
+    clothCondition: "skewed",
     currentState: "PRESS",
     startedAtIso: "2026-09-18T21:40:00.000Z",
     finishedAtIso: "2026-09-18T21:40:18.000Z",
@@ -297,11 +310,23 @@ export const FIXTURE_RUNS_BY_ID: Record<string, RunDetail> = {
     batchId: "B-007",
     seed: 12,
     name: "Smoke individual",
+    clothType: "work_tee",
+    clothCondition: "notgood",
+    garment: "work_tee",
     config: {
       name: "Smoke individual",
       seed: 12,
       scenario: "openarm-ninja-bag",
       notes: null,
+      clothType: "work_tee",
+      clothCondition: "notgood",
+    },
+    metrics: {
+      cycleTimeSimS: 43.1,
+      cycleTimeWallS: 44.0,
+      flatnessPre: 0.044,
+      flatnessPost: 0.0022,
+      shirtInBag: true,
     },
   },
   "RUN-009": {
@@ -310,6 +335,9 @@ export const FIXTURE_RUNS_BY_ID: Record<string, RunDetail> = {
     lifecycle: "cancelled",
     seed: 7,
     name: "Cancellation test",
+    garment: "tank",
+    clothType: "tank",
+    clothCondition: "skewed",
     currentState: "PRESS",
     startedAtIso: "2026-09-18T21:40:00.000Z",
     finishedAtIso: "2026-09-18T21:40:18.000Z",
@@ -333,4 +361,101 @@ export const FIXTURE_RUNS_BY_ID: Record<string, RunDetail> = {
     events: eventsFor("RUN-009", "PRESS"),
     telemetry: null,
   },
+  "RUN-008": extraCatalogRun("RUN-008", {
+    batchId: "B-008",
+    lifecycle: "succeeded",
+    seed: 38,
+    name: "Polo clean",
+    clothType: "polo",
+    clothCondition: "good",
+    startedAtIso: "2026-09-18T21:30:00.000Z",
+    cycleTimeSimS: 39.4,
+    cycleTimeWallS: 40.2,
+    shirtInBag: true,
+  }),
+  "RUN-007": extraCatalogRun("RUN-007", {
+    batchId: "B-008",
+    lifecycle: "failed",
+    seed: 37,
+    name: "Torn tee",
+    clothType: "tee",
+    clothCondition: "damaged",
+    startedAtIso: "2026-09-18T21:20:00.000Z",
+    cycleTimeSimS: 16.8,
+    cycleTimeWallS: 17.4,
+    shirtInBag: false,
+    failReason: "Hole snagged on the platen",
+  }),
+  "RUN-006": extraCatalogRun("RUN-006", {
+    batchId: "B-007",
+    lifecycle: "succeeded",
+    seed: 11,
+    name: "Stained jersey",
+    clothType: "jersey",
+    clothCondition: "notgood",
+    startedAtIso: "2026-09-18T21:10:00.000Z",
+    cycleTimeSimS: 46.2,
+    cycleTimeWallS: 47.0,
+    shirtInBag: true,
+  }),
+  "RUN-005": extraCatalogRun("RUN-005", {
+    batchId: null,
+    lifecycle: "succeeded",
+    seed: 4,
+    name: "Pinafore",
+    clothType: "dress",
+    clothCondition: "good",
+    startedAtIso: "2026-09-18T21:00:00.000Z",
+    cycleTimeSimS: 44.0,
+    cycleTimeWallS: 45.1,
+    shirtInBag: true,
+  }),
 };
+
+function extraCatalogRun(
+  id: string,
+  opts: {
+    batchId: string | null;
+    lifecycle: RunDetail["lifecycle"];
+    seed: number;
+    name: string;
+    clothType: string;
+    clothCondition: string;
+    startedAtIso: string;
+    cycleTimeSimS: number | null;
+    cycleTimeWallS: number | null;
+    shirtInBag: boolean | null;
+    failReason?: string;
+  },
+): RunDetail {
+  const failed = opts.lifecycle === "failed";
+  return {
+    ...(failed ? FIXTURE_FAILED_RUN : FIXTURE_SUCCEEDED_RUN),
+    id,
+    batchId: opts.batchId,
+    lifecycle: opts.lifecycle,
+    seed: opts.seed,
+    name: opts.name,
+    garment: opts.clothType,
+    clothType: opts.clothType,
+    clothCondition: opts.clothCondition,
+    startedAtIso: opts.startedAtIso,
+    finishedAtIso: opts.startedAtIso,
+    failReason: opts.failReason ?? null,
+    metrics: {
+      cycleTimeSimS: opts.cycleTimeSimS,
+      cycleTimeWallS: opts.cycleTimeWallS,
+      flatnessPre: failed ? 0.05 : 0.033,
+      flatnessPost: failed ? null : 0.0019,
+      shirtInBag: opts.shirtInBag,
+    },
+    config: {
+      name: opts.name,
+      seed: opts.seed,
+      scenario: "openarm-ninja-bag",
+      notes: null,
+      clothType: opts.clothType,
+      clothCondition: opts.clothCondition,
+    },
+  };
+}

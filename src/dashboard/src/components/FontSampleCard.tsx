@@ -74,7 +74,7 @@ export function FontSampleCard({
           <dl className="grid grid-cols-2 gap-3 px-3 py-4 sm:grid-cols-5">
             <Metric
               label="Stage"
-              value="Ninja fold"
+              value="Fold"
               monoClassName={monoClassName}
               monoStyle={monoStyle}
               mono={false}
@@ -109,7 +109,7 @@ export function FontSampleCard({
 
         {/* Stages + data row */}
         <div className="grid gap-3 sm:grid-cols-3">
-          {["Pick", "Ninja fold", "Bag"].map((stage, i) => (
+          {["Rotate", "Fold", "Pack"].map((stage, i) => (
             <div
               key={stage}
               className={`rounded-[4px] border px-3 py-2 ${

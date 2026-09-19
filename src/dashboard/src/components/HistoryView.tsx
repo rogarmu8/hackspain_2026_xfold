@@ -8,10 +8,12 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from ".
 import { AppShell } from "@/components/AppShell";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
 import { FoldMark } from "@/components/FoldMark";
+import { GraphsView, conditionFilterLabel } from "@/components/GraphsView";
 import { NewExperimentDialog } from "@/components/NewExperimentDialog";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useDashboard } from "@/lib/dashboard-context";
-import { formatIso, formatSeconds, lifecycleLabel } from "@/lib/format";
+import { formatIso, formatSeconds, lifecycleLabel, clothTypeLabel } from "@/lib/format";
+import { filterChartRuns, GRAPH_GROUPS, GRAPH_MEASURES, uniqueValues, type ChartMetric, type GraphGroup } from "@/lib/run-charts";
 import type { RunLifecycle, RunSummary } from "@/lib/types";
 
 const LIFECYCLES: [RunLifecycle | "all", string][] = [
@@ -23,6 +25,10 @@ const LIFECYCLES: [RunLifecycle | "all", string][] = [
   ["paused", "Paused"],
   ["queued", "Queued"],
 ];
+
+const CONTROL =
+  "h-10 rounded-[var(--radius-sm)] border border-input bg-surface px-3 text-sm";
+const FIELD = `mt-1 block ${CONTROL}`;
 
 const tone = (lifecycle: RunLifecycle) =>
   lifecycle === "running" || lifecycle === "paused"
@@ -39,6 +45,11 @@ export function HistoryView() {
   const router = useRouter();
   const [lifecycle, setLifecycle] = useState<"all" | RunLifecycle>("all");
   const [query, setQuery] = useState("");
+  const [view, setView] = useState<"list" | "graphs">("list");
+  const [clothType, setClothType] = useState("all");
+  const [clothCondition, setClothCondition] = useState("all");
+  const [metric, setMetric] = useState<ChartMetric>("cycle");
+  const [group, setGroup] = useState<GraphGroup>("clothType");
 
   const active = snapshot.activeRun;
   const rows = useMemo(() => {
@@ -58,8 +69,14 @@ export function HistoryView() {
     });
   }, [history, lifecycle, query, active?.id]);
 
+  const graphRows = useMemo(
+    () => filterChartRuns(history, { lifecycle, query, clothType, clothCondition, batchId: "all" }),
+    [history, lifecycle, query, clothType, clothCondition],
+  );
+
   return (
     <AppShell
+      fit
       title="Runs"
       eyebrow="individual · batches"
       actions={
@@ -73,14 +90,10 @@ export function HistoryView() {
         </>
       }
     >
-      {snapshot.provenance === "fixture" ? (
-        <p className="eyebrow mb-4">Sample data</p>
-      ) : null}
-
-      {active ? (
+      {active && view === "list" ? (
         <Link
           href={`/historial/${active.id}`}
-          className="mb-4 flex flex-wrap items-center gap-3 border border-active/40 bg-surface px-4 py-3 no-underline hover:border-active"
+          className="mb-3 flex shrink-0 flex-wrap items-center gap-3 border border-active/40 bg-surface px-4 py-2 no-underline hover:border-active"
         >
           <StatusBadge tone="active">{lifecycleLabel(active.lifecycle)}</StatusBadge>
           <span className="font-mono font-semibold tabular">{active.id}</span>
@@ -91,7 +104,28 @@ export function HistoryView() {
         </Link>
       ) : null}
 
-      <div className="mb-4 flex flex-wrap items-end gap-3">
+      <div className="mb-3 flex shrink-0 items-end gap-3 overflow-x-auto">
+        <div>
+          <p className="text-[13px] font-semibold" id="history-view-label">View</p>
+          <div className="mt-1 flex gap-2" role="group" aria-labelledby="history-view-label">
+            <button
+              type="button"
+              aria-pressed={view === "list"}
+              onClick={() => setView("list")}
+              className={`${CONTROL} ${view === "list" ? "font-semibold text-ink" : "text-muted-foreground hover:text-ink"}`}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === "graphs"}
+              onClick={() => setView("graphs")}
+              className={`${CONTROL} ${view === "graphs" ? "font-semibold text-ink" : "text-muted-foreground hover:text-ink"}`}
+            >
+              Graphs
+            </button>
+          </div>
+        </div>
         <div>
           <label htmlFor="history-q" className="text-[13px] font-semibold">Search</label>
           <input
@@ -99,7 +133,7 @@ export function HistoryView() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="RUN-014, seed, batch…"
-            className="mt-1 block h-10 w-64 rounded-[var(--radius-sm)] border border-input bg-surface px-3 text-sm"
+            className={`${FIELD} w-52`}
           />
         </div>
         <div>
@@ -108,18 +142,76 @@ export function HistoryView() {
             id="history-life"
             value={lifecycle}
             onChange={(e) => setLifecycle(e.target.value as "all" | RunLifecycle)}
-            className="mt-1 block h-10 rounded-[var(--radius-sm)] border border-input bg-surface px-3 text-sm"
+            className={FIELD}
           >
             {LIFECYCLES.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
           </select>
         </div>
+        {view === "graphs" ? (
+          <>
+            <div>
+              <label htmlFor="graph-cloth" className="text-[13px] font-semibold">Clothing</label>
+              <select id="graph-cloth" className={FIELD} value={clothType} onChange={(e) => setClothType(e.target.value)}>
+                <option value="all">All types</option>
+                {uniqueValues(history, "clothType").map((id) => (
+                  <option key={id} value={id}>{id === "unknown" ? "Unspecified" : clothTypeLabel(id)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="graph-cond" className="text-[13px] font-semibold">Condition</label>
+              <select id="graph-cond" className={FIELD} value={clothCondition} onChange={(e) => setClothCondition(e.target.value)}>
+                <option value="all">All conditions</option>
+                {uniqueValues(history, "clothCondition").map((id) => (
+                  <option key={id} value={id}>{id === "unknown" ? "Unspecified" : conditionFilterLabel(id)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="graph-metric" className="text-[13px] font-semibold">Measure</label>
+              <select
+                id="graph-metric"
+                className={FIELD}
+                value={metric}
+                onChange={(e) => setMetric(e.target.value as ChartMetric)}
+              >
+                {GRAPH_MEASURES.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="graph-group" className="text-[13px] font-semibold">By</label>
+              <select
+                id="graph-group"
+                className={FIELD}
+                value={group}
+                onChange={(e) => setGroup(e.target.value as GraphGroup)}
+              >
+                {GRAPH_GROUPS.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </select>
+            </div>
+          </>
+        ) : null}
         <span className="ml-auto self-center font-mono text-[11px] tabular text-muted-foreground">
-          {rows.length} / {history.length}
+          {view === "graphs" ? graphRows.length : rows.length} / {history.length}
         </span>
       </div>
 
-      {rows.length === 0 ? (
-        <div className="border border-divider bg-surface px-6 py-10">
+      {view === "graphs" ? (
+        <GraphsView
+          runs={history}
+          lifecycle={lifecycle}
+          query={query}
+          clothType={clothType}
+          clothCondition={clothCondition}
+          metric={metric}
+          group={group}
+        />
+      ) : rows.length === 0 ? (
+        <div className="min-h-0 flex-1 border border-divider bg-surface px-6 py-10">
           <FoldMark size={32} className="mb-4 opacity-40" />
           <h2 className="text-lg font-semibold">No runs</h2>
           <p className="mt-2 max-w-lg text-sm text-muted-foreground">
@@ -129,7 +221,7 @@ export function HistoryView() {
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto border border-divider bg-surface">
+        <div className="min-h-0 flex-1 overflow-auto border border-divider bg-surface">
           <Table className="w-full min-w-[720px] border-collapse text-left text-sm">
             <TableHeader>
               <TableRow className="border-b border-divider text-[13px] text-muted-foreground">

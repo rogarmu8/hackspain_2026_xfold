@@ -27,7 +27,7 @@ const looks = new Map<string, string>();
 
 type Phase = { state: "idle" | "loading" } | { state: "error"; message: string };
 
-export function ProductShotPanel({ run }: { run: RunDetail }) {
+export function ProductShotPanel({ run, embed = false }: { run: RunDetail; embed?: boolean }) {
   const [look, setLook] = useState<string | null>(() => looks.get(run.id) ?? null);
   const [phase, setPhase] = useState<Phase>({ state: "idle" });
 
@@ -64,18 +64,8 @@ export function ProductShotPanel({ run }: { run: RunDetail }) {
 
   const busy = phase.state === "loading";
 
-  return (
-    <aside className="flex flex-col gap-3 border border-divider bg-surface p-4">
-      <header>
-        <p className="eyebrow flex items-center gap-1.5">
-          <Camera className="size-3.5" strokeWidth={1.75} aria-hidden />
-          Product photo
-        </p>
-        <p className="mt-0.5 font-mono text-xs text-muted-foreground">
-          overhead camera · after the press
-        </p>
-      </header>
-
+  const inner = (
+    <>
       <div className="grid grid-cols-2 gap-3">
         <figure className="m-0 flex flex-col gap-1.5">
           {/* eslint-disable-next-line @next/next/no-img-element -- bridge file, not a Next asset */}
@@ -125,6 +115,25 @@ export function ProductShotPanel({ run }: { run: RunDetail }) {
             : "Sends the photo to OpenAI and returns the garment on a model"}
         </p>
       )}
+    </>
+  );
+
+  if (embed) {
+    return <div className="flex flex-col gap-3 overflow-y-auto p-4">{inner}</div>;
+  }
+
+  return (
+    <aside className="flex flex-col gap-3 border border-divider bg-surface p-4">
+      <header>
+        <p className="eyebrow flex items-center gap-1.5">
+          <Camera className="size-3.5" strokeWidth={1.75} aria-hidden />
+          Product photo
+        </p>
+        <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+          overhead camera · after the press
+        </p>
+      </header>
+      {inner}
     </aside>
   );
 }

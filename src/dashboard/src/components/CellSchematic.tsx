@@ -1,11 +1,18 @@
 import type { PhaseId, PhaseDefinition } from "@xfold/protocol";
+import { operatorStepTitle } from "@/lib/format";
 
 /** Schematic only: not rendered physics or live robot poses. */
 export function CellSchematic({ stage, stages }: { stage: PhaseId | null; stages?: PhaseDefinition[] }) {
   if (stages?.some((s) => s.label)) {
     return <div className="flex max-w-2xl flex-col gap-4 text-center font-mono text-xs">
       <p>No reconstructable image · phases recorded by the simulation</p>
-      <ol className="flex flex-wrap justify-center gap-3">{stages.map((s) => <li key={s.state} className={s.state === stage ? "text-hud" : "text-hud-dim"}>{s.label ?? s.state}</li>)}</ol>
+      <ol className="flex flex-wrap justify-center gap-3">
+        {operatorTitles(stages).map((label) => (
+          <li key={label} className={label === operatorStepTitle(stage ?? "", stages) ? "text-hud" : "text-hud-dim"}>
+            {label}
+          </li>
+        ))}
+      </ol>
     </div>;
   }
   return <svg viewBox="0 0 800 340" className="w-full max-h-[330px]" role="img" aria-label="Cell schematic: infeed, two OpenArm arms, press, and chute into the bag. Not real robot poses.">
@@ -25,8 +32,17 @@ export function CellSchematic({ stage, stages }: { stage: PhaseId | null; stages
     <path d={stage === "FOLD" || stage === "CHUTE" || stage === "BAG" ? "M362 139h78v78h-78z" : "M357 119l-35 19 15 33 20-9v66h86v-66l20 9 15-33-35-19-25 12h-36z"} fill="#35858a" fillOpacity=".4" stroke="#83bbb6" strokeWidth="1.5" />
     <path d="M365 143l70 68m-70 0 70-68" stroke="#83bbb6" strokeOpacity=".3" />
     <g fontFamily="monospace" fontSize="11" fill="#c5c7bc" letterSpacing="2">
-      <text x="84" y="263">01 / INFEED</text><text x="316" y="292">02 / PRESS + FOLD</text><text x="621" y="292">03 / BAG</text>
+      <text x="84" y="263">01 / ROTATE</text><text x="316" y="292">02 / PRESS + FOLD</text><text x="621" y="292">03 / BAG + PACK</text>
       <text x="330" y="35" fill="#83bbb6">OPENARM · L + R</text>
     </g>
   </svg>;
+}
+
+function operatorTitles(stages: PhaseDefinition[]): string[] {
+  const titles: string[] = [];
+  for (const s of stages) {
+    const label = operatorStepTitle(s.state, stages);
+    if (titles.at(-1) !== label) titles.push(label);
+  }
+  return titles;
 }

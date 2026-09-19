@@ -19,7 +19,7 @@ import { XFoldLoader } from "@/components/XFoldLoader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { STAGE_ICONS, DEFAULT_STAGE_ICON } from "@/lib/stage-icons";
-import { formatFlatness, formatSeconds, lifecycleLabel, stageLabel } from "@/lib/format";
+import { formatFlatness, formatSeconds, lifecycleLabel, operatorStepTitle } from "@/lib/format";
 import {
   useLiveViewport,
   type ViewportStatus,
@@ -191,7 +191,7 @@ export function SimulationViewport({
                 className="hud-flash flex items-center gap-2 border border-hud/40 bg-black/50 px-2 py-1"
               >
                 <StageIcon className="size-3.5" strokeWidth={1.75} aria-hidden />
-                {stage ? stageLabel(stage, run?.stages) : null}
+                {stage ? operatorStepTitle(stage, run?.stages) : null}
               </span>
             ) : (
               <span className="text-hud-dim">standby</span>
@@ -244,7 +244,7 @@ export function SimulationViewport({
           <ReplayControls replay={replay} />
         ) : run?.telemetry && !videoUp ? (
           <dl className="pointer-events-none absolute inset-x-0 bottom-0 grid grid-cols-5 gap-x-3 border-t border-hud/15 bg-black/60 px-6 py-2.5 text-left backdrop-blur-[2px]">
-            <Metric label="operation" value={run.telemetry.operation?.id ?? stageLabel(run.telemetry.state, run.stages)} />
+            <Metric label="operation" value={run.telemetry.operation?.id ?? operatorStepTitle(run.telemetry.state, run.stages)} />
             <Metric label="cycle" value={String(run.telemetry.cycle)} />
             <Metric label="flatness" value={formatFlatness(run.telemetry.flatness)} />
             <Metric label="in bag" value={run.telemetry.shirt_in_bag == null ? "not measured" : run.telemetry.shirt_in_bag ? "yes" : "no"} />

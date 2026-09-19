@@ -624,7 +624,12 @@ function NewExperimentDialogBody({
               Advanced options
             </summary>
             <p className="mt-2 text-sm text-muted-foreground">
-              {process?.stages.map((s) => s.label ?? s.state).join(" → ") ?? "Phases and parameters come from the active simulator."}
+              {process?.stages
+                ? process.stages
+                    .map((s) => s.label ?? s.state)
+                    .filter((label, i, all) => all[i - 1] !== label)
+                    .join(" → ")
+                : "Phases and parameters come from the active simulator."}
             </p>
           </details>
         </FieldGroup>
