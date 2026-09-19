@@ -555,25 +555,6 @@ function NewExperimentDialogBody({
             }
           />
 
-          <MixField
-            formId={`${formId}-cond`}
-            axis="condición"
-            batch={batch}
-            mix={conditionMix}
-            onMixChange={setConditionMix}
-            options={condPool}
-            selected={conditions}
-            onSelectedChange={setConditions}
-            labelOf={clothConditionLabel}
-            pickHint="La misma condición en toda la fila."
-            randomHint="Cada camisa sortea condición con los pesos. Torcida = plana, rotada con la semilla."
-            listHint="Cada camisa sale de las condiciones marcadas."
-            weights={conditionWeights}
-            onWeightChange={(key, value) =>
-              setConditionWeights((prev) => ({ ...prev, [key]: value }))
-            }
-          />
-
           {customGarment ? (
           <Field>
             <FieldLabel htmlFor={`${formId}-design`}>Foto de la prenda</FieldLabel>
@@ -617,6 +598,25 @@ function NewExperimentDialogBody({
             ) : null}
           </Field>
           ) : null}
+
+          <MixField
+            formId={`${formId}-cond`}
+            axis="condición"
+            batch={batch}
+            mix={conditionMix}
+            onMixChange={setConditionMix}
+            options={condPool}
+            selected={conditions}
+            onSelectedChange={setConditions}
+            labelOf={clothConditionLabel}
+            pickHint="La misma condición en toda la fila."
+            randomHint="Cada camisa sortea condición con los pesos. Torcida = plana, rotada con la semilla."
+            listHint="Cada camisa sale de las condiciones marcadas."
+            weights={conditionWeights}
+            onWeightChange={(key, value) =>
+              setConditionWeights((prev) => ({ ...prev, [key]: value }))
+            }
+          />
 
           <details className="border-t border-border pt-3">
             <summary className="cursor-pointer text-sm font-semibold">
