@@ -16,6 +16,10 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { STAGE_ICONS } from "@/lib/stage-icons";
 import { formatFlatness, formatSeconds, lifecycleLabel, stageLabel } from "@/lib/format";
+import {
+  useLiveViewport,
+  type ViewportStatus,
+} from "@/lib/use-live-viewport";
 import type { DataProvenance, RunDetail } from "@/lib/types";
 
 export function SimulationViewport({
@@ -27,7 +31,7 @@ export function SimulationViewport({
   run: RunDetail | null;
   provenance: DataProvenance;
   streamAvailable: boolean;
-  /** Base URL of the Python bridge (for MJPEG <img src>). */
+  /** Direct bridge URL (fallback if Next proxy cannot reach it). */
   bridgeUrl?: string;
 }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -45,10 +49,17 @@ export function SimulationViewport({
   };
 
   const running = run?.lifecycle === "running";
-  const showMjpeg = streamAvailable && Boolean(bridgeUrl) && provenance !== "fixture";
-  const live = running && showMjpeg;
+  const showLive =
+    streamAvailable && Boolean(bridgeUrl) && provenance !== "fixture";
+  const live = running && showLive;
   const stage = run?.currentState ?? null;
   const StageIcon = stage ? STAGE_ICONS[stage] : null;
+
+  const viewport = useLiveViewport({
+    enabled: showLive,
+    bridgeUrl,
+    waitMs: 1500,
+  });
 
   return (
     <section className="flex min-h-0 flex-1 flex-col border border-divider bg-surface">
@@ -60,6 +71,9 @@ export function SimulationViewport({
           {run?.seed != null ? (
             <span className="eyebrow hidden sm:inline">seed {run.seed}</span>
           ) : null}
+          {live ? (
+            <StatusBadge tone="active">En directo</StatusBadge>
+          ) : null}
           {run && !running ? (
             <StatusBadge tone={run.lifecycle === "failed" ? "danger" : "neutral"}>
               {lifecycleLabel(run.lifecycle)}
@@ -70,6 +84,7 @@ export function SimulationViewport({
               Ejemplo
             </StatusBadge>
           ) : null}
+          {showLive ? <ViewportStatusBadge status={viewport.status} /> : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {run ? (
@@ -99,14 +114,28 @@ export function SimulationViewport({
         <span className="hud-corner" aria-hidden />
         {live ? <div className="scanline" aria-hidden /> : null}
 
-        {showMjpeg ? (
-          // MJPEG: native <img> multipart stream — no WebSocket required
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={`${bridgeUrl}/viewport/stream`}
-            alt="Vista MuJoCo de la celda XFOLD"
-            className="absolute inset-0 h-full w-full object-contain"
-          />
+        {showLive ? (
+          viewport.src ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={viewport.src}
+              alt="Vista MuJoCo de la celda XFold"
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center font-mono text-[12px] uppercase tracking-[0.12em] text-hud-dim">
+              <span>
+                {viewport.status === "offline"
+                  ? viewport.error ?? "Sin señal del viewport"
+                  : "Cargando vista 3D…"}
+              </span>
+              {viewport.error && viewport.status !== "offline" ? (
+                <span className="normal-case tracking-normal text-hud-dim/70">
+                  {viewport.error}
+                </span>
+              ) : null}
+            </div>
+          )
         ) : (
           <div className="absolute inset-0 flex items-center justify-center p-6">
             <CellSchematic stage={stage} />
@@ -133,10 +162,13 @@ export function SimulationViewport({
                 <span className="pulse-dot size-2 rounded-full bg-danger text-danger" aria-hidden />
                 <span>live</span>
               </>
-            ) : showMjpeg ? (
+            ) : showLive ? (
               <>
                 <Camera className="size-3.5" strokeWidth={1.75} aria-hidden />
-                <span>mujoco · overview</span>
+                <span>
+                  mujoco · long-poll
+                  {viewport.seq ? ` · #${viewport.seq}` : ""}
+                </span>
               </>
             ) : (
               <>
@@ -155,7 +187,7 @@ export function SimulationViewport({
             <Metric label="en bolsa" value={run.telemetry.shirt_in_bag ? "sí" : "no"} />
             <Metric label="t sim" value={formatSeconds(run.telemetry.t)} />
           </dl>
-        ) : !run && !showMjpeg ? (
+        ) : !run && !showLive ? (
           <p className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-2 px-6 py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-hud-dim">
             <Radio className="size-3.5" strokeWidth={1.75} aria-hidden />
             Lanza un experimento para ver la celda
@@ -164,6 +196,20 @@ export function SimulationViewport({
       </div>
     </section>
   );
+}
+
+function ViewportStatusBadge({ status }: { status: ViewportStatus }) {
+  if (status === "live") return null;
+  if (status === "waiting") {
+    return <StatusBadge tone="neutral">Esperando frame</StatusBadge>;
+  }
+  if (status === "stale") {
+    return <StatusBadge tone="pending">Vista stale</StatusBadge>;
+  }
+  if (status === "offline") {
+    return <StatusBadge tone="danger">Sin cámara</StatusBadge>;
+  }
+  return null;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

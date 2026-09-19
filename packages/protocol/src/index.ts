@@ -105,6 +105,12 @@ export type BatchLifecycle =
 export type BridgeCapabilities = {
   liveTelemetry: boolean;
   viewportStream: boolean;
+  /** True once at least one JPEG has been published. */
+  viewportReady?: boolean;
+  /** UI transport hint: long-poll (primary) vs legacy mjpeg. */
+  viewportTransport?: "long-poll" | "mjpeg";
+  /** Server-side trajectory seek (`GET /runs/{id}/recording/frame?t=`). */
+  recordingSeek?: boolean;
   startRun: boolean;
   startBatch: boolean;
   commands: Partial<Record<CommandKind, boolean>>;

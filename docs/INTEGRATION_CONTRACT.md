@@ -12,7 +12,7 @@ If you change the contract, you **must** update: protocol TS → Python schema �
 
 > The **physics / FSM driver** emits **journal facts** into **Runtime**; the **bridge HTTP** exposes that journal (SSE) and accepts commands (REST); the **dashboard** renders snapshots and never talks to MuJoCo directly.
 
-The sim does **not** need to be finished for this to work. Today `MockDriver` fakes the process. Tomorrow MuJoCo calls the **same** `Runtime.emit_*` API.
+Live default: `PressBridgeDriver` on a shared `SimSession` (PressCycle + cloth). Fallback: `MockDriver` when MuJoCo / press_cell is unavailable.
 
 ---
 
@@ -65,10 +65,23 @@ Every event has: `seq`, `tsIso`, `type`, `runId`, `batchId`.
 | GET | `/capabilities` | What UI may enable |
 | GET | `/snapshot` | Control-room materialization |
 | GET | `/events/stream?after_seq=N` | Live journal (SSE) |
+| GET | `/viewport/meta` | Viewport readiness (`seq`, `ageMs`, …) |
+| GET | `/viewport/frame?after_seq=&wait_ms=` | **Primary** live view: long-poll JPEG |
+| GET | `/viewport/stream` | Legacy MJPEG (curl/VLC only — not the dashboard) |
+| GET | `/runs/{id}/timeline` | FSM markers for scrubber |
+| GET | `/runs/{id}/recording` | Trajectory metadata |
+| GET | `/runs/{id}/recording/frame?t=` | Replay seek (JPEG + state) |
 | POST | `/runs`, `/batches` | Launch |
 | POST | `/commands` | `{ clientCommandId, kind, runId?, batchId? }` |
 
-Do **not** add WebSocket or gRPC to the browser without an explicit team decision recorded in `TRACKING.md` and an update to this contract.
+**Two planes (do not mix):**
+
+| Plane | Transport | Carries |
+|-------|-----------|---------|
+| Control | Journal + REST/SSE | FSM, metrics, commands |
+| Media | Long-poll JPEG (`/viewport/frame`) | Live camera pixels |
+
+Dashboard reaches the media plane via same-origin Next proxy `/api/bridge/*` → Python `:8765` (avoids CORS + Safari MJPEG bugs). Do **not** put JPEG in the journal. Do **not** use multipart MJPEG in `<img>` for Control.
 
 ---
 
@@ -102,11 +115,11 @@ Do **not** add WebSocket or gRPC to the browser without an explicit team decisio
 
 3. Respect pause/cancel: read the active run via `runtime.driver_active_run()` (or equivalent flags). If `paused` / `lifecycle == "paused"`, do not advance stages. If cancelled, stop emitting.
 4. Put flatness (or other metrics) into `emit_state` / a dedicated metric path that still ends as `metric_sample` — do not invent a parallel `/telemetry` WebSocket.
-5. Viewport = **separate** image channel (`GET /viewport/stream` MJPEG). Do not jam JPEG into the journal. Set `viewportStream: true` only when MuJoCo Renderer is actually producing frames.
+5. Viewport = **separate** media plane: long-poll `GET /viewport/frame` (dashboard via `/api/bridge`). MJPEG `/viewport/stream` is legacy only. Do not jam JPEG into the journal. Set `viewportStream: true` when the producer is running; `viewportReady` when a frame exists.
 6. Run: bridge up → `curl /snapshot` shows your states → dashboard badge “Bridge conectado”; with mujoco env, Control shows live 3D via `/viewport/stream`.
 7. Note the change in `TRACKING.md` (decision or obstacle).
 
-**Reference implementation to copy:** [`src/sim/src/xfold/bridge/mock_driver.py`](../src/sim/src/xfold/bridge/mock_driver.py).
+**Reference implementations:** [`press_driver.py`](../src/sim/src/xfold/bridge/press_driver.py) (live PressCycle) and [`mock_driver.py`](../src/sim/src/xfold/bridge/mock_driver.py) (fallback).
 
 ---
 
@@ -131,22 +144,29 @@ Bridge/dashboard owners ship the **bus + Control UI + MJPEG viewport**. Other tr
 ### Cloth / flexcomp (shirt physics)
 
 - **Do:** iterate `flexcomp` (grid first) in your MJCF / scripts until stable 10s+; metrics → CSV when ready.
-- **Do:** when the shirt should appear in Control’s 3D view, ensure it lives in the model rendered by `viewport_mujoco.MODEL_PATH` (today [`src/sim/models/cell.xml`](../src/sim/models/cell.xml)), **or** change `MODEL_PATH` once and note it in `TRACKING.md`.
+- **Do:** when the shirt should appear in Control’s 3D view, put it in the scene built by `scene.build()` / `SimSession` (press_cell). Viewport is render-only on that session.
 - **Do not:** stream flex vertices over SSE; do not block the cloth solver on dashboard I/O.
-- **Stub note:** `shirt_proxy` (blue box + `shirt_free`) is a **placeholder** for the viewport/MockDriver. Prefer adding real cloth beside it, then remove the proxy when cloth is demo-ready.
+- **Do not:** add a second independent MuJoCo loop for MJPEG — share `SimSession`.
 
-### Shared `cell.xml` etiquette
+### Shared scene etiquette
 
-- Preserve `<camera name="overview"/>` (viewport MJPEG depends on it).
+- Preserve `<camera name="overview"/>` (live viewport depends on it).
 - Prefer **additive** bodies/geoms over renaming plant frames used by others.
-- If you must rename `shirt_free` / `shirt_proxy`, update `_STAGE_POSE` in `viewport_mujoco.py` or delete that pose hack once real cloth/arm drive the scene.
+- Live driver: `PressBridgeDriver` (fallback `MockDriver` if MuJoCo/press_cell unavailable).
+- Arm teammates: emit into the same `Runtime`; extend the press cycle or replace driver — do not fight the viewport render thread.
 
-### Viewport vs journal
+### Viewport vs journal vs recording
 
 | Channel | Carries | Owner concern |
 |---------|---------|----------------|
 | Journal + SSE | FSM stage, metrics, commands | Arm emits stages; cloth may later emit flatness |
-| `GET /viewport/stream` | JPEG frames from `mujoco.Renderer` | Whoever owns the loaded MJCF scene |
+| `GET /viewport/frame` (long-poll) | Live JPEG from shared `SimSession` | Primary UI path; Next `/api/bridge` proxy |
+| `GET /viewport/stream` | Legacy multipart MJPEG | curl/VLC only |
+| `GET /runs/{id}/recording/frame?t=` | Replay seek JPEG + FSM state | NPZ trajectory; badge must say **Replay**, never live |
+
+**Shared session:** [`sim_session.py`](../src/sim/src/xfold/bridge/sim_session.py). Drivers call `runtime.emit_state(..., t=float(data.time))`. Do not invent a second MjData for the live viewport.
+
+Do **not** add WebSocket or gRPC to the browser without an explicit team decision in `TRACKING.md` and an update to this contract.
 
 ---
 

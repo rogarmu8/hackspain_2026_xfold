@@ -58,6 +58,7 @@ BRIDGE_VERSION = "0.1.0"
 class BridgeCapabilities(BaseModel):
     liveTelemetry: bool = True
     viewportStream: bool = False
+    recordingSeek: bool = False
     startRun: bool = True
     startBatch: bool = True
     commands: dict[str, bool] = Field(

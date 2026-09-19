@@ -8,6 +8,7 @@ import type { SimulatorCapabilities } from "./types";
 export const OFFLINE_CAPABILITIES: SimulatorCapabilities = {
   liveTelemetry: false,
   viewportStream: false,
+  recordingSeek: false,
   startRun: false,
   startBatch: false,
   commands: {},
@@ -20,6 +21,7 @@ export const LIVE_CAPABILITIES = OFFLINE_CAPABILITIES;
 export const FIXTURE_CAPABILITIES: SimulatorCapabilities = {
   liveTelemetry: false,
   viewportStream: false,
+  recordingSeek: false,
   startRun: true,
   startBatch: true,
   commands: {
@@ -38,6 +40,7 @@ export function fromBridgeCapabilities(
   return {
     liveTelemetry: caps.liveTelemetry,
     viewportStream: caps.viewportStream,
+    recordingSeek: caps.recordingSeek ?? false,
     startRun: caps.startRun,
     startBatch: caps.startBatch,
     commands: { ...caps.commands },
