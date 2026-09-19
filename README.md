@@ -158,6 +158,18 @@ browser a data URI; nothing is stored. Note that OpenAI gates `gpt-image-1`
 behind organisation verification — if the button reports a 403, that is what it
 means.
 
+### Run video
+
+Each run is recorded to H.264 while it runs. The viewport plays that instead of
+polling for stills — a few seconds behind live, and far better looking. The
+recording is written to `data/video/{run}/` as HLS; when the run ends the same
+playlist becomes a VOD, so the finished run scrubs like an ordinary video.
+
+The encoder comes from `imageio-ffmpeg` (installed with the `mujoco` env, no
+system ffmpeg needed); an `ffmpeg` on PATH is used if present. Without either,
+the viewport falls back to the previous JPEG long-poll and everything else
+works unchanged.
+
 **Live monitor:** `moon run pack` starts bridge + dashboard together. The UI probes `http://127.0.0.1:8765` (override with `NEXT_PUBLIC_XFOLD_BRIDGE_URL`). If the bridge is down, the dashboard keeps honest **fixtures**.
 
 - **Binding contract (teammates & agents):** [docs/INTEGRATION_CONTRACT.md](docs/INTEGRATION_CONTRACT.md)

@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from xfold.bridge.journal import Journal
 from xfold.bridge.line_driver import LineDriver
 from xfold.bridge.photo import find_photo
+from xfold.bridge.video import PLAYLIST, VideoManager, has_video, servable
 from xfold.bridge.mock_driver import MockDriver
 from xfold.bridge.press_driver import PressBridgeDriver
 from xfold.bridge.runtime import Runtime
@@ -44,12 +45,32 @@ def _repo_data_dir() -> Path:
     return here.parents[5] / "data" / "journal"
 
 
+# Render rate for both the video and the JPEG hub. The line runs at about
+# realtime, so this is also the video's frame rate.
+VIEWPORT_FPS = 12.0
+
+
 def create_app(*, persist: bool = True) -> FastAPI:
     journal = Journal(persist_dir=_repo_data_dir() if persist else None)
     runtime = Runtime(journal)
     session = SimSession()
     viewport_hub = ViewportHub()
-    viewport_producer = MujocoViewportProducer(session, viewport_hub)
+    # One render per frame feeds the run's H.264 video and the JPEG hub. The
+    # producer has no notion of runs, so it asks the runtime which one is live.
+    video = VideoManager(
+        session.width, session.height, VIEWPORT_FPS, on_open=runtime.mark_video
+    )
+    viewport_producer = MujocoViewportProducer(
+        session,
+        viewport_hub,
+        fps=VIEWPORT_FPS,
+        video=video,
+        active_run=lambda: (
+            run.id
+            if (run := runtime.driver_active_run()) and run.lifecycle == "running"
+            else None
+        ),
+    )
 
     # Driver chosen at startup once SimSession tries to load MuJoCo.
     driver: LineDriver | PressBridgeDriver | MockDriver | None = None
@@ -117,6 +138,20 @@ def create_app(*, persist: bool = True) -> FastAPI:
                     flush=True,
                 )
             runtime.capabilities.recordingSeek = session.can_render
+            runtime.capabilities.viewportVideo = bool(
+                session.can_render and video.available
+            )
+            if runtime.capabilities.viewportVideo:
+                print(
+                    "[video] H.264 per run at /runs/{id}/video/index.m3u8 "
+                    "(a couple of segments behind live)",
+                    flush=True,
+                )
+            else:
+                print(
+                    "[video] no ffmpeg — dashboard stays on JPEG long-poll",
+                    flush=True,
+                )
             runtime.driver_label = (
                 "LineDriver (belt, press, flap folder, bagger + SimSession)"
                 if kind == "line"
@@ -149,6 +184,7 @@ def create_app(*, persist: bool = True) -> FastAPI:
     @app.on_event("shutdown")
     def _shutdown() -> None:
         viewport_producer.stop()
+        video.close()
         d = getattr(app.state, "driver", None)
         if d is not None:
             d.stop()
@@ -378,6 +414,32 @@ def create_app(*, persist: bool = True) -> FastAPI:
             content=path.read_bytes(),
             media_type=mime,
             headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
+
+    @app.get("/runs/{run_id}/video/{name}")
+    def run_video(run_id: str, name: str) -> Response:
+        """HLS playlist and segments for a run.
+
+        The playlist grows while the run is live and gains #EXT-X-ENDLIST when
+        it finishes, so the same URL is the live stream and then the replay.
+        `name` is matched against a fixed pattern, so it cannot walk out of the
+        run's directory.
+        """
+        got = servable(run_id, name)
+        if got is None:
+            raise HTTPException(404, "no video for run")
+        path, mime = got
+        live = name == PLAYLIST
+        return Response(
+            content=path.read_bytes(),
+            media_type=mime,
+            headers={
+                # The playlist changes until the run ends; segments never do.
+                "Cache-Control": "no-store"
+                if live
+                else "public, max-age=31536000, immutable",
+                "Access-Control-Allow-Origin": "*",
+            },
         )
 
     @app.get("/batches/{batch_id}")

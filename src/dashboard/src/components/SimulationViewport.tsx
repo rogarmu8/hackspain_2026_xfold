@@ -24,6 +24,7 @@ import {
   useLiveViewport,
   type ViewportStatus,
 } from "@/lib/use-live-viewport";
+import { RunVideoPlayer, type Status as VideoStatus } from "@/components/RunVideoPlayer";
 import type { RunReplay } from "@/lib/use-run-replay";
 import type { DataProvenance, RunDetail } from "@/lib/types";
 
@@ -57,8 +58,22 @@ export function SimulationViewport({
   };
 
   const running = run?.lifecycle === "running";
+  // The bridge records each run to H.264. When it has, that one playlist is
+  // both the live view (tailing, a couple of segments behind) and the replay
+  // (a VOD the browser scrubs natively) — so it replaces the JPEG frame paths
+  // on both sides. Without a recording nothing changes.
+  const showVideo = Boolean(run?.hasVideo) && provenance !== "fixture";
+  const [videoStatus, setVideoStatus] = useState<VideoStatus>("waiting");
+  // A run is marked as recorded before ffmpeg closes its first segment, so the
+  // video has nothing to show for the first few seconds. Keep the long-poll
+  // frames underneath until it does, rather than blanking the viewport.
+  const videoUp = showVideo && videoStatus === "playing";
   const showLive =
-    !replay && streamAvailable && Boolean(bridgeUrl) && provenance !== "fixture";
+    !replay &&
+    !videoUp &&
+    streamAvailable &&
+    Boolean(bridgeUrl) &&
+    provenance !== "fixture";
   const live = running && showLive;
   const stage = replay ? replay.active : run?.currentState ?? null;
   const StageIcon = stage ? STAGE_ICONS[stage] ?? DEFAULT_STAGE_ICON : null;
@@ -116,7 +131,15 @@ export function SimulationViewport({
         <span className="hud-corner" aria-hidden />
         {live ? <div className="scanline" aria-hidden /> : null}
 
-        {replay ? (
+        {showVideo && run ? (
+          <RunVideoPlayer
+            runId={run.id}
+            live={running}
+            onStatus={setVideoStatus}
+            className="absolute inset-0 z-10 h-full w-full object-contain"
+          />
+        ) : null}
+        {videoUp ? null : replay ? (
           replay.frameSrc ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -175,7 +198,16 @@ export function SimulationViewport({
             )}
           </div>
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em]">
-            {replay ? (
+            {videoUp ? (
+              <>
+                {running ? (
+                  <span className="pulse-dot size-2 rounded-full bg-danger text-danger" aria-hidden />
+                ) : (
+                  <History className="size-3.5" strokeWidth={1.75} aria-hidden />
+                )}
+                <span>{running ? "live · h.264" : "replay · h.264"}</span>
+              </>
+            ) : replay ? (
               <>
                 <History className="size-3.5" strokeWidth={1.75} aria-hidden />
                 <span>replay{replay.hasTrajectory ? run?.config.inputs?.driver === "line" ? " partial · qpos" : " · mujoco" : " · phases"}</span>
@@ -203,14 +235,14 @@ export function SimulationViewport({
         </div>
 
         {!replay && run?.telemetry?.operation ? (
-          <div className="pointer-events-none absolute inset-x-6 top-16 max-w-xl bg-black/50 px-2 py-1 font-mono text-[11px] text-hud">
+          <div className="pointer-events-none absolute inset-x-6 top-16 z-20 max-w-xl bg-black/50 px-2 py-1 font-mono text-[11px] text-hud">
             <p>{run.telemetry.operation.message}</p>
             {run.telemetry.activities?.map((activity) => <p key={activity.station} className="text-hud-dim">{activity.station} · last parallel hit: {activity.message}</p>)}
           </div>
         ) : null}
-        {replay ? (
+        {replay && !videoUp ? (
           <ReplayControls replay={replay} />
-        ) : run?.telemetry ? (
+        ) : run?.telemetry && !videoUp ? (
           <dl className="pointer-events-none absolute inset-x-0 bottom-0 grid grid-cols-5 gap-x-3 border-t border-hud/15 bg-black/60 px-6 py-2.5 text-left backdrop-blur-[2px]">
             <Metric label="operation" value={run.telemetry.operation?.id ?? stageLabel(run.telemetry.state, run.stages)} />
             <Metric label="cycle" value={String(run.telemetry.cycle)} />

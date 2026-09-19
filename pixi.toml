@@ -20,6 +20,9 @@ mujoco = ">=3.2"
 mujoco-menagerie = "*"
 mink = "*"
 pillow = "*"
+# Ships a static ffmpeg, so recording a run needs nothing installed by hand.
+# The bridge falls back to an ffmpeg on PATH, and to JPEG frames without one.
+imageio-ffmpeg = ">=0.5"
 
 [environments]
 default = { features = [], solve-group = "dev" }

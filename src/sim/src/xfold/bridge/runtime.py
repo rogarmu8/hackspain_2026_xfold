@@ -73,6 +73,7 @@ class RunRecord:
     skewed: bool = False
     customTexture: str | None = None
     customDesign: bool = False
+    hasVideo: bool = False
 
     def telemetry(self) -> dict[str, Any] | None:
         if self.currentState is None:
@@ -105,6 +106,7 @@ class RunRecord:
             "finishedAtIso": self.finishedAtIso,
             "failReason": self.failReason,
             "hasPhoto": self.hasPhoto,
+            "hasVideo": self.hasVideo,
             "metrics": {
                 "cycleTimeSimS": self.t if self.lifecycle in {"succeeded", "failed", "cancelled"} else None,
                 "cycleTimeWallS": (
@@ -804,6 +806,13 @@ class Runtime:
             run = self.runs.get(run_id)
             if run:
                 run.hasPhoto = True
+
+    def mark_video(self, run_id: str) -> None:
+        """This run is being recorded; its HLS playlist is live."""
+        with self._lock:
+            run = self.runs.get(run_id)
+            if run:
+                run.hasVideo = True
 
     def bump_sim_time(self, run_id: str, t: float) -> None:
         """Update live telemetry clock without a journal event (substep ticks)."""

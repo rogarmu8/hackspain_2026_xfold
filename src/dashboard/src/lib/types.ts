@@ -51,6 +51,8 @@ export type SimulatorCapabilities = {
   liveTelemetry: boolean;
   viewportStream: boolean;
   recordingSeek?: boolean;
+  /** Runs are recorded to H.264; the viewport plays HLS instead of frames. */
+  viewportVideo?: boolean;
   startRun: boolean;
   startBatch: boolean;
   commands: Partial<Record<CommandKind, boolean>>;
@@ -152,6 +154,8 @@ export type RunDetail = RunSummary & {
   config: RunConfig;
   /** The QC camera fired for this run; GET /runs/{id}/photo has the shot. */
   hasPhoto?: boolean;
+  /** This run is recorded; GET /runs/{id}/video/index.m3u8 plays it. */
+  hasVideo?: boolean;
   stages: StageProgress[];
   events: RunEvent[];
   telemetry: Telemetry | null;

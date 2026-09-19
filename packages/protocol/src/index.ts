@@ -191,6 +191,8 @@ export type BridgeCapabilities = {
   viewportTransport?: "long-poll" | "mjpeg";
   /** Server-side trajectory seek (`GET /runs/{id}/recording/frame?t=`). */
   recordingSeek?: boolean;
+  /** Runs are recorded to H.264; the viewport plays HLS instead of frames. */
+  viewportVideo?: boolean;
   startRun: boolean;
   startBatch: boolean;
   commands: Partial<Record<CommandKind, boolean>>;

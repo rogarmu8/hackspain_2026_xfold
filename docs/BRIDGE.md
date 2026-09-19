@@ -41,6 +41,31 @@ Offscreen GL is probed once at startup. Without it the bridge keeps serving the
 journal with `viewportStream: false` — the dashboard shows the FSM and the live
 console, just no video — instead of taking the process down with it.
 
+**Run video.** Every run is encoded to H.264 as it happens. One render per
+frame feeds both the encoder and the JPEG hub; ffmpeg writes HLS into
+`data/video/{run}/`, and the run detail carries `hasVideo`.
+
+The same playlist is both transports. Live it has no `#EXT-X-ENDLIST` and the
+player tails it a couple of segments behind — roughly four to six seconds,
+which is the delay traded for real video instead of re-encoded stills. When the
+run ends ffmpeg appends the ENDLIST and the playlist becomes a VOD, so replay
+scrubs an actual video rather than asking the bridge to re-render a frame per
+seek.
+
+Two things that are not obvious:
+
+- ffmpeg reads the pipe as a *fixed* frame rate, so a render loop that cannot
+  keep up would silently produce a sped-up video — a 65 s run came out as 8 s
+  of footage on software GL. `RunVideo.write` fills the missed slots by
+  repeating the last frame, so video time tracks wall time regardless.
+- The dashboard keeps showing long-poll frames until the video element
+  actually decodes one (`loadeddata`, not the parsed manifest), so the first
+  few seconds of a run are never blank and a browser that cannot play H.264
+  degrades to the old path instead of a black rectangle.
+
+`imageio-ffmpeg` ships the encoder; an `ffmpeg` on PATH also works. With
+neither, `viewportVideo` is false and the viewport stays on JPEG long-poll.
+
 **QC station.** Just past the press, the belt stops the pressed garment under
 `qc_cam`, the line's own lights dip to `QC_DIP` and two flash heads fire. The
 Driver renders one square 768 px frame at the top of the flash and writes it to
@@ -137,6 +162,8 @@ curl -sN 'http://127.0.0.1:8765/events/stream?after_seq=0'
 | `GET` | `/runs/{id}/recording` | Trajectory meta (`tMax`, `hasTrajectory`, …) |
 | `GET` | `/runs/{id}/recording/frame?t=` | Seek nearest sample → JPEG base64 + `state` |
 | `GET` | `/runs/{id}/photo` | QC camera's product shot (JPEG, 404 until the flash fires) |
+| `GET` | `/runs/{id}/video/index.m3u8` | HLS playlist: live while the run goes, VOD after |
+| `GET` | `/runs/{id}/video/{init.mp4\|segNNNNN.m4s}` | fMP4 init + media segments |
 | `GET` | `/events/stream?after_seq=N` | SSE journal (replay + live) |
 
 ### Viewport architecture (media plane)
