@@ -19,6 +19,7 @@
   --accent: #ece2cc;
   --accent-foreground: #2a170f;
   --destructive: #a12d2a;
+  --warning: #9a6a12;
   --border: #d3c5ae;
   --input: #9b8871;
   --ring: #2a170f;
@@ -70,6 +71,7 @@
   --color-ink: var(--foreground);
   --color-divider: var(--border);
   --color-danger: var(--destructive);
+  --color-warning: var(--warning);
   --color-on-primary: var(--primary-foreground);
   --font-sans: var(--font-plex-sans), "IBM Plex Sans", system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;

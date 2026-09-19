@@ -139,8 +139,13 @@ Python models live in [`src/sim/src/xfold/bridge/schema.py`](../src/sim/src/xfol
 | `command_rejected` | Invalid / unsupported |
 | `command_applied` | Side effects applied |
 | `batch_updated` | Batch counters / active child run |
+| `log` | Free-form simulator line for the dashboard **console** (`level`, `message`, `source`, `t`). Emit via `runtime.emit_log(...)`; never per physics step, never pixels/verts |
 
 Envelope on every event: `seq`, `tsIso`, `runId`, `batchId`.
+
+### Console (dashboard)
+
+`bridge-client` keeps a ring buffer (2000) of journal facts; `ControlRoom` renders them for the open run in `ConsolePanel` (`src/dashboard/src/lib/console.ts` maps each `type` to a line; `metric_sample`/`batch_updated` are hidden). A UI **stall watchdog** flags a `running` run with no fact for `STALL_AFTER_S` (8 s) — so drivers should log at stage granularity, not stay silent for long phases.
 
 ## Invariants
 

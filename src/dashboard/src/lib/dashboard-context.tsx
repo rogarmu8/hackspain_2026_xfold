@@ -15,6 +15,7 @@ import {
   type FixtureScenario,
   type PendingCommand,
 } from "@/lib/adapter";
+import type { JournalEvent } from "@xfold/protocol";
 import { BridgeClient, bridgeBaseUrl, probeBridge } from "@/lib/bridge-client";
 import type {
   BatchSummary,
@@ -27,6 +28,8 @@ import type {
 } from "@/lib/types";
 
 export type DataSource = "fixture" | "live";
+
+const EMPTY_JOURNAL: JournalEvent[] = [];
 
 type DashboardContextValue = {
   source: DataSource;
@@ -46,6 +49,8 @@ type DashboardContextValue = {
     | Promise<{ ok: true; id: string } | { ok: false; reason: string }>;
   getRun: (id: string) => RunDetail | null;
   getBatch: (id: string) => BatchSummary | null;
+  /** Journal facts for a run (live only; empty on fixtures). */
+  getJournal: (runId: string) => JournalEvent[];
   refresh: () => void;
 };
 
@@ -222,6 +227,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     [source, bridge, fixture, version],
   );
 
+  const getJournal = useCallback(
+    (runId: string) => {
+      void version;
+      return source === "live" && bridge ? bridge.listJournal(runId) : EMPTY_JOURNAL;
+    },
+    [source, bridge, version],
+  );
+
   const value = useMemo(
     () => ({
       source,
@@ -236,6 +249,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       launch,
       getRun,
       getBatch,
+      getJournal,
       refresh,
     }),
     [
@@ -250,6 +264,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       launch,
       getRun,
       getBatch,
+      getJournal,
       refresh,
     ],
   );
