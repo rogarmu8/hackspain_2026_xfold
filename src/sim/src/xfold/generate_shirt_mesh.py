@@ -1,6 +1,7 @@
 """T-shirt pattern for the two-claw ninja fold (SOLUTION.md §5.3).
 
-Default output is a *single* T panel — the pressed sheet the clamps crease.
+Default output is a *single* iconic T panel — circular crew neck, hanging
+short sleeves, stadium hem. The pressed sheet the clamps crease.
 `--shell` sews a hollow front+back copy (wearable topology) but that bag
 cannot hold a Japanese fold: the layers slide and the T becomes a rag.
 
@@ -22,10 +23,12 @@ BODY_W = 0.60
 BODY_L = 0.64
 # Laid-flat stack: two layers, not a worn torso. Wearable topology, foldable pose.
 TORSO_D = 0.012
-SLEEVE_L = 0.15
+# Iconic crew-neck T (front view): circular collar, hanging short sleeves,
+# rounded hem. Extents stay on the 0.70 m press / ninja thirds.
+SLEEVE_L = 0.16
 SLEEVE_H = 0.16
-NECK_W = 0.18
-NECK_D = 0.08
+NECK_W = 0.22
+NECK_D = 0.11
 DEFAULT_SPACING = 0.032
 DEFAULT_NX = 22
 DEFAULT_NY = 24
@@ -37,41 +40,96 @@ RIGHT_CREASE_X = BODY_W / 6.0
 _HEM, _NECK, _LCUFF, _RCUFF, _SEAM = "hem", "neck", "lcuff", "rcuff", "seam"
 
 
+def _arc(cx: float, cy: float, rx: float, ry: float, a0: float, a1: float, n: int) -> np.ndarray:
+    t = np.linspace(a0, a1, n, dtype=np.float64)
+    return np.column_stack((cx + rx * np.cos(t), cy + ry * np.sin(t)))
+
+
+def _bezier(p0, p1, p2, p3, n: int) -> np.ndarray:
+    t = np.linspace(0.0, 1.0, n, endpoint=False, dtype=np.float64)
+    u = 1.0 - t
+    w = np.column_stack((u**3, 3.0 * u**2 * t, 3.0 * u * t**2, t**3))
+    pts = np.stack([np.asarray(p0, dtype=np.float64), np.asarray(p1, dtype=np.float64),
+                    np.asarray(p2, dtype=np.float64), np.asarray(p3, dtype=np.float64)])
+    return w @ pts
+
+
+def _join(*parts: np.ndarray) -> np.ndarray:
+    chunks = [np.asarray(parts[0], dtype=np.float64)]
+    for part in parts[1:]:
+        pts = np.asarray(part, dtype=np.float64)
+        if np.allclose(chunks[-1][-1], pts[0], atol=1e-9):
+            chunks.append(pts[1:])
+        else:
+            chunks.append(pts)
+    return np.vstack(chunks)
+
+
 def shirt_outline() -> np.ndarray:
-    """Closed iconic T, clockwise, starting at the left neck."""
+    """Closed classic crew-neck T, clockwise from the left neck.
+
+    Iconic front-view tee: circular collar, nearly level shoulders, short
+    sleeves that hang with rounded cuffs, straight sides, stadium hem.
+    One loop (U-neck, not a hole) so the sheet stays foldable.
+    """
     hw = 0.5 * BODY_W
     hl = 0.5 * BODY_L
-    nw = 0.5 * NECK_W
-    y_collar = hl
-    y_shoulder = hl - 0.02
-    y_cuff_top = y_shoulder - 0.03
-    y_armpit = y_shoulder - SLEEVE_H
-    y_hem = -hl
-    x_cuff = hw + SLEEVE_L
-    return np.array(
-        [
-            (-nw, y_collar),
-            (-hw + 0.02, y_shoulder),
-            (-x_cuff, y_cuff_top),
-            (-x_cuff - 0.01, y_cuff_top - 0.55 * SLEEVE_H),
-            (-x_cuff, y_armpit),
-            (-hw, y_armpit),
-            (-hw - 0.01, y_hem + 0.06),
-            (-hw + 0.02, y_hem),
-            (0.0, y_hem - 0.02),
-            (hw - 0.02, y_hem),
-            (hw + 0.01, y_hem + 0.06),
-            (hw, y_armpit),
-            (x_cuff, y_armpit),
-            (x_cuff + 0.01, y_cuff_top - 0.55 * SLEEVE_H),
-            (x_cuff, y_cuff_top),
-            (hw - 0.02, y_shoulder),
-            (nw, y_collar),
-            (0.4 * nw, y_collar - NECK_D),
-            (-0.4 * nw, y_collar - NECK_D),
-        ],
-        dtype=np.float64,
+    neck_cy = hl - 0.015
+    neck_rx, neck_ry = 0.5 * NECK_W, NECK_D
+    a_right = np.deg2rad(18.0)
+    a_left = np.deg2rad(-198.0)
+    left_neck = (
+        neck_rx * np.cos(a_left),
+        neck_cy + neck_ry * np.sin(a_left),
     )
+
+    shoulder = _bezier(
+        left_neck,
+        (-0.15, hl + 0.01),
+        (-0.22, hl - 0.005),
+        (-hw + 0.03, hl - 0.025),
+        8,
+    )
+    sleeve_top = _bezier(
+        shoulder[-1],
+        (-hw - 0.05, hl - 0.04),
+        (-hw - 0.10, hl - 0.08),
+        (-hw - SLEEVE_L + 0.03, hl - 0.11),
+        7,
+    )
+    cuff = _arc(
+        -hw - SLEEVE_L + 0.05,
+        hl - 0.16,
+        0.048,
+        0.052,
+        np.deg2rad(100.0),
+        np.deg2rad(260.0),
+        12,
+    )
+    to_armpit = _bezier(
+        cuff[-1],
+        (-hw - 0.08, hl - 0.21),
+        (-hw - 0.02, hl - 0.185),
+        (-hw, hl - SLEEVE_H),
+        6,
+    )
+    # Straight torso, then a stadium hem (rounded-rect, not a bag).
+    side = _bezier(
+        to_armpit[-1],
+        (-hw, 0.02),
+        (-hw, -hl + 0.18),
+        (-hw, -hl + 0.08),
+        8,
+    )
+    hem_r = 0.085
+    hem = _arc(-hw + hem_r, -hl + hem_r, hem_r, hem_r, np.pi, 1.5 * np.pi, 10)
+    hem = np.vstack([hem, np.array([[0.0, -hl]], dtype=np.float64)])
+
+    left = _join(shoulder, sleeve_top, cuff, to_armpit, side, hem)
+    right = left[-2:0:-1].copy()
+    right[:, 0] *= -1.0
+    neck = _arc(0.0, neck_cy, neck_rx, neck_ry, a_right, a_left, 18)
+    return _join(left, right, neck)
 
 
 def _point_in_poly(x: float, y: float, poly: np.ndarray) -> bool:
@@ -97,6 +155,63 @@ def _axis(lo: float, hi: float, spacing: float) -> np.ndarray:
 def _quad(faces: list[tuple[int, int, int]], a: int, b: int, c: int, d: int) -> None:
     faces.append((a, b, c))
     faces.append((a, c, d))
+
+
+def _signed_area(tri: np.ndarray) -> float:
+    a, b, c = tri
+    return 0.5 * ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]))
+
+
+def _closest_on_poly(point: np.ndarray, poly: np.ndarray) -> np.ndarray:
+    pts = np.vstack([poly, poly[0]])
+    best = pts[0]
+    best_d = np.inf
+    for a, b in zip(pts[:-1], pts[1:]):
+        ab = b - a
+        span = float(np.dot(ab, ab)) + 1e-18
+        t = float(np.clip(np.dot(point - a, ab) / span, 0.0, 1.0))
+        q = a + t * ab
+        d = float(np.sum((point - q) ** 2))
+        if d < best_d:
+            best_d = d
+            best = q
+    return best
+
+
+def _remap_used(verts: np.ndarray, faces: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    used = np.unique(faces)
+    remap = -np.ones(len(verts), dtype=np.int32)
+    remap[used] = np.arange(len(used), dtype=np.int32)
+    return verts[used], remap[faces]
+
+
+def _fit_boundary(
+    verts: np.ndarray, faces: np.ndarray, poly: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Project the grid silhouette onto the nearest T-outline point."""
+    loops = boundary_loops(faces)
+    if len(loops) != 1:
+        return verts, faces
+    out = verts.copy()
+    for index in loops[0]:
+        out[index, :2] = _closest_on_poly(out[index, :2], poly)
+
+    keep: list[tuple[int, int, int]] = []
+    for face in faces:
+        tri = out[face]
+        if _signed_area(tri[:, :2]) < 1e-10:
+            continue
+        c = tri.mean(axis=0)
+        if _point_in_poly(float(c[0]), float(c[1]), poly):
+            keep.append((int(face[0]), int(face[1]), int(face[2])))
+    if not keep:
+        return verts, faces
+    faces2 = np.asarray(keep, dtype=np.int32)
+    fitted_v, fitted_f = _remap_used(out, faces2)
+    if len(boundary_loops(fitted_f)) == 1:
+        return fitted_v, fitted_f
+    # Projection without culling still hugs the sleeves / hem.
+    return out, faces
 
 
 def build_panel(spacing: float) -> tuple[np.ndarray, np.ndarray]:
@@ -132,7 +247,14 @@ def build_panel(spacing: float) -> tuple[np.ndarray, np.ndarray]:
 
     if not verts or not faces:
         raise RuntimeError("T-shirt panel is empty — check silhouette bounds")
-    return np.asarray(verts, dtype=np.float64), np.asarray(faces, dtype=np.int32)
+    mesh_v = np.asarray(verts, dtype=np.float64)
+    mesh_f = np.asarray(faces, dtype=np.int32)
+    fitted_v, fitted_f = _fit_boundary(mesh_v, mesh_f, poly)
+    try:
+        validate_mesh(fitted_v, fitted_f, shell=False)
+    except RuntimeError:
+        return mesh_v, mesh_f
+    return fitted_v, fitted_f
 
 
 def _oriented_boundary(faces: np.ndarray) -> list[tuple[int, int]]:
@@ -161,10 +283,10 @@ def _label_vert(x: float, y: float, xs: np.ndarray, ys: np.ndarray) -> str:
         return _LCUFF
     if x >= xmax - pad:
         return _RCUFF
-    if y >= ymax - NECK_D - pad and abs(x) <= 0.5 * NECK_W + pad:
+    if y >= ymax - NECK_D - 0.04 - pad and abs(x) <= 0.5 * NECK_W + pad:
         return _NECK
-    # Neck bite sits inside the bounding box; catch the U as well.
-    if y >= 0.5 * BODY_L - NECK_D - pad and abs(x) <= 0.5 * NECK_W + 0.01:
+    # Neck bite sits inside the bounding box; catch the circular U as well.
+    if y >= 0.5 * BODY_L - NECK_D - 0.04 - pad and abs(x) <= 0.5 * NECK_W + 0.02:
         return _NECK
     if abs(x) >= hw + 0.5 * SLEEVE_L and x < 0:
         return _LCUFF
@@ -232,7 +354,7 @@ def boundary_loops(faces: np.ndarray) -> list[list[int]]:
             loop.append(cur)
             seen.add(cur)
             nxts = [w for w in adj[cur] if w != prev]
-            if not nxts:
+            if not nxts or len(loop) > len(adj) + 2:
                 break
             prev, cur = cur, nxts[0]
         loops.append(loop)
