@@ -136,7 +136,12 @@ export function ControlRoom({ runId }: { runId: string }) {
   const journal = getJournal(runId);
   const consoleRows = useMemo(() => consoleLines(run, journal), [run, journal]);
   const finished = Boolean(run && FINISHED.has(run.lifecycle));
-  const replay = useRunReplay({ run, enabled: finished, bridgeUrl });
+  const replay = useRunReplay({
+    run,
+    enabled: finished,
+    bridgeUrl,
+    clock: run?.hasVideo && snapshot.provenance !== "fixture" ? "video" : "internal",
+  });
   const isActive = Boolean(run && run.id === snapshot.activeRun?.id);
   const notFound = !run;
 

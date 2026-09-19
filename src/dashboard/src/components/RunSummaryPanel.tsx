@@ -2,23 +2,20 @@
 
 import Link from "next/link";
 import { ArrowUpRight, ClipboardList, RotateCcw } from "lucide-react";
-import { NewExperimentDialog } from "@/components/NewExperimentDialog";
 import { Button } from "@/components/ui/button";
-import { StatusBadge } from "@/components/ui/StatusBadge";
-import { formatFlatness, formatIso, formatSeconds, lifecycleLabel, DEFAULT_CLOTH_CONDITIONS, DEFAULT_CLOTH_TYPES } from "@/lib/format";
+import { NewExperimentDialog } from "@/components/NewExperimentDialog";
+import { RunStatusBadges } from "@/components/RunStatusBadges";
+import { formatFlatness, formatIso, formatSeconds, DEFAULT_CLOTH_CONDITIONS, DEFAULT_CLOTH_TYPES } from "@/lib/format";
 import type { RunDetail } from "@/lib/types";
 import type { ClothCondition, ClothType } from "@xfold/protocol";
 
 /** Compact result card for a finished run; the event log lives in the console below. */
 export function RunSummaryPanel({ run, embed = false }: { run: RunDetail; embed?: boolean }) {
-  const tone =
-    run.lifecycle === "failed" ? "danger" : run.lifecycle === "succeeded" ? "success" : "neutral";
-
   const body = (
     <>
       <div className="flex items-start justify-between gap-2">
         <h3 className="min-w-0 truncate text-[17px] font-semibold leading-tight">{run.name ?? run.id}</h3>
-        <StatusBadge tone={tone}>{run.lifecycle === "succeeded" ? "Cycle completed" : lifecycleLabel(run.lifecycle)}</StatusBadge>
+        <RunStatusBadges run={run} />
       </div>
       <p className="font-mono text-xs text-muted-foreground">
         {run.id} · seed {run.seed}
@@ -35,7 +32,9 @@ export function RunSummaryPanel({ run, embed = false }: { run: RunDetail; embed?
           </>
         ) : null}
       </p>
-      {run.failReason ? <p className="text-sm text-danger">{run.failReason}</p> : null}
+      {run.failReason ? (
+        <p className="text-sm text-danger">{run.failReason}</p>
+      ) : null}
 
       <dl className="grid grid-cols-3 gap-x-3 gap-y-2 border-t border-divider pt-3">
         <Metric label="sim t" value={formatSeconds(run.metrics.cycleTimeSimS)} />

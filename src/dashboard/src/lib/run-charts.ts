@@ -110,7 +110,7 @@ const CONDITION_LABEL: Record<string, string> = {
   good: "Clean",
   damaged: "Holes",
   notgood: "Stains",
-  skewed: "Skewed",
+  skewed: "Rotated",
   unknown: "Unspecified",
 };
 

@@ -135,7 +135,7 @@ class LaunchRunRequest(BaseModel):
 
 class LaunchBatchRequest(BaseModel):
     name: str = ""
-    count: int = Field(ge=1, le=100)
+    count: int = Field(ge=1)
     baseSeed: int = 0
     seedStrategy: Literal["sequential"] = "sequential"
     scenario: str = "mock"

@@ -148,7 +148,8 @@ class RunVideo:
             "-f", "hls",
             "-hls_time", str(SEGMENT_SECONDS),
             "-hls_list_size", "0",          # keep every segment: live now, VOD later
-            "-hls_flags", "independent_segments",
+            "-hls_playlist_type", "event",  # no sliding window; ENDLIST only on close
+            "-hls_flags", "independent_segments+temp_file",
             "-hls_segment_type", "fmp4",
             "-hls_fmp4_init_filename", _INIT,
             "-hls_segment_filename", str(out / "seg%05d.m4s"),

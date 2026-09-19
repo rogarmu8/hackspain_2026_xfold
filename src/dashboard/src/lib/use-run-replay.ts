@@ -25,6 +25,8 @@ export type RunReplay = {
   seek: (t: number) => void;
   togglePlay: () => void;
   stepMarker: (dir: -1 | 1) => void;
+  /** Update `t` without pausing — used while the video element is the clock. */
+  reportTime: (t: number) => void;
 };
 
 /** Timeline fetched from the bridge; `markers === null` ⇒ bridge had none. */
@@ -86,10 +88,13 @@ export function useRunReplay({
   run,
   enabled,
   bridgeUrl,
+  clock = "internal",
 }: {
   run: RunDetail | null;
   enabled: boolean;
   bridgeUrl?: string;
+  /** `video`: the <video> element reports time; skip the synthetic ticker and JPEG frames. */
+  clock?: "internal" | "video";
 }): RunReplay {
   const runId = run?.id ?? null;
   const base = bridgeUrl || bridgeBaseUrl();
@@ -135,7 +140,7 @@ export function useRunReplay({
   );
 
   useEffect(() => {
-    if (!enabled || !hasTrajectory || !runId) return;
+    if (!enabled || !hasTrajectory || !runId || clock === "video") return;
     const gen = ++seekGen.current;
     const handle = window.setTimeout(() => {
       void client.fetchRecordingFrame(runId, t).then((fr) => {
@@ -143,10 +148,10 @@ export function useRunReplay({
       });
     }, playing ? 100 : 30);
     return () => window.clearTimeout(handle);
-  }, [client, enabled, hasTrajectory, runId, t, playing]);
+  }, [client, enabled, hasTrajectory, runId, t, playing, clock]);
 
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || clock === "video") return;
     const id = window.setInterval(() => {
       setCursor((prev) => {
         const next = prev.t + Math.max(tMax / 200, 0.05);
@@ -154,7 +159,7 @@ export function useRunReplay({
       });
     }, 50);
     return () => window.clearInterval(id);
-  }, [playing, tMax]);
+  }, [playing, tMax, clock]);
 
   const seek = useCallback(
     (next: number) => update({ t: Math.max(0, Math.min(next, tMax)), playing: false }),
@@ -176,6 +181,11 @@ export function useRunReplay({
     [markers, seek, t],
   );
 
+  const reportTime = useCallback(
+    (next: number) => update({ t: Math.max(0, Math.min(next, tMax)) }),
+    [update, tMax],
+  );
+
   const stages = useMemo(() => stagesForT(markers, t, tMax, run?.stages ?? []), [markers, t, tMax, run?.stages]);
 
   return {
@@ -191,5 +201,6 @@ export function useRunReplay({
     seek,
     togglePlay,
     stepMarker,
+    reportTime,
   };
 }

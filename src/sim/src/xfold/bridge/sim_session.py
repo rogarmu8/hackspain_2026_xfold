@@ -378,7 +378,8 @@ class SimSession:
         """Live viewport frame as raw RGB, for the video encoder.
 
         Same lock discipline as `render_jpeg`: `update_scene` reads MjData and
-        needs the lock, rasterising does not.
+        needs the lock, rasterising does not. `_gl_inflight` keeps a rebuild
+        from closing the Renderer / MjModel under that native call.
         """
         with self.lock:
             if not self._ok or self._mujoco is None or self._render_broken:
@@ -386,6 +387,7 @@ class SimSession:
             try:
                 renderer = self._renderer_for_current_thread()
                 renderer.update_scene(self.data, camera=self.camera)
+                self._gl_inflight += 1
             except Exception as exc:  # noqa: BLE001
                 self._render_broken = True
                 self._renderers.pop(threading.get_ident(), None)
@@ -400,6 +402,10 @@ class SimSession:
         except Exception as exc:  # noqa: BLE001
             print(f"[sim-session] render failed: {exc}", flush=True)
             return None
+        finally:
+            with self.lock:
+                self._gl_inflight = max(0, self._gl_inflight - 1)
+                self._idle.notify_all()
 
     def render_jpeg(self) -> tuple[bytes, str] | None:
         """Live viewport frame, holding the lock only as long as it must.

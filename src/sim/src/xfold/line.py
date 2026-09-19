@@ -6,8 +6,10 @@
    up, the other slows, then they resync). Wrinkles stay until the press.
 2. The belt carries it under the press and stops. The platen comes down on
    the belt itself, steams the wrinkles out, and lifts.
-3. The belt runs on. The shirt leaves the belt's end onto the folder, and
-   stops there with its hem on the folder's upstream edge.
+3. The belt runs on to the QC camera. After the product shot, a pedestal
+   arm with a suction cup carries stained shirts into a stained tote and torn
+   shirts into a broken tote and drops them, then the cycle ends. Clean and rotated garments
+   continue to the folder.
 4. The folder flips its flaps, FlipFold style: left side, right side, then
    the hem half up over the collar half.
 5. Meanwhile the bagger gets a bag ready. A vacuum picker takes the top one
@@ -65,6 +67,7 @@ from .garments import (
     add_garment_arguments,
     base_garment,
     garment_from_args,
+    qc_reject_bin,
     rewrite_argv_garment,
 )
 from .platform import reexec_under_mjpython
@@ -94,6 +97,7 @@ LINE_PHASES = (
     {"state": "PRESS", "label": "Press", "station": "press"},
     {"state": "TO_QC", "label": "Press", "station": "belt"},
     {"state": "PHOTO", "label": "Press", "station": "qc"},
+    {"state": "SORT", "label": "Press", "station": "qc"},
     {"state": "TO_FOLDER", "label": "Fold", "station": "belt"},
     {"state": "FOLD", "label": "Fold", "station": "folder"},
     {"state": "INSERT", "label": "Bag", "station": "bagger"},
@@ -128,6 +132,29 @@ BELT_HALF_Y = 0.475
 # Downstream of the press and far enough from the belt's end (0.30) that the
 # whole 0.65 m of shirt stays on the belt.
 QC_X = -0.20
+# Pedestal arm on the operator side of QC. Scripted 2-link IK poses the
+# mocap links so the cup is never a free-floating pad. Both reject totes
+# sit on that same side so one arm can reach them.
+QC_ARM_S = np.array([-0.52, 0.80, 0.76])
+QC_ARM_L1 = 0.75
+QC_ARM_L2 = 0.90
+QC_ARM_WRIST = 0.10
+# Park beside the pedestal, not on the camera post (x=-0.20, y=0.66).
+QC_CUP_HOME = np.array([-0.44, 0.98, 1.08])
+QC_CUP_LIFT_Z = 1.10
+QC_CUP_GRAB_Z = SURFACE_Z + 0.045
+QC_BIN_XY = {"stained": np.array([-0.70, 1.50]), "broken": np.array([0.30, 1.50])}
+# Hover above the tote mouth so the sheet hangs into the opening; release
+# still clear of the walls (top ~0.34 m) so the fabric falls in, not stuffed.
+QC_BIN_HOVER_Z = 0.92
+QC_BIN_DROP_Z = 0.70
+# Cup paths stay this far upstream of the camera post so links do not
+# sweep through it.
+QC_CLEAR_X = -0.48
+QC_SUCTION_R = 0.07
+QC_POLE_XY = np.array([-0.20, 0.66])
+QC_POLE_CLEAR_XY = 0.38
+QC_DROP_WATCH_S = 1.8
 FLASH_RISE = 0.12  # seconds, dark -> full
 FLASH_HOLD = 0.10  # seconds at full; the shot is taken in here
 FLASH_FALL = 0.35  # seconds, full -> dark
@@ -555,6 +582,12 @@ class Line:
         self._peel = mocap["peel"]
         self._seal_bar = mocap["seal_bar"]
         self._stamp = mocap["stamp"]
+        self._qc_cup = int(model.body("qc_cup").mocapid[0])
+        self._qc_yaw = int(model.body("qc_arm_yaw").mocapid[0])
+        self._qc_upper = int(model.body("qc_arm_upper").mocapid[0])
+        self._qc_fore = int(model.body("qc_arm_fore").mocapid[0])
+        self._qc_local: np.ndarray | None = None
+        self._qc_ids: np.ndarray | None = None
         self._picker = mocap["picker_head"]
         self._carriage = mocap["picker_carriage"]
         self._mouth_cup = mocap["mouth_cup"]
@@ -611,6 +644,9 @@ class Line:
         self.stage = "idle"
         self.cycles = 0
         self.finished = False
+        # packed | stained | broken — where the shirt went, not process success.
+        self.outcome: str | None = None
+        self._set_arm(QC_CUP_HOME)
         self._program = self._run()
 
     # --- stepping -----------------------------------------------------
@@ -815,6 +851,21 @@ class Line:
         yield from self._belt_until(lambda pos: QC_X - float(pos[:, 0].mean()))
         yield from self._shoot()
 
+        reject = qc_reject_bin(shirt_config().garment)
+        if reject:
+            self.outcome = reject
+            yield from self._reject(reject)
+            yield from self._hold(
+                "DONE",
+                f"rejected at QC ({reject}); not folded",
+                1.2,
+                phase="DONE",
+            )
+            return
+
+        self._enter("SORT", "QC pass, continue to folder", phase="SORT")
+        yield from self._hold("SORT", "", 0.25, quiet=True)
+
         self._enter("BELT", "run the shirt off the belt onto the folder", phase="TO_FOLDER")
         self._drive_to = FOLDER_X[1]
         yield from self._belt_until(lambda pos: FOLDER_X[0] + HEM_INSET - float(pos[:, 0].min()))
@@ -872,6 +923,7 @@ class Line:
 
         self._enter("BELT", "belt 2 carries the bag to the carton", phase="TO_CARTON")
         yield from self._convey()
+        self.outcome = "packed"
         yield from self._hold("DONE", "sequence complete; packaging quality not validated", 2.5, phase="DONE")
 
     def _set_flash(self, level: float) -> None:
@@ -918,11 +970,110 @@ class Line:
             yield
         self._set_flash(0.0)
 
+    def _set_arm(self, cup_xyz) -> None:
+        """Pose the QC pedestal arm so its suction cup sits at ``cup_xyz``."""
+        cup, s, elbow, wrist, yaw = _qc_ik(cup_xyz)
+        half = 0.5 * yaw
+        data = self.data
+        data.mocap_pos[self._qc_yaw] = s
+        data.mocap_quat[self._qc_yaw] = (math.cos(half), 0.0, 0.0, math.sin(half))
+        data.mocap_pos[self._qc_upper] = s
+        data.mocap_quat[self._qc_upper] = _quat_z_to(elbow - s)
+        data.mocap_pos[self._qc_fore] = elbow
+        data.mocap_quat[self._qc_fore] = _quat_z_to(wrist - elbow)
+        data.mocap_pos[self._qc_cup] = cup
+        data.mocap_quat[self._qc_cup] = (1.0, 0.0, 0.0, 0.0)
+
+    def _suction_ids(self, cup: np.ndarray) -> np.ndarray:
+        """Vertices the cup actually holds; the rest of the sheet hangs."""
+        dist = np.linalg.norm(self.positions() - cup, axis=1)
+        ids = np.flatnonzero(dist <= QC_SUCTION_R)
+        if ids.size < 8:
+            ids = np.argsort(dist)[:16]
+        return np.asarray(ids, dtype=int)
+
+    def _move_cup(self, xyz, seconds: float, *, carry: bool = False):
+        """Lerp the cup around the camera post. With ``carry`` only the patch is held."""
+        start = np.array(self.data.mocap_pos[self._qc_cup], dtype=float)
+        path = _cup_path(start, xyz)
+        lengths = []
+        prev = start
+        for point in path:
+            lengths.append(float(np.linalg.norm(point - prev)) + 1e-6)
+            prev = point
+        total = sum(lengths)
+        for point, length in zip(path, lengths):
+            yield from self._lerp_cup(point, seconds * length / total, carry=carry)
+
+    def _lerp_cup(self, xyz, seconds: float, *, carry: bool):
+        start = np.array(self.data.mocap_pos[self._qc_cup], dtype=float)
+        target = np.asarray(xyz, dtype=float)
+        ids = self._qc_ids
+        previous = self.positions()[ids] if carry and ids is not None else None
+        for blend in self._tween(max(seconds, self.dt)):
+            pos = start + (target - start) * blend
+            self._set_arm(pos)
+            if carry and ids is not None and self._qc_local is not None:
+                world = pos + self._qc_local
+                vel = (world - previous) / self.dt
+                self._pin(ids, world, vel)
+                previous = world
+            yield
+
+    def _release_suction(self) -> None:
+        """Let go of the patch without throwing it; the rest of the sheet falls."""
+        ids = self._qc_ids
+        if ids is not None:
+            vel = self.data.qvel[self._dadr[ids, None] + self._xyz]
+            vel *= 0.2
+            vel[:, 2] = np.minimum(vel[:, 2], -0.08)
+            self.data.qvel[self._dadr[ids, None] + self._xyz] = vel
+        self._qc_ids = None
+        self._qc_local = None
+
+    def _reject(self, kind: str):
+        """Pick up a stained or torn shirt and drop it into the matching tote."""
+        bin_xy = QC_BIN_XY[kind]
+        tote = "stained bin" if kind == "stained" else "broken bin"
+        self._enter(
+            "SORT",
+            f"{'stained' if kind == 'stained' else 'torn'} garment · suction to {tote}",
+            phase="SORT",
+            operation="REJECT_STAINED" if kind == "stained" else "REJECT_BROKEN",
+        )
+        cloth = self.positions()
+        center = cloth.mean(axis=0)
+        grab = np.array([center[0], center[1], QC_CUP_GRAB_Z])
+        hover = np.array([center[0], center[1], QC_CUP_LIFT_Z])
+        over_bin = np.array([bin_xy[0], bin_xy[1], QC_CUP_LIFT_Z])
+        dangle = np.array([bin_xy[0], bin_xy[1], QC_BIN_HOVER_Z])
+        drop = np.array([bin_xy[0], bin_xy[1], QC_BIN_DROP_Z])
+
+        yield from self._move_cup(hover, 0.5)
+        yield from self._move_cup(grab, 0.4)
+        self._qc_ids = self._suction_ids(grab)
+        self._qc_local = self.positions()[self._qc_ids] - grab
+        # Hold the patch still so the rest of the sheet can drape.
+        yield from self._lerp_cup(grab, 0.3, carry=True)
+        yield from self._move_cup(hover, 0.9, carry=True)
+        yield from self._move_cup(over_bin, 1.2, carry=True)
+        yield from self._move_cup(dangle, 0.8, carry=True)
+        # Kill carry speed so the let-go is a drop, not a slam.
+        yield from self._lerp_cup(dangle, 0.35, carry=True)
+        yield from self._move_cup(drop, 0.9, carry=True)
+        yield from self._lerp_cup(drop, 0.25, carry=True)
+        self._release_suction()
+        yield from self._lerp_cup(drop, 0.55, carry=False)
+        yield from self._move_cup(over_bin, 0.9)
+        yield from self._hold("SORT", f"dropped in {tote}", QC_DROP_WATCH_S)
+        yield from self._move_cup(QC_CUP_HOME, 0.7)
+
     def _load(self) -> None:
         mujoco = self._mujoco
         mujoco.mj_resetData(self.model, self.data)
         self._layers = None
         self._bag_local = None
+        self.outcome = None
         self.belt_speed = 0.0
         self.belt2_speed = 0.0
         self._steam.reset()
@@ -959,6 +1110,9 @@ class Line:
         self._shape_bag(BAG_FLAT, 0.0)
         self._set_peel(0.0, 0.0)
         self._set_flash(0.0)
+        self._qc_local = None
+        self._qc_ids = None
+        self._set_arm(QC_CUP_HOME)
         mujoco.mj_forward(self.model, self.data)
 
     def _observe(self, operation: str, message: str, *, station: str | None = None,
@@ -1447,6 +1601,136 @@ def _pitch(points: np.ndarray, angle: float) -> np.ndarray:
 
 def _pitch_quat(angle: float) -> list[float]:
     return [math.cos(0.5 * angle), 0.0, math.sin(0.5 * angle), 0.0]
+
+
+def _polar(yaw: float, elev: float) -> np.ndarray:
+    return np.array(
+        [math.cos(yaw) * math.cos(elev), math.sin(yaw) * math.cos(elev), math.sin(elev)]
+    )
+
+
+def _in_qc_keepout(point, radius: float = 0.0) -> bool:
+    """True if ``point`` intersects the QC camera post or its boom.
+
+    The grab pose sits under the camera at (QC_X, 0), so this is a cylinder
+    around the operator-side post — not a box that swallows the shirt.
+    """
+    x, y, z = float(point[0]), float(point[1]), float(point[2])
+    if 0.48 < z < 1.68 and math.hypot(x - QC_POLE_XY[0], y - QC_POLE_XY[1]) < 0.10 + radius:
+        return True
+    if (
+        abs(x - QC_POLE_XY[0]) < 0.05 + radius
+        and abs(z - 1.62) < 0.05 + radius
+        and -0.52 < y < 0.70
+    ):
+        return True
+    return False
+
+
+def _seg_hits_keepout(a, b, radius: float = 0.07) -> bool:
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+    for blend in np.linspace(0.0, 1.0, 10):
+        if _in_qc_keepout(a + blend * (b - a), radius):
+            return True
+    return False
+
+
+def _arm_hits_pole(shoulder, elbow, wrist) -> bool:
+    return _seg_hits_keepout(shoulder, elbow) or _seg_hits_keepout(elbow, wrist)
+
+
+def _xy_near_pole(a, b, clearance: float = QC_POLE_CLEAR_XY) -> bool:
+    a = np.asarray(a, dtype=float)
+    b = np.asarray(b, dtype=float)
+    for blend in np.linspace(0.0, 1.0, 10):
+        p = a + blend * (b - a)
+        if math.hypot(p[0] - QC_POLE_XY[0], p[1] - QC_POLE_XY[1]) < clearance:
+            return True
+    return False
+
+
+def _qc_ik(cup_xyz):
+    """2-link IK for the QC pedestal. Prefers the elbow that misses the post."""
+    cup = np.asarray(cup_xyz, dtype=float)
+    wrist = cup + np.array([0.0, 0.0, QC_ARM_WRIST])
+    s = QC_ARM_S
+    delta = wrist - s
+    yaw = math.atan2(delta[1], delta[0])
+    reach = math.hypot(delta[0], delta[1])
+    height = float(delta[2])
+    dist = math.hypot(reach, height)
+    lo = abs(QC_ARM_L1 - QC_ARM_L2) + 0.03
+    hi = QC_ARM_L1 + QC_ARM_L2 - 0.03
+    if dist < 1e-6:
+        dist = lo
+    scale = min(max(dist, lo), hi) / dist
+    reach *= scale
+    height *= scale
+    dist = math.hypot(reach, height)
+    cos_el = (QC_ARM_L1 * QC_ARM_L1 + dist * dist - QC_ARM_L2 * QC_ARM_L2) / (
+        2.0 * QC_ARM_L1 * dist
+    )
+    beta = math.acos(float(np.clip(cos_el, -1.0, 1.0)))
+    gamma = math.atan2(height, reach)
+    elbow_up = s + QC_ARM_L1 * _polar(yaw, gamma + beta)
+    elbow_down = s + QC_ARM_L1 * _polar(yaw, gamma - beta)
+    elbow = elbow_down if _arm_hits_pole(s, elbow_up, wrist) else elbow_up
+    if _arm_hits_pole(s, elbow, wrist):
+        elbow = elbow_down if elbow is elbow_up else elbow_up
+    return cup, s, elbow, wrist, yaw
+
+
+def _pose_hits_pole(cup_xyz) -> bool:
+    _cup, s, elbow, wrist, _yaw = _qc_ik(cup_xyz)
+    return _arm_hits_pole(s, elbow, wrist)
+
+
+def _path_hits_pole(start, end) -> bool:
+    start = np.asarray(start, dtype=float)
+    end = np.asarray(end, dtype=float)
+    if _xy_near_pole(start, end) or _seg_hits_keepout(start, end, radius=0.06):
+        return True
+    for blend in np.linspace(0.0, 1.0, 8):
+        if _pose_hits_pole(start + blend * (end - start)):
+            return True
+    return False
+
+
+def _cup_path(start, end) -> list[np.ndarray]:
+    """Cup waypoints that keep the arm west of the camera post."""
+    start = np.asarray(start, dtype=float)
+    end = np.asarray(end, dtype=float)
+    if not _path_hits_pole(start, end):
+        return [end]
+    z = max(float(start[2]), float(end[2]), QC_CUP_LIFT_Z)
+    via_a = np.array([QC_CLEAR_X, start[1], z])
+    via_b = np.array([QC_CLEAR_X, end[1], z])
+    path = []
+    prev = start
+    for point in (via_a, via_b, end):
+        if float(np.linalg.norm(point - prev)) > 0.05:
+            path.append(point)
+            prev = point
+    return path or [end]
+
+
+def _quat_z_to(direction: np.ndarray) -> np.ndarray:
+    """Unit quaternion that rotates local +Z onto ``direction``."""
+    vec = np.asarray(direction, dtype=float)
+    n = float(np.linalg.norm(vec))
+    if n < 1e-9:
+        return np.array([1.0, 0.0, 0.0, 0.0])
+    vec = vec / n
+    z = np.array([0.0, 0.0, 1.0])
+    c = float(np.dot(z, vec))
+    if c > 0.999999:
+        return np.array([1.0, 0.0, 0.0, 0.0])
+    if c < -0.999999:
+        return np.array([0.0, 1.0, 0.0, 0.0])
+    axis = np.cross(z, vec)
+    q = np.array([1.0 + c, axis[0], axis[1], axis[2]])
+    return q / np.linalg.norm(q)
 
 
 class FollowCam:

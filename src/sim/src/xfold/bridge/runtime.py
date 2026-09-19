@@ -869,6 +869,7 @@ class Runtime:
             batch_id=run.batchId,
             lifecycle=lifecycle,
             reason=reason,
+            clothCondition=run.clothCondition,
             t=round(run.t, 3),
         )
         if self.active_run_id == run.id:

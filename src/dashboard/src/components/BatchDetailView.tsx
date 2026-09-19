@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { Button } from "./ui/button";
-import { lifecycleLabel } from "@/lib/format";
 import { AppShell } from "@/components/AppShell";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { RunStatusBadges } from "@/components/RunStatusBadges";
 import { useDashboard } from "@/lib/dashboard-context";
-import { formatCount, formatPercent } from "@/lib/format";
+import { formatCount, formatPercent, lifecycleLabel } from "@/lib/format";
 
 
 export function BatchDetailView({ batchId }: { batchId: string }) {
@@ -107,11 +107,7 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
                     {run.id}
                   </Link>
                   <span className="text-muted-foreground">Seed {run.seed}</span>
-                  <StatusBadge
-                    tone={run.lifecycle === "failed" ? "danger" : "neutral"}
-                  >
-                    {lifecycleLabel(run.lifecycle)}
-                  </StatusBadge>
+                  <RunStatusBadges run={run} />
                 </li>
               ))}
             {batch.queuePreview.filter((item) => !runs.some((run) => run.id === item.runId)).map((item) => (

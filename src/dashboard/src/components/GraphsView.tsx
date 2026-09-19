@@ -25,7 +25,7 @@ export function conditionFilterLabel(id: string): string {
   if (id === "damaged") return "Holes / torn";
   if (id === "notgood") return "Stains";
   if (id === "good") return "Clean";
-  if (id === "skewed") return "Skewed";
+  if (id === "skewed") return "Rotated";
   return clothConditionLabel(id);
 }
 

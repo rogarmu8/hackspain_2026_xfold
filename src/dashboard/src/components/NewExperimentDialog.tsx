@@ -144,7 +144,7 @@ export function NewExperimentDialog({
         </DialogTrigger>
       ) : null}
       <DialogContent
-        className="max-h-[min(90dvh,44rem)] overflow-y-auto sm:max-w-xl"
+        className="overflow-hidden sm:max-w-3xl"
         showCloseButton
       >
         <NewExperimentDialogBody
@@ -355,8 +355,8 @@ function NewExperimentDialogBody({
       setError("The simulator does not expose a launch API yet.");
       return;
     }
-    if (!Number.isInteger(count) || count < 1 || count > 100) {
-      setError("The row must have between 1 and 100 shirts.");
+    if (!Number.isInteger(count) || count < 1) {
+      setError("N runs must be an integer ≥ 1.");
       return;
     }
     if (!Number.isSafeInteger(seed) || seed < 0) {
@@ -368,7 +368,7 @@ function NewExperimentDialogBody({
       return;
     }
     if (clothMix === "list" && clothTypes.length < 1) {
-      setError("Select at least one garment type for the row.");
+      setError("Select at least one garment type.");
       return;
     }
     if (conditionMix === "same" && !conditions[0]) {
@@ -376,7 +376,7 @@ function NewExperimentDialogBody({
       return;
     }
     if (conditionMix === "list" && conditions.length < 1) {
-      setError("Select at least one condition for the row.");
+      setError("Select at least one condition.");
       return;
     }
     if (clothMix === "random" && weightTotal(clothWeights, catalogPool) <= 0) {
@@ -460,7 +460,7 @@ function NewExperimentDialogBody({
       <DialogHeader>
         <DialogTitle>New experiment</DialogTitle>
         <DialogDescription>
-          Garment, condition, and how many shirts in the row · {process?.scenario ?? "active simulator process"}
+          Garment, condition, and how many runs · {process?.scenario ?? "active simulator process"}
         </DialogDescription>
       </DialogHeader>
 
@@ -471,9 +471,9 @@ function NewExperimentDialogBody({
         </p>
       ) : null}
 
-      <form id={formId} onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-        <FieldGroup>
-          <Field>
+      <form id={formId} onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
+        <FieldGroup className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-6 sm:gap-y-3">
+          <Field className="sm:col-span-2">
             <FieldLabel htmlFor={`${formId}-name`}>Name (optional)</FieldLabel>
             <Input
               id={`${formId}-name`}
@@ -481,10 +481,9 @@ function NewExperimentDialogBody({
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Cycle check"
             />
-            <FieldDescription>Shown on Runs and History.</FieldDescription>
           </Field>
 
-          <Field>
+          <Field className="sm:col-span-2">
             <FieldLabel htmlFor={`${formId}-seed`}>
               {batch ? "Base seed" : "Seed"}
             </FieldLabel>
@@ -497,20 +496,14 @@ function NewExperimentDialogBody({
               onChange={(e) => setSeed(Number(e.target.value))}
               required
             />
-            <FieldDescription>
-              Integer ≥ 0. Draws random garment and condition, and if skewed
-              the initial heading (still flat). A fixed clean garment and
-              condition does not change the input.
-            </FieldDescription>
           </Field>
 
-          <Field>
-            <FieldLabel htmlFor={`${formId}-count`}>Shirts in a row</FieldLabel>
+          <Field className="sm:col-span-2">
+            <FieldLabel htmlFor={`${formId}-count`}>N runs</FieldLabel>
             <Input
               id={`${formId}-count`}
               type="number"
               min={1}
-              max={100}
               value={count}
               onChange={(e) => {
                 const next = Number(e.target.value);
@@ -523,12 +516,12 @@ function NewExperimentDialogBody({
               required
             />
             <FieldDescription>
-              1 shirt = one run. More than one = a queued batch, no
-              parallelism.
+              More than one queues a batch.
             </FieldDescription>
           </Field>
 
           <MixField
+            className="sm:col-span-3"
             formId={formId}
             axis="garment"
             batch={batch}
@@ -547,17 +540,37 @@ function NewExperimentDialogBody({
               if (next[0] !== "custom") clearDesign();
             }}
             labelOf={clothTypeLabel}
-            pickHint="One garment for the whole row. Custom = cut-out from the photo outline."
-            randomHint="Each shirt is drawn from the catalogue by the weights and the seed."
-            listHint="Each shirt is drawn from the types you mark."
+            pickHint="One garment for every run. Custom = cut-out from the photo."
+            randomHint="Each run draws a type from the weights and seed."
+            listHint="Each run is drawn from the types you mark."
             weights={clothWeights}
             onWeightChange={(key, value) =>
               setClothWeights((prev) => ({ ...prev, [key]: value }))
             }
           />
 
+          <MixField
+            className="sm:col-span-3"
+            formId={`${formId}-cond`}
+            axis="condition"
+            batch={batch}
+            mix={conditionMix}
+            onMixChange={setConditionMix}
+            options={condPool}
+            selected={conditions}
+            onSelectedChange={setConditions}
+            labelOf={clothConditionLabel}
+            pickHint="The same condition for every run."
+            randomHint="Each run draws a condition from the weights."
+            listHint="Each run is drawn from the conditions you mark."
+            weights={conditionWeights}
+            onWeightChange={(key, value) =>
+              setConditionWeights((prev) => ({ ...prev, [key]: value }))
+            }
+          />
+
           {customGarment ? (
-          <Field>
+          <Field className="sm:col-span-3">
             <FieldLabel htmlFor={`${formId}-design`}>Garment photo</FieldLabel>
             <Input
               key={designInputKey}
@@ -569,16 +582,18 @@ function NewExperimentDialogBody({
             <FieldDescription>
               {detecting
                 ? "Detecting the cut-out…"
-                : "Plain backdrop, garment centred. We trace the outline and turn it into the cloth (both faces)."}
+                : "Plain backdrop, garment centred."}
             </FieldDescription>
             {designPreview ? (
-              <div className="mt-2 flex flex-col gap-2">
-                <DesignPreview
-                  src={designPreview}
-                  outline={designOutline}
-                  attached={designAttached}
-                />
-                <div className="flex flex-wrap gap-2">
+              <div className="mt-2 flex items-start gap-3">
+                <div className="w-28 shrink-0">
+                  <DesignPreview
+                    src={designPreview}
+                    outline={designOutline}
+                    attached={designAttached}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
                   <Button
                     type="button"
                     size="sm"
@@ -600,26 +615,7 @@ function NewExperimentDialogBody({
           </Field>
           ) : null}
 
-          <MixField
-            formId={`${formId}-cond`}
-            axis="condition"
-            batch={batch}
-            mix={conditionMix}
-            onMixChange={setConditionMix}
-            options={condPool}
-            selected={conditions}
-            onSelectedChange={setConditions}
-            labelOf={clothConditionLabel}
-            pickHint="The same condition for the whole row."
-            randomHint="Each shirt draws a condition from the weights. Skewed = flat, rotated with the seed."
-            listHint="Each shirt is drawn from the conditions you mark."
-            weights={conditionWeights}
-            onWeightChange={(key, value) =>
-              setConditionWeights((prev) => ({ ...prev, [key]: value }))
-            }
-          />
-
-          <details className="border-t border-border pt-3">
+          <details className="border-t border-border pt-2 sm:col-span-6">
             <summary className="cursor-pointer text-sm font-semibold">
               Advanced options
             </summary>
@@ -637,7 +633,7 @@ function NewExperimentDialogBody({
         <div className="rounded-[var(--radius-sm)] bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
           <p className="font-semibold text-foreground">Summary</p>
           <p className="mt-1">
-            {batch ? `Row ×${count}` : "1 shirt"} · seed {seed} · {scenario}
+            {count === 1 ? "1 run" : `${count} runs`} · seed {seed} · {scenario}
             {" · "}
             {summarizeMix(clothMix, clothTypes, clothTypeLabel, "catalogue")}
             {" · "}
@@ -696,6 +692,7 @@ function MixField<T extends string>({
   listHint,
   weights,
   onWeightChange,
+  className,
 }: {
   formId: string;
   axis: string;
@@ -711,6 +708,7 @@ function MixField<T extends string>({
   listHint: string;
   weights: Record<string, number>;
   onWeightChange: (key: T, value: number) => void;
+  className?: string;
 }) {
   const title = axis === "garment" ? "Garment type" : "Condition";
 
@@ -723,7 +721,7 @@ function MixField<T extends string>({
   }
 
   return (
-    <Field>
+    <Field className={className}>
       <FieldLabel>{title}</FieldLabel>
       <ToggleGroup
         type="single"
@@ -766,7 +764,7 @@ function MixField<T extends string>({
 
       {mix === "random" ? (
         <>
-          <div className="mt-1 flex flex-col gap-1.5">
+          <div className="mt-1 grid grid-cols-1 gap-1">
             {options.map((key) => {
               const value = Math.max(0, Number(weights[key] ?? 1));
               return (
@@ -786,7 +784,7 @@ function MixField<T extends string>({
                       onChange={(event) =>
                         onWeightChange(key, Number(event.target.value))
                       }
-                      className="w-28 accent-foreground"
+                      className="w-24 accent-foreground"
                     />
                     <span className="w-4 text-right font-mono tabular-nums text-muted-foreground">
                       {value}
@@ -831,3 +829,4 @@ function MixField<T extends string>({
     </Field>
   );
 }
+

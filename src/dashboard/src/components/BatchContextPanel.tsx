@@ -24,8 +24,7 @@ import {
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
 import { XFoldLoader } from "@/components/XFoldLoader";
-import { StatusBadge } from "./ui/StatusBadge";
-import { lifecycleLabel } from "@/lib/format";
+import { RunStatusBadges } from "@/components/RunStatusBadges";
 import type { PendingCommand } from "@/lib/adapter";
 import type { BatchSummary, CommandKind, RunDetail, SimulatorCapabilities } from "@/lib/types";
 
@@ -131,17 +130,7 @@ export function BatchContextPanel({
         <div className="border-t border-divider pt-4">
           <div className="mb-3 flex items-center justify-between gap-2">
             <span className="font-mono text-sm">{run.id}</span>
-            <StatusBadge
-              tone={
-                run.lifecycle === "failed"
-                  ? "danger"
-                  : run.lifecycle === "running"
-                    ? "active"
-                    : "neutral"
-              }
-            >
-              {lifecycleLabel(run.lifecycle)}
-            </StatusBadge>
+            <RunStatusBadges run={run} />
           </div>
           {runActive && (
             <div className="flex gap-2">

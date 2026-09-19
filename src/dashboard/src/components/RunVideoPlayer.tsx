@@ -5,33 +5,44 @@ import { useEffect, useRef, useState } from "react";
 /**
  * The run's H.264 recording, live or finished.
  *
- * The bridge writes one HLS playlist per run: it grows while the run is going
- * and gains #EXT-X-ENDLIST when it ends. So this is the same URL in both
- * cases — live it tails a couple of segments behind, and once the run is over
- * the browser treats it as an ordinary video and scrubs it natively.
+ * One HLS URL: no ENDLIST while the run is going (player tails it), then
+ * ENDLIST turns the same file into a VOD. Prefer hls.js whenever MSE works —
+ * Chromium's native HLS does not play this fMP4 live playlist.
  *
- * Safari plays HLS directly; everywhere else hls.js is imported on demand, so
- * it stays out of the bundle for anyone who never opens a recorded run.
+ * The viewport keeps the fold loader up until `ready`. Replay transport
+ * (seek / play / pause) is driven by the HUD, not the native video bar.
  */
 
 const NATIVE = "application/vnd.apple.mpegurl";
 
-export type Status = "waiting" | "playing" | "error";
+export type Status = "waiting" | "ready" | "error";
+
+export type VideoTransport = {
+  t: number;
+  playing: boolean;
+  onTime: (t: number) => void;
+  onEnded: () => void;
+};
 
 export function RunVideoPlayer({
   runId,
   live,
+  transport,
   className,
   onStatus,
 }: {
   runId: string;
   live: boolean;
+  transport?: VideoTransport;
   className?: string;
-  /** Lets the caller keep showing something else until the video is up. */
   onStatus?: (status: Status) => void;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const [status, setStatus] = useState<Status>("waiting");
+  const transportRef = useRef(transport);
+  transportRef.current = transport;
+  const liveRef = useRef(live);
+  liveRef.current = live;
 
   useEffect(() => {
     onStatus?.(status);
@@ -43,89 +54,158 @@ export function RunVideoPlayer({
     const src = `/api/bridge/runs/${encodeURIComponent(runId)}/video/index.m3u8`;
     let cancelled = false;
     let destroy: (() => void) | undefined;
+    setStatus("waiting");
 
-    // The element's own event, not the manifest's: a parsed playlist only
-    // means the bytes arrived, and a browser without H.264 gets that far and
-    // then shows black. `loadeddata` means a frame actually decoded.
-    const onData = () => setStatus("playing");
-    video.addEventListener("loadeddata", onData);
+    const onPlaying = () => {
+      if (!cancelled) setStatus("ready");
+    };
+    video.addEventListener("playing", onPlaying);
 
     async function attach() {
-      // The recorder marks the run before ffmpeg has closed a first segment,
-      // so the playlist can 404 for a second or two. Wait it out rather than
-      // letting the player report a hard error.
-      for (let i = 0; i < 40 && !cancelled; i++) {
-        try {
-          const probe = await fetch(src, { method: "GET", cache: "no-store" });
-          if (probe.ok) break;
-        } catch {
-          /* bridge not up yet */
-        }
-        await new Promise((r) => setTimeout(r, 1000));
-      }
+      const minSeg = liveRef.current ? 2 : 1;
+      const playlist = await waitForPlaylist(src, () => cancelled, minSeg);
       if (cancelled || !video) return;
-
-      if (video.canPlayType(NATIVE)) {
-        video.src = src;
+      if (!playlist) {
+        setStatus("error");
         return;
       }
 
       const { default: Hls } = await import("hls.js");
       if (cancelled) return;
-      if (!Hls.isSupported()) {
-        setStatus("error");
+
+      const liveNow = () => liveRef.current && !transportRef.current;
+
+      if (Hls.isSupported()) {
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          liveSyncDurationCount: 3,
+          liveMaxLatencyDurationCount: 6,
+          maxBufferLength: liveRef.current ? 8 : 30,
+          backBufferLength: liveRef.current ? 30 : 600,
+          manifestLoadPolicy: {
+            default: {
+              maxTimeToFirstByteMs: 10_000,
+              maxLoadTimeMs: 20_000,
+              timeoutRetry: { maxNumRetry: 8, retryDelayMs: 1000, maxRetryDelayMs: 4000 },
+              errorRetry: { maxNumRetry: 12, retryDelayMs: 1000, maxRetryDelayMs: 4000 },
+            },
+          },
+        });
+        let joined = false;
+        const start = () => {
+          if (cancelled || joined) return;
+          if (liveNow()) {
+            const edge = hls.liveSyncPosition;
+            if (edge == null || !Number.isFinite(edge)) return;
+            joined = true;
+            video.currentTime = edge;
+          } else {
+            joined = true;
+          }
+          void video.play().catch(() => {});
+        };
+        hls.on(Hls.Events.MANIFEST_PARSED, start);
+        hls.on(Hls.Events.LEVEL_UPDATED, start);
+        hls.on(Hls.Events.ERROR, (_e, data) => {
+          if (!data.fatal) return;
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+          else setStatus("error");
+        });
+        hls.loadSource(src);
+        hls.attachMedia(video);
+        destroy = () => hls.destroy();
         return;
       }
-      const hls = new Hls({
-        // Live: sit ~2 segments back, which is the delay we trade for H.264.
-        liveSyncDurationCount: 2,
-        lowLatencyMode: false,
-        // A live playlist 404s until the first segment lands, and a run can
-        // pause; keep retrying rather than giving up on the stream.
-        manifestLoadPolicy: {
-          default: {
-            maxTimeToFirstByteMs: 10_000,
-            maxLoadTimeMs: 20_000,
-            timeoutRetry: { maxNumRetry: 6, retryDelayMs: 1000, maxRetryDelayMs: 4000 },
-            errorRetry: { maxNumRetry: 8, retryDelayMs: 1000, maxRetryDelayMs: 4000 },
-          },
-        },
-      });
-      hls.on(Hls.Events.ERROR, (_e, data) => {
-        if (!data.fatal) return;
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-        else setStatus("error");
-      });
-      hls.loadSource(src);
-      hls.attachMedia(video);
-      destroy = () => hls.destroy();
+
+      if (video.canPlayType(NATIVE)) {
+        const onMeta = () => {
+          if (cancelled) return;
+          if (liveNow() && video.seekable.length > 0) {
+            video.currentTime = video.seekable.end(video.seekable.length - 1);
+          }
+          void video.play().catch(() => {});
+        };
+        video.addEventListener("loadedmetadata", onMeta, { once: true });
+        video.src = src;
+        return;
+      }
+
+      setStatus("error");
     }
 
     void attach();
     return () => {
       cancelled = true;
-      video.removeEventListener("loadeddata", onData);
+      video.removeEventListener("playing", onPlaying);
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
       destroy?.();
     };
   }, [runId]);
 
+  useEffect(() => {
+    const video = ref.current;
+    if (!video || !transport) return;
+
+    const onTime = () => transportRef.current?.onTime(video.currentTime);
+    const onEnded = () => transportRef.current?.onEnded();
+    video.addEventListener("timeupdate", onTime);
+    video.addEventListener("ended", onEnded);
+    return () => {
+      video.removeEventListener("timeupdate", onTime);
+      video.removeEventListener("ended", onEnded);
+    };
+  }, [transport]);
+
+  useEffect(() => {
+    const video = ref.current;
+    if (!video || !transport) return;
+    if (transport.playing) return;
+    if (Math.abs(video.currentTime - transport.t) > 0.15) {
+      video.currentTime = transport.t;
+    }
+  }, [transport, transport?.t]);
+
+  useEffect(() => {
+    const video = ref.current;
+    if (!video || !transport) return;
+    if (transport.playing) void video.play().catch(() => {});
+    else video.pause();
+  }, [transport, transport?.playing]);
+
   return (
-    <>
-      <video
-        ref={ref}
-        // Live tails the edge on its own; a finished run is scrubbed by hand.
-        autoPlay
-        muted
-        playsInline
-        controls={!live}
-        className={className}
-      />
-      {status === "error" ? (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-[12px] uppercase tracking-[0.12em] text-hud-dim">
-          Vídeo no reproducible
-        </div>
-      ) : null}
-    </>
+    <video
+      ref={ref}
+      muted
+      playsInline
+      autoPlay={false}
+      preload="auto"
+      controls={false}
+      className={className}
+    />
   );
+}
+
+function playlistHasMedia(text: string, min: number): boolean {
+  return (text.match(/#EXTINF/g)?.length ?? 0) >= min;
+}
+
+async function waitForPlaylist(
+  src: string,
+  cancelled: () => boolean,
+  minSegments = 1,
+): Promise<boolean> {
+  for (; !cancelled(); ) {
+    try {
+      const probe = await fetch(src, { method: "GET", cache: "no-store" });
+      if (probe.ok && playlistHasMedia(await probe.text(), minSegments)) return true;
+    } catch {
+      /* bridge not up yet */
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return false;
 }

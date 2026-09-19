@@ -34,6 +34,7 @@ import numpy as np
 from xfold.bridge.photo import save_photo
 from xfold.bridge.trajectory import TrajectoryRecorder
 from xfold.fsm import CellState
+from xfold.garments import garment_result_label, grade_line_outcome
 
 if TYPE_CHECKING:
     from xfold.bridge.runtime import Runtime
@@ -48,6 +49,7 @@ _STAGE_STATE: dict[str, CellState] = {
     "STEAM": CellState.PRESS,
     "LIFT": CellState.PRESS,
     "PHOTO": CellState.PRESS,  # the QC shot, still at the press end of the line
+    "SORT": CellState.PRESS,  # pass or suction-divert into a reject tote
     "SETTLE": CellState.FOLD,
     "BAGGER": CellState.FOLD,  # runs interleaved with the flap folds
     "FOLD": CellState.FOLD,
@@ -293,8 +295,18 @@ class LineDriver:
                 return
             with session.lock:
                 recorder.maybe_sample(t, line.phase, session.data.qpos)
-            self._log(run_id, f"cycle complete · {t:.1f}s of simulation")
-            self.runtime.finish_success(run_id, t)
+                outcome = line.outcome
+            record = self._active(run_id)
+            garment = record.garment if record is not None else "tee"
+            condition = record.clothCondition if record is not None else None
+            ok, reason = grade_line_outcome(outcome, garment, condition)
+            mark = garment_result_label(garment, condition)
+            if ok:
+                self._log(run_id, f"cycle complete · {mark.lower()} · {t:.1f}s of simulation")
+                self.runtime.finish_success(run_id, t)
+            else:
+                self._log(run_id, f"cycle failed · {reason} · {t:.1f}s of simulation", level="error")
+                self.runtime.finish_failed(run_id, t, reason=reason)
         except Exception as exc:  # noqa: BLE001
             self._log(run_id, f"cycle failed: {exc}", level="error")
             final = self.runtime.driver_active_run()

@@ -24,6 +24,67 @@ class ObservabilityTests(unittest.TestCase):
         self.assertEqual(started.stages, self.runtime.capabilities.process.model_dump()["stages"])
         self.assertEqual(self.runtime.snapshot()["capabilities"]["process"]["scenario"], "line")
 
+    def test_qc_reject_bins(self):
+        from xfold.garments import qc_reject_bin
+
+        self.assertEqual(qc_reject_bin("tee_notgood2"), "stained")
+        self.assertEqual(qc_reject_bin("polo_damaged"), "broken")
+        self.assertIsNone(qc_reject_bin("tee"))
+        self.assertIsNone(qc_reject_bin("custom"))
+        states = [p["state"] for p in LINE_PHASES]
+        self.assertEqual(states[states.index("PHOTO") + 1], "SORT")
+
+    def test_qc_arm_paths_stay_west_of_camera_post(self):
+        import math
+        import numpy as np
+        from xfold.line import (
+            QC_BIN_XY,
+            QC_CUP_HOME,
+            QC_CUP_LIFT_Z,
+            QC_DROP_WATCH_S,
+            QC_POLE_XY,
+            QC_SUCTION_R,
+            QC_X,
+            _arm_hits_pole,
+            _cup_path,
+            _in_qc_keepout,
+            _qc_ik,
+        )
+
+        self.assertGreaterEqual(QC_DROP_WATCH_S, 1.0)
+        self.assertLess(QC_SUCTION_R, 0.10)
+        hover = np.array([QC_X, 0.0, QC_CUP_LIFT_Z])
+        over = np.array([QC_BIN_XY["broken"][0], QC_BIN_XY["broken"][1], QC_CUP_LIFT_Z])
+        for start, end in ((QC_CUP_HOME, hover), (hover, over), (over, QC_CUP_HOME)):
+            prev = np.asarray(start, dtype=float)
+            for point in _cup_path(start, end):
+                for blend in np.linspace(0.0, 1.0, 8):
+                    cup = prev + blend * (point - prev)
+                    self.assertFalse(_in_qc_keepout(cup, 0.05), cup)
+                    _c, shoulder, elbow, wrist, _yaw = _qc_ik(cup)
+                    self.assertFalse(_arm_hits_pole(shoulder, elbow, wrist), cup)
+                    self.assertGreater(
+                        math.hypot(cup[0] - QC_POLE_XY[0], cup[1] - QC_POLE_XY[1]),
+                        0.22,
+                    )
+                prev = np.asarray(point, dtype=float)
+
+    def test_qc_reject_is_success_with_garment_mark(self):
+        from xfold.garments import grade_line_outcome, garment_result_label
+
+        self.assertEqual(grade_line_outcome("stained", "tee_notgood2"), (True, None))
+        self.assertEqual(grade_line_outcome("broken", "polo_damaged"), (True, None))
+        self.assertEqual(grade_line_outcome("packed", "tee"), (True, None))
+        ok, reason = grade_line_outcome("packed", "tee_notgood1")
+        self.assertFalse(ok)
+        self.assertIn("stained", reason)
+        self.assertEqual(garment_result_label("tee_notgood1"), "Stained")
+        self.runtime.emit_state(self.run_id, "SORT", 1)
+        self.runtime.finish_success(self.run_id, 2)
+        run = self.runtime.get_run(self.run_id)
+        self.assertEqual(run["lifecycle"], "succeeded")
+        self.assertIsNone(run["failReason"])
+
     def test_press_duration_excludes_transport(self):
         self.runtime.emit_state(self.run_id, "PRESS", 3.53)
         self.runtime.emit_state(self.run_id, "TO_FOLDER", 11.03)

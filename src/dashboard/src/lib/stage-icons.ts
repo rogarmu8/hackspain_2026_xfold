@@ -20,6 +20,7 @@ export const STAGE_ICONS: Partial<Record<PhaseId, LucideIcon>> = {
   PRESS: ArrowDownToLine,
   TO_QC: ArrowDownToLine,
   PHOTO: ArrowDownToLine,
+  SORT: ArrowDownToLine,
   TO_FOLDER: FoldVertical,
   FOLD: FoldVertical,
   INSERT: ShoppingBag,

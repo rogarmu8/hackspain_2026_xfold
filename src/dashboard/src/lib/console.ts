@@ -1,5 +1,5 @@
 import type { JournalEvent, LogLevel } from "@xfold/protocol";
-import { lifecycleLabel, stageLabel } from "@/lib/format";
+import { stageLabel, runResultLabel } from "@/lib/format";
 import type { RunDetail, RunEvent } from "@/lib/types";
 
 /** One row of the live console; derived from journal facts or run events. */
@@ -45,7 +45,11 @@ export function lineFromJournal(event: JournalEvent): ConsoleLine | null {
         atSimS: event.t,
         level: event.lifecycle === "succeeded" ? "info" : "warning",
         source: "bridge",
-        message: `${lifecycleLabel(event.lifecycle).toLowerCase()}${event.reason ? ` · ${event.reason}` : ""}`,
+        message: runResultLabel({
+          lifecycle: event.lifecycle,
+          failReason: event.reason ?? null,
+          clothCondition: event.clothCondition ?? null,
+        }).toLowerCase(),
       };
     case "command_accepted":
     case "command_rejected":

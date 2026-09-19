@@ -396,7 +396,7 @@ export const FIXTURE_RUNS_BY_ID: Record<string, RunDetail> = {
     startedAtIso: "2026-09-18T21:10:00.000Z",
     cycleTimeSimS: 46.2,
     cycleTimeWallS: 47.0,
-    shirtInBag: true,
+    shirtInBag: false,
   }),
   "RUN-005": extraCatalogRun("RUN-005", {
     batchId: null,

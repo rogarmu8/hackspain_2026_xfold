@@ -18,8 +18,9 @@ import { CellSchematic } from "./CellSchematic";
 import { XFoldLoader } from "@/components/XFoldLoader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/button";
+import { RunStatusBadges } from "@/components/RunStatusBadges";
 import { STAGE_ICONS, DEFAULT_STAGE_ICON } from "@/lib/stage-icons";
-import { formatFlatness, formatSeconds, lifecycleLabel, operatorStepTitle } from "@/lib/format";
+import { formatFlatness, formatSeconds, operatorStepTitle, runGarmentLabel, runGarmentTone } from "@/lib/format";
 import {
   useLiveViewport,
   type ViewportStatus,
@@ -58,28 +59,28 @@ export function SimulationViewport({
   };
 
   const running = run?.lifecycle === "running";
-  // The bridge records each run to H.264. When it has, that one playlist is
-  // both the live view (tailing, a couple of segments behind) and the replay
-  // (a VOD the browser scrubs natively) — so it replaces the JPEG frame paths
-  // on both sides. Without a recording nothing changes.
+  // Recorded runs stay black until HLS is playing at the live edge. Showing
+  // the JPEG stream first, then swapping to the playlist from t=0, looks
+  // like the video restarting.
   const showVideo = Boolean(run?.hasVideo) && provenance !== "fixture";
   const [videoStatus, setVideoStatus] = useState<VideoStatus>("waiting");
-  // A run is marked as recorded before ffmpeg closes its first segment, so the
-  // video has nothing to show for the first few seconds. Keep the long-poll
-  // frames underneath until it does, rather than blanking the viewport.
-  const videoUp = showVideo && videoStatus === "playing";
-  const showLive =
+  useEffect(() => {
+    setVideoStatus("waiting");
+  }, [run?.id]);
+  const videoUp = showVideo && videoStatus === "ready";
+  const videoBuffering = showVideo && videoStatus === "waiting";
+  const showJpeg =
     !replay &&
-    !videoUp &&
+    !showVideo &&
     streamAvailable &&
     Boolean(bridgeUrl) &&
     provenance !== "fixture";
-  const live = running && showLive;
+  const live = running && !replay;
   const stage = replay ? replay.active : run?.currentState ?? null;
   const StageIcon = stage ? STAGE_ICONS[stage] ?? DEFAULT_STAGE_ICON : null;
 
   const viewport = useLiveViewport({
-    enabled: showLive,
+    enabled: showJpeg,
     bridgeUrl,
     waitMs: 1500,
   });
@@ -96,18 +97,18 @@ export function SimulationViewport({
           ) : null}
           {live ? (
             <StatusBadge tone="active">Live</StatusBadge>
+          ) : run ? (
+            <RunStatusBadges run={run} />
           ) : null}
-          {run && !running ? (
-            <StatusBadge tone={run.lifecycle === "failed" ? "danger" : "neutral"}>
-              {lifecycleLabel(run.lifecycle)}
-            </StatusBadge>
+          {live && run && runGarmentLabel(run) ? (
+            <StatusBadge tone={runGarmentTone(run)}>{runGarmentLabel(run)}</StatusBadge>
           ) : null}
           {provenance === "fixture" ? (
             <StatusBadge tone="neutral" icon={<FlaskConical className="size-3" aria-hidden />}>
               Sample
             </StatusBadge>
           ) : null}
-          {showLive ? <ViewportStatusBadge status={viewport.status} /> : null}
+          {showJpeg ? <ViewportStatusBadge status={viewport.status} /> : null}
           {replay?.loading ? <StatusBadge tone="neutral">Loading replay</StatusBadge> : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -135,11 +136,26 @@ export function SimulationViewport({
           <RunVideoPlayer
             runId={run.id}
             live={running}
+            transport={
+              replay && !running
+                ? {
+                    t: replay.t,
+                    playing: replay.playing,
+                    onTime: replay.reportTime,
+                    onEnded: () => replay.seek(replay.tMax),
+                  }
+                : undefined
+            }
             onStatus={setVideoStatus}
-            className="absolute inset-0 z-10 h-full w-full object-contain"
+            className={`absolute inset-0 h-full w-full object-contain ${videoUp ? "z-10" : "pointer-events-none opacity-0"}`}
           />
         ) : null}
-        {videoUp ? null : replay ? (
+        {videoBuffering ? (
+          <div className="absolute inset-0 z-[5] flex items-center justify-center">
+            <XFoldLoader size={72} decorative tone="dark" surface="var(--viewport)" />
+          </div>
+        ) : null}
+        {videoUp || videoBuffering ? null : replay ? (
           replay.frameSrc ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -152,7 +168,7 @@ export function SimulationViewport({
               <CellSchematic stage={stage} stages={run?.stages} />
             </div>
           )
-        ) : showLive ? (
+        ) : showJpeg ? (
           viewport.src ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -205,7 +221,7 @@ export function SimulationViewport({
                 ) : (
                   <History className="size-3.5" strokeWidth={1.75} aria-hidden />
                 )}
-                <span>{running ? "live · h.264" : "replay · h.264"}</span>
+                <span>{running ? "live" : "replay"}</span>
               </>
             ) : replay ? (
               <>
@@ -217,7 +233,7 @@ export function SimulationViewport({
                 <span className="pulse-dot size-2 rounded-full bg-danger text-danger" aria-hidden />
                 <span>live</span>
               </>
-            ) : showLive ? (
+            ) : showJpeg ? (
               <>
                 <Camera className="size-3.5" strokeWidth={1.75} aria-hidden />
                 <span>
@@ -240,7 +256,7 @@ export function SimulationViewport({
             {run.telemetry.activities?.map((activity) => <p key={activity.station} className="text-hud-dim">{activity.station} · last parallel hit: {activity.message}</p>)}
           </div>
         ) : null}
-        {replay && !videoUp ? (
+        {replay ? (
           <ReplayControls replay={replay} />
         ) : run?.telemetry && !videoUp ? (
           <dl className="pointer-events-none absolute inset-x-0 bottom-0 grid grid-cols-5 gap-x-3 border-t border-hud/15 bg-black/60 px-6 py-2.5 text-left backdrop-blur-[2px]">
@@ -250,7 +266,7 @@ export function SimulationViewport({
             <Metric label="in bag" value={run.telemetry.shirt_in_bag == null ? "not measured" : run.telemetry.shirt_in_bag ? "yes" : "no"} />
             <Metric label="sim t" value={formatSeconds(run.telemetry.t)} />
           </dl>
-        ) : !run && !showLive ? (
+        ) : !run && !showJpeg ? (
           <p className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-2 px-6 py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-hud-dim">
             <Radio className="size-3.5" strokeWidth={1.75} aria-hidden />
             Launch an experiment to see the cell
@@ -265,7 +281,7 @@ export function SimulationViewport({
 function ReplayControls({ replay }: { replay: RunReplay }) {
   const pct = (t: number) => (replay.tMax > 0 ? (t / replay.tMax) * 100 : 0);
   return (
-    <div className="absolute inset-x-0 bottom-0 flex items-center gap-3 border-t border-hud/15 bg-black/60 px-4 py-2 backdrop-blur-[2px]">
+    <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-3 border-t border-hud/15 bg-black/60 px-4 py-2 backdrop-blur-[2px]">
       <div className="flex shrink-0 items-center gap-0.5">
         <Button variant="ghost" size="icon-sm" className="size-7 text-hud hover:bg-hud/10 hover:text-hud" onClick={() => replay.stepMarker(-1)} aria-label="Previous phase" title="Previous phase">
           <ChevronLeft className="size-4" />

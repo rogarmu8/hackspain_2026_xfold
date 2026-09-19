@@ -5,11 +5,13 @@
   lands at a random heading; a dual conveyor product turner (spread_rig.xml)
   yaws it until the collar leads (+x): two side-by-side belts run together,
   then one speeds up and the other slows so the shirt pivots, then they
-  resync. The linear belt then stops
-  it under the press, the platen comes down on the belt itself (the press's
-  own bed and table are removed in xfold.line), then the belt runs the
-  shirt off its end onto the folder. The folder is a FlipFold on legs: a
-  sliding peel under the collar, a flap on each side and one under the hem.
+  resync. The linear belt then stops it under the press, the platen comes
+  down on the belt itself (the press's own bed and table are removed in
+  xfold.line), then the belt stops the shirt under a QC camera. After the
+  product shot a pedestal arm with a suction cup diverts stained garments
+  into a stained tote and torn ones into a broken tote; clean shirts run
+  off the belt onto the folder. The folder is a FlipFold on legs: a sliding peel under the
+  collar, a flap on each side and one under the hem.
 
   Then the bagger, two stations on belt 2. Pre-made bags (gusseted, sealed on
   three sides) lie flat in a magazine behind the belt. While the shirt is
@@ -99,6 +101,8 @@
     <material name="label_dress" texture="label_dress"/>
     <material name="label_custom" texture="label_custom"/>
     <material name="cardboard" rgba="0.62 0.47 0.30 1"/>
+    <material name="bin_stained" rgba="0.78 0.58 0.16 1"/>
+    <material name="bin_broken" rgba="0.52 0.22 0.18 1"/>
   </asset>
 
   <include file="press_rig.xml"/>
@@ -169,6 +173,49 @@
       <geom name="qc_lamp_r" class="deco" type="box" size="0.05 0.035 0.022" pos="0 -0.42 1.31" material="steel"/>
       <geom name="qc_bulb_l" class="deco" type="box" size="0.044 0.029 0.005" pos="0 0.42 1.286" rgba="0.5 0.5 0.55 1"/>
       <geom name="qc_bulb_r" class="deco" type="box" size="0.044 0.029 0.005" pos="0 -0.42 1.286" rgba="0.5 0.5 0.55 1"/>
+    </body>
+    <!--
+      QC reject arm: a pedestal 2-link on the operator side of the camera
+      post. After the product shot it reaches onto the belt, carries a
+      stained shirt into the upstream tote or a torn shirt into the
+      downstream tote, and lets go. Parked west of the camera post, not on it.
+      Links are mocap; xfold.line poses them with 2-link IK.
+    -->
+    <body name="qc_arm_base" pos="-0.52 0.80 0">
+      <geom name="qc_arm_foot" class="deco" type="cylinder" size="0.12 0.016" pos="0 0 0.016" material="steel"/>
+      <geom name="qc_arm_column" class="deco" type="cylinder" size="0.055 0.36" pos="0 0 0.392" material="steel"/>
+      <geom name="qc_arm_cap" class="deco" type="cylinder" size="0.07 0.04" pos="0 0 0.76" material="panel_grey"/>
+    </body>
+    <body name="qc_arm_yaw" mocap="true" pos="-0.52 0.80 0.76">
+      <geom name="qc_arm_turret" class="deco" type="cylinder" size="0.062 0.035" pos="0 0 0.01" material="panel_grey"/>
+      <geom name="qc_arm_horn" class="deco" type="box" size="0.05 0.028 0.022" pos="0.04 0 0.02" material="flap"/>
+    </body>
+    <body name="qc_arm_upper" mocap="true" pos="-0.52 0.80 0.76">
+      <geom name="qc_arm_upper_tube" class="deco" type="cylinder" size="0.038 0.375" pos="0 0 0.375" material="steel"/>
+      <geom name="qc_arm_elbow" class="deco" type="sphere" size="0.048" pos="0 0 0.75" material="panel_grey"/>
+    </body>
+    <body name="qc_arm_fore" mocap="true" pos="-0.17 0.80 1.20">
+      <geom name="qc_arm_fore_tube" class="deco" type="cylinder" size="0.032 0.45" pos="0 0 0.45" material="steel"/>
+      <geom name="qc_arm_wrist" class="deco" type="sphere" size="0.04" pos="0 0 0.90" material="panel_grey"/>
+    </body>
+    <body name="qc_cup" mocap="true" pos="-0.44 0.98 1.08">
+      <geom name="qc_cup_pad" class="deco" type="cylinder" size="0.042 0.008" material="suction"/>
+      <geom name="qc_cup_lip" class="deco" type="cylinder" size="0.048 0.004" pos="0 0 -0.010" rgba="0.08 0.08 0.09 1"/>
+      <geom name="qc_cup_stem" class="deco" type="cylinder" size="0.011 0.05" pos="0 0 0.058" material="steel"/>
+    </body>
+    <body name="bin_stained" pos="-0.70 1.50 0">
+      <geom name="bin_stained_floor" type="box" size="0.40 0.48 0.008" pos="0 0 0.008" material="bin_stained"/>
+      <geom name="bin_stained_near" type="box" size="0.008 0.48 0.16" pos="-0.408 0 0.176" material="bin_stained"/>
+      <geom name="bin_stained_far" type="box" size="0.008 0.48 0.16" pos="0.408 0 0.176" material="bin_stained"/>
+      <geom name="bin_stained_left" type="box" size="0.40 0.008 0.16" pos="0 0.488 0.176" material="bin_stained"/>
+      <geom name="bin_stained_right" type="box" size="0.40 0.008 0.16" pos="0 -0.488 0.176" material="bin_stained"/>
+    </body>
+    <body name="bin_broken" pos="0.30 1.50 0">
+      <geom name="bin_broken_floor" type="box" size="0.40 0.48 0.008" pos="0 0 0.008" material="bin_broken"/>
+      <geom name="bin_broken_near" type="box" size="0.008 0.48 0.16" pos="-0.408 0 0.176" material="bin_broken"/>
+      <geom name="bin_broken_far" type="box" size="0.008 0.48 0.16" pos="0.408 0 0.176" material="bin_broken"/>
+      <geom name="bin_broken_left" type="box" size="0.40 0.008 0.16" pos="0 0.488 0.176" material="bin_broken"/>
+      <geom name="bin_broken_right" type="box" size="0.40 0.008 0.16" pos="0 -0.488 0.176" material="bin_broken"/>
     </body>
 
     <!--

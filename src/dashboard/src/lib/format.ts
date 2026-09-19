@@ -24,6 +24,7 @@ const LINE_STEP_LABELS: Record<string, string> = {
   TO_PRESS: "Press",
   TO_QC: "Press",
   PHOTO: "Press",
+  SORT: "Press",
   TO_FOLDER: "Fold",
   INSERT: "Bag",
   TO_SEAL: "Pack",
@@ -96,6 +97,57 @@ export function lifecycleLabel(value: string): string {
   return ({ running: "Running", paused: "Paused", succeeded: "Succeeded", failed: "Failed", cancelled: "Cancelled", queued: "Queued", partial: "Partial", completed: "Completed", active: "Active", pending: "Pending", skipped: "Skipped" } as Record<string, string>)[value] ?? value;
 }
 
+export type RunResultSource = {
+  lifecycle: string;
+  clothCondition?: string | null;
+  failReason?: string | null;
+  config?: { clothCondition?: string | null };
+};
+
+function runCondition(run: RunResultSource): string | null {
+  return run.clothCondition ?? run.config?.clothCondition ?? null;
+}
+
+/** Process status: did the line do the right thing with this garment. */
+export function runProcessLabel(run: RunResultSource): string {
+  return lifecycleLabel(run.lifecycle);
+}
+
+export function runProcessTone(run: RunResultSource): "active" | "neutral" | "danger" | "success" | "pending" {
+  if (run.lifecycle === "running" || run.lifecycle === "paused") return "active";
+  if (run.lifecycle === "succeeded") return "success";
+  if (run.lifecycle === "failed") return "danger";
+  if (run.lifecycle === "queued") return "pending";
+  return "neutral";
+}
+
+/** Garment mark: Clean / Rotated / Stained / Torn, independent of success. */
+export function runGarmentLabel(run: RunResultSource): string | null {
+  const condition = runCondition(run);
+  return condition ? clothConditionLabel(condition) : null;
+}
+
+export function runGarmentTone(run: RunResultSource): "active" | "neutral" | "danger" | "success" | "pending" {
+  const label = runGarmentLabel(run);
+  if (label === "Stained" || label === "Torn") return "danger";
+  if (label === "Clean" || label === "Rotated") return "neutral";
+  return "neutral";
+}
+
+/** Console / single-line form: "Succeeded · Stained". */
+export function runResultLabel(run: RunResultSource): string {
+  const process = runProcessLabel(run);
+  if (run.lifecycle === "running" || run.lifecycle === "paused" || run.lifecycle === "queued") {
+    return process;
+  }
+  const garment = runGarmentLabel(run);
+  return garment ? `${process} · ${garment}` : process;
+}
+
+export function runResultTone(run: RunResultSource): "active" | "neutral" | "danger" | "success" | "pending" {
+  return runProcessTone(run);
+}
+
 const CLOTH_TYPE_LABELS: Record<ClothType, string> = {
   tee: "T-shirt",
   work_tee: "Work tee",
@@ -107,10 +159,10 @@ const CLOTH_TYPE_LABELS: Record<ClothType, string> = {
 };
 
 const CLOTH_CONDITION_LABELS: Record<ClothCondition, string> = {
-  good: "Clean, square on the belt",
+  good: "Clean",
   damaged: "Torn",
   notgood: "Stained",
-  skewed: "Flat, rotated (seed)",
+  skewed: "Rotated",
 };
 
 export function clothTypeLabel(key: string): string {

@@ -10,9 +10,9 @@ import { ConnectionBadge } from "@/components/ConnectionBadge";
 import { FoldMark } from "@/components/FoldMark";
 import { GraphsView, conditionFilterLabel } from "@/components/GraphsView";
 import { NewExperimentDialog } from "@/components/NewExperimentDialog";
-import { StatusBadge } from "@/components/ui/StatusBadge";
+import { RunStatusBadges } from "@/components/RunStatusBadges";
 import { useDashboard } from "@/lib/dashboard-context";
-import { formatIso, formatSeconds, lifecycleLabel, clothTypeLabel } from "@/lib/format";
+import { formatIso, formatSeconds, clothTypeLabel } from "@/lib/format";
 import { filterChartRuns, GRAPH_GROUPS, GRAPH_MEASURES, uniqueValues, type ChartMetric, type GraphGroup } from "@/lib/run-charts";
 import type { RunLifecycle, RunSummary } from "@/lib/types";
 
@@ -29,15 +29,6 @@ const LIFECYCLES: [RunLifecycle | "all", string][] = [
 const CONTROL =
   "h-10 rounded-[var(--radius-sm)] border border-input bg-surface px-3 text-sm";
 const FIELD = `mt-1 block ${CONTROL}`;
-
-const tone = (lifecycle: RunLifecycle) =>
-  lifecycle === "running" || lifecycle === "paused"
-    ? "active"
-    : lifecycle === "failed"
-      ? "danger"
-      : lifecycle === "succeeded"
-        ? "success"
-        : "neutral";
 
 /** Single list of every run (individual or batch member). Opening one lands in the control view. */
 export function HistoryView() {
@@ -95,7 +86,7 @@ export function HistoryView() {
           href={`/historial/${active.id}`}
           className="mb-3 flex shrink-0 flex-wrap items-center gap-3 border border-active/40 bg-surface px-4 py-2 no-underline hover:border-active"
         >
-          <StatusBadge tone="active">{lifecycleLabel(active.lifecycle)}</StatusBadge>
+          <RunStatusBadges run={active} />
           <span className="font-mono font-semibold tabular">{active.id}</span>
           {active.name ? <span className="text-sm text-muted-foreground">{active.name}</span> : null}
           <span className="ml-auto inline-flex items-center gap-1 text-sm font-semibold">
@@ -260,7 +251,7 @@ function RunRow({ run, onOpen }: { run: RunSummary; onOpen: () => void }) {
         {run.name ? <span className="mt-0.5 block text-[13px] text-muted-foreground">{run.name}</span> : null}
       </TableCell>
       <TableCell className="px-4 py-3">
-        <StatusBadge tone={tone(run.lifecycle)}>{lifecycleLabel(run.lifecycle)}</StatusBadge>
+        <RunStatusBadges run={run} />
       </TableCell>
       <TableCell className="px-4 py-3 font-mono text-muted-foreground tabular">
         {run.batchId ? (

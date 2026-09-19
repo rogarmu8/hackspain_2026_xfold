@@ -347,7 +347,7 @@ export class DashboardAdapter {
 
     const seed = request.mode === "individual" ? request.seed : request.baseSeed;
     if (!Number.isSafeInteger(seed) || seed < 0 || seed > 2147483547) return { ok: false, reason: "Seed must be an integer between 0 and 2147483547." };
-    if (request.mode === "batch" && (!Number.isInteger(request.count) || request.count < 1 || request.count > 100 || request.seedStrategy !== "sequential")) return { ok: false, reason: "Choose between 1 and 100 runs with sequential seeds." };
+    if (request.mode === "batch" && (!Number.isInteger(request.count) || request.count < 1 || request.seedStrategy !== "sequential")) return { ok: false, reason: "N runs must be an integer ≥ 1 with sequential seeds." };
     this.remember();
     if (request.mode === "individual") {
       const id = `RUN-${String(100 + this.launches.length).padStart(3, "0")}`;

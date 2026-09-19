@@ -258,6 +258,7 @@ export type JournalEvent =
       >;
       reason: string | null;
       t: number;
+      clothCondition?: string | null;
     })
   | (JournalEnvelope & {
       type: "command_accepted" | "command_rejected" | "command_applied";

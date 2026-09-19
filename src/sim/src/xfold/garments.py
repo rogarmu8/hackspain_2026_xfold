@@ -73,11 +73,57 @@ CATALOGUE_TYPE_KEYS = tuple(k for k, *_ in _PRISTINE)
 CLOTH_TYPE_KEYS = (*CATALOGUE_TYPE_KEYS, CUSTOM_KEY)
 CLOTH_CONDITION_KEYS = ("good", "damaged", "notgood", "skewed")
 CLOTH_CONDITION_LABELS = {
-    "good": "clean, square on the belt",
-    "damaged": "hole / torn hem",
-    "notgood": "stain (random 1–3)",
-    "skewed": "flat on the belt, heading from the seed",
+    "good": "Clean",
+    "damaged": "Torn",
+    "notgood": "Stained",
+    "skewed": "Rotated",
 }
+
+
+def qc_reject_bin(name: str) -> str | None:
+    """Tote after the QC photo: ``stained``, ``broken``, or None to keep folding."""
+    key = resolve_garment(name).key
+    if key.endswith("_damaged"):
+        return "broken"
+    if "_notgood" in key:
+        return "stained"
+    return None
+
+
+def garment_result_label(name: str, cloth_condition: str | None = None) -> str:
+    """Operator garment mark: Clean / Rotated / Stained / Torn."""
+    condition = (cloth_condition or "").strip().lower()
+    if condition in CLOTH_CONDITION_LABELS:
+        return CLOTH_CONDITION_LABELS[condition]
+    key = resolve_garment(name).key
+    if key.endswith("_damaged"):
+        return CLOTH_CONDITION_LABELS["damaged"]
+    if "_notgood" in key:
+        return CLOTH_CONDITION_LABELS["notgood"]
+    return CLOTH_CONDITION_LABELS["good"]
+
+
+def grade_line_outcome(
+    outcome: str | None,
+    garment: str,
+    cloth_condition: str | None = None,
+) -> tuple[bool, str | None]:
+    """Whether the cycle did the right thing with this SKU.
+
+    Diverting a stained shirt into the stained tote is success. Packing it is
+    failure. The garment mark (Stained / Torn / …) is independent.
+    """
+    actual = outcome if outcome in {"packed", "stained", "broken"} else "packed"
+    expected = qc_reject_bin(garment) or "packed"
+    if actual == expected:
+        return True, None
+    label = garment_result_label(garment, cloth_condition).lower()
+    if actual == "packed":
+        return False, f"packed a {label} garment"
+    if expected == "packed":
+        return False, f"rejected a {label} garment"
+    tote = "stained bin" if actual == "stained" else "broken bin"
+    return False, f"sent a {label} garment to the {tote}"
 
 
 def base_garment(name: str) -> Garment:
