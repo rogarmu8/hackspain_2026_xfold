@@ -68,6 +68,10 @@ _DAMAGE_CUTS: dict[str, tuple[tuple[float, float, float, float], ...]] = {
         (0.12, -0.22, 0.070, 0.062),
         (0.34, -0.54, 0.090, 0.070),
     ),
+    "trousers_damaged": (
+        (0.16, -0.18, 0.055, 0.070),
+        (-0.22, -0.48, 0.080, 0.055),
+    ),
 }
 
 
@@ -114,6 +118,8 @@ def shirt_outline(style: str = "tee") -> np.ndarray:
         return _outline_polo()
     if style == "dress":
         return _outline_dress()
+    if style == "trousers":
+        return _outline_trousers()
     if style == "custom":
         loaded = load_custom_outline()
         return loaded if loaded is not None else _outline_square()
@@ -424,7 +430,8 @@ def _outline_dress() -> np.ndarray:
     bib_y = 0.20
     brace_top = 0.48
     bib_hw = 0.21
-    hem_hw = 0.50
+    # 0.84 m hem: sits on the 0.97 m belt and on the side flaps (to ±0.465).
+    hem_hw = 0.42
     hem_y = -0.54
     left_neck = (-strap_i, bib_y)
     inner_up = _bezier(
@@ -483,6 +490,58 @@ def _outline_dress() -> np.ndarray:
         12,
     )
     return _join(left, right, neck)
+
+
+def _outline_trousers() -> np.ndarray:
+    """Laid-flat trousers: waist at +Y, two legs, a crotch gap — not a slit T."""
+    waist_y, hip_y, crotch_y, hem_y = 0.48, 0.20, 0.02, -0.52
+    waist_hw, hip_hw = 0.20, 0.30
+    inseam = 0.038
+    hem_out = 0.27
+    hem_r = 0.055
+    left_waist = (-waist_hw, waist_y)
+    outer = _bezier(
+        left_waist,
+        (-waist_hw - 0.02, waist_y - 0.10),
+        (-hip_hw, hip_y + 0.06),
+        (-hip_hw, hip_y),
+        8,
+    )
+    to_hem = _bezier(
+        outer[-1],
+        (-hip_hw - 0.005, 0.02),
+        (-hem_out, hem_y + 0.20),
+        (-hem_out, hem_y + hem_r),
+        10,
+    )
+    hem = _arc(-hem_out + hem_r, hem_y + hem_r, hem_r, hem_r, np.pi, 1.5 * np.pi, 8)
+    hem = np.vstack([hem, np.array([[-(inseam + hem_r * 0.4), hem_y]], dtype=np.float64)])
+    inner = _bezier(
+        hem[-1],
+        (-inseam - 0.01, hem_y + 0.22),
+        (-inseam, crotch_y - 0.10),
+        (-inseam, crotch_y),
+        10,
+    )
+    left = _join(outer, to_hem, hem, inner)
+    right_full = left.copy()
+    right_full[:, 0] *= -1.0
+    crotch = _bezier(
+        left[-1],
+        (-0.015, crotch_y + 0.045),
+        (0.015, crotch_y + 0.045),
+        (float(right_full[-1, 0]), crotch_y),
+        10,
+    )
+    right = right_full[-2:0:-1]
+    waist = _bezier(
+        (waist_hw, waist_y),
+        (0.06, waist_y - 0.018),
+        (-0.06, waist_y - 0.018),
+        (-waist_hw, waist_y),
+        8,
+    )
+    return _join(left, crotch, right, waist)
 
 
 def _point_in_poly(x: float, y: float, poly: np.ndarray) -> bool:

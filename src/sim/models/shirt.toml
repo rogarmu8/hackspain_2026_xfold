@@ -18,9 +18,9 @@
 #   XFOLD_GARMENT=jersey XFOLD_SKEWED=1 moon run sim:run
 
 [garment]
-# Foldable 2D sheets (same three FlipFold creases):
+# Foldable 2D sheets. QC picks FlipFold / waist pre-fold / trousers crease:
 #   tee / tee_damaged / tee_notgood1..3
-#   (same pattern for work_tee, jersey, tank, polo, dress)
+#   (same pattern for work_tee, jersey, tank, polo, dress, trousers)
 #   notGood1 coffee  notGood2 grease  notGood3 mud
 type = "tee"
 

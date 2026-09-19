@@ -74,6 +74,7 @@ const CLOTH_TYPE_LABELS: Record<ClothType, string> = {
   tank: "Tirantes",
   polo: "Polo",
   dress: "Pichi",
+  trousers: "Pantalón",
   custom: "Personalizada",
 };
 

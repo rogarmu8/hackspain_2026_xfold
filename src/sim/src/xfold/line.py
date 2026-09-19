@@ -6,10 +6,14 @@
    up, the other slows, then they resync). Wrinkles stay until the press.
 2. The belt carries it under the press and stops. The platen comes down on
    the belt itself, steams the wrinkles out, and lifts.
-3. The belt runs on. The shirt leaves the belt's end onto the folder, and
-   stops there with its hem on the folder's upstream edge.
-4. The folder flips its flaps, FlipFold style: left side, right side, then
-   the hem half up over the collar half.
+3. The belt runs on. Just past the press it stops under `qc_cam`; the flash
+   fires and OpenCV reads the silhouette to pick a fold recipe (FlipFold,
+   waist drop-gate, or trousers crease). Then the belt runs the garment onto
+   the folder.
+4. The folder is recipe-driven. A T gets the usual FlipFold (left, right,
+   hem). A dress or any sheet longer than the deck is halved first by the
+   inlet drop-gate, then folded as a T; a long pack gets a second cross-fold.
+   Trousers fold one leg over the other, then the cross-folds.
 5. Meanwhile the bagger gets a bag ready. A vacuum picker takes the top one
    off a magazine of flat, pre-made bags (three sides welded) and lays it on
    belt 2, mouth toward the folder. A suction cup lifts the top lip, an air
@@ -61,6 +65,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .fold_recipe import choose_fold_recipe, qc_metres_per_px
 from .garments import (
     add_garment_arguments,
     base_garment,
@@ -78,6 +83,7 @@ from .shirt import (
     select_garment,
     set_steam,
     shirt_config,
+    shirt_rest_local,
     shirt_rest_world,
     shirt_vertex_qposadr,
     spec_from_mjcf,
@@ -111,6 +117,10 @@ BELT_X = (-2.00, 0.30)
 BELT_SLAT_X = (-1.02, 0.30)
 # The folder's boards, hem edge to collar edge.
 FOLDER_X = (0.305, 0.98)
+# Drop-gate hinge (flap_prefold) and FlipFold hem pin, from line.xml.
+PREFOLD_X = 0.305
+HEM_HINGE_X = 0.642
+SIDE_HINGE_Y = 0.16
 # The hem stops this far onto the folder, not hanging off its edge.
 HEM_INSET = 0.012
 BELT_SPEED = 0.35  # m/s
@@ -247,12 +257,14 @@ class Flap:
         return side * (pos[:, 1] - hinge[1]) > 0.0
 
 
-# In folding order.
-FLAPS = (
-    Flap("flap_left", (1.0, 0.0, 0.0), over=1.2, back=0.8, lift=0.028),
-    Flap("flap_right", (-1.0, 0.0, 0.0), over=1.2, back=0.8, lift=0.036),
-    Flap("flap_bottom", (0.0, 1.0, 0.0), over=1.4, back=0.9, lift=0.060),
-)
+# In folding order for a T-shirt. Long garments prepend flap_prefold;
+# trousers swap the side pair for a centre crease on flap_left.
+FLAP_LEFT = Flap("flap_left", (1.0, 0.0, 0.0), over=1.2, back=0.8, lift=0.028)
+FLAP_RIGHT = Flap("flap_right", (-1.0, 0.0, 0.0), over=1.2, back=0.8, lift=0.036)
+FLAP_BOTTOM = Flap("flap_bottom", (0.0, 1.0, 0.0), over=1.4, back=0.9, lift=0.060)
+FLAP_PREFOLD = Flap("flap_prefold", (0.0, 1.0, 0.0), over=1.5, back=0.9, lift=0.044)
+FLAPS = (FLAP_LEFT, FLAP_RIGHT, FLAP_BOTTOM)
+ALL_FLAPS = (*FLAPS, FLAP_PREFOLD)
 
 
 class _Layers(ClothLayers):
@@ -527,8 +539,11 @@ class Line:
             if model.geom(i).name.startswith("belt_slat_")
         ]
         self._slat_x0 = model.geom_pos[self._slats, 0].copy()
-        self._mocap = {f.body: int(model.body(f.body).mocapid[0]) for f in FLAPS}
-        self._flap_geom = {f.body: model.geom(f.body).id for f in FLAPS}
+        self._mocap = {f.body: int(model.body(f.body).mocapid[0]) for f in ALL_FLAPS}
+        self._flap_geom = {f.body: model.geom(f.body).id for f in ALL_FLAPS}
+        self._flap_home = {
+            f.body: data.mocap_pos[self._mocap[f.body]].copy() for f in ALL_FLAPS
+        }
         self._spread = SpreadStation(
             model, data, qadr=self._qadr, rest=self._rest, dadr=self._dadr
         )
@@ -608,6 +623,7 @@ class Line:
         self._drive_to = BELT_X[1]  # cloth rides the belt up to this x
         self._layers: ClothLayers | None = None
         self._since_layers = 0
+        self._recipe = None
         self.stage = "idle"
         self.cycles = 0
         self.finished = False
@@ -816,19 +832,21 @@ class Line:
         yield from self._shoot()
 
         self._enter("BELT", "run the shirt off the belt onto the folder", phase="TO_FOLDER")
+        recipe = self._recipe
         self._drive_to = FOLDER_X[1]
-        yield from self._belt_until(lambda pos: FOLDER_X[0] + HEM_INSET - float(pos[:, 0].min()))
+        if recipe is not None and recipe.prefold:
+            yield from self._belt_until(
+                lambda pos: PREFOLD_X - 0.5 * (float(pos[:, 0].min()) + float(pos[:, 0].max()))
+            )
+        else:
+            yield from self._belt_until(lambda pos: FOLDER_X[0] + HEM_INSET - float(pos[:, 0].min()))
         self._drive_to = BELT_X[1]
         # The bagger gets a bag ready while the folder works.
         self._bagger = self._prepare_bag()
         yield from self._hold("SETTLE", "shirt on the folder", 0.5, phase="FOLD")
 
         self._layers = _Layers(self.model, self.data, thickness=0.5 * LAYER_GAP)
-        for flap in FLAPS:
-            self._enter("FOLD", flap.body.replace("flap_", "") + " flap over",
-                        operation=flap.body.upper())
-            yield from self._flip(flap)
-            yield from self._hold("FOLD", "", 0.3, quiet=True)
+        yield from self._fold_pack(recipe)
 
         pos = self.positions()
         size = pos.max(axis=0) - pos.min(axis=0)
@@ -906,6 +924,7 @@ class Line:
             if not taken:
                 # One step in, so the renderer sees the lit frame.
                 taken = True
+                self._choose_recipe()
                 if self.on_photo is not None:
                     try:
                         self.on_photo()
@@ -923,6 +942,7 @@ class Line:
         mujoco.mj_resetData(self.model, self.data)
         self._layers = None
         self._bag_local = None
+        self._recipe = None
         self.belt_speed = 0.0
         self.belt2_speed = 0.0
         self._steam.reset()
@@ -1360,21 +1380,165 @@ class Line:
         self.belt2_speed = 0.0
         yield from self._hold("BOXED", "", 1.0, quiet=True)
 
-    def _flip(self, flap: Flap):
+    def _qc_rgb(self):
+        """Top-down QC frame, or None when offscreen GL is missing."""
+        renderer = None
+        try:
+            renderer = self._mujoco.Renderer(self.model, 512, 512)
+            renderer.update_scene(self.data, camera="qc_cam")
+            return np.asarray(renderer.render())
+        except Exception:
+            return None
+        finally:
+            if renderer is not None:
+                try:
+                    renderer.close()
+                except Exception:
+                    pass
+
+    def _choose_recipe(self) -> None:
+        """OpenCV on the QC shot, with rest-mesh vertices as the fallback."""
+        rgb = self._qc_rgb()
+        rest = world = None
+        try:
+            rest = shirt_rest_local()[:, :2]
+        except Exception:
+            rest = None
+        try:
+            world = self.positions()[:, :2]
+        except Exception:
+            world = None
+        recipe = choose_fold_recipe(
+            rgb=rgb,
+            world_xy=world,
+            rest_xy=rest,
+            metres_per_px=qc_metres_per_px(512),
+        )
+        self._recipe = recipe
+        self._observe(
+            "FOLD_RECIPE",
+            recipe.describe(),
+            measurements={
+                "clothLengthM": float(recipe.length_m),
+                "clothWidthM": float(recipe.width_m),
+            },
+        )
+        self.log(f"[line {self.cycles}] RECIPE {recipe.describe()}")
+
+    def _mid_x(self, pos: np.ndarray | None = None) -> float:
+        pts = self.positions() if pos is None else pos
+        return 0.5 * (float(pts[:, 0].min()) + float(pts[:, 0].max()))
+
+    def _slide_pack(self, dx: float, seconds: float):
+        """Translate the whole sheet in x. Folded layers do not ride the belt."""
+        if abs(dx) < 0.008:
+            return
+            yield
+        start = np.asarray(self.positions(), dtype=float)
+        ids = np.arange(len(start))
+        duration = max(0.35, min(seconds, abs(dx) / 0.22))
+        steps = self._steps(duration)
+        vel = np.zeros_like(start)
+        vel[:, 0] = dx / duration
+        for index in range(steps):
+            blend = smoothstep((index + 1) / steps)
+            world = start.copy()
+            world[:, 0] = start[:, 0] + blend * dx
+            self._pin(ids, world, vel)
+            yield
+        world = start.copy()
+        world[:, 0] = start[:, 0] + dx
+        self._pin(ids, world, None)
+
+    def _index_pack_to(self, target_mid_x: float):
+        yield from self._slide_pack(target_mid_x - self._mid_x(), 1.6)
+
+    def _fold_pack(self, recipe):
+        """Run the QC-chosen recipe: drop-gate, side/crease flaps, cross-folds."""
+        if recipe is None:
+            for flap in FLAPS:
+                self._enter(
+                    "FOLD",
+                    flap.body.replace("flap_", "") + " flap over",
+                    operation=flap.body.upper(),
+                )
+                yield from self._flip(flap)
+                yield from self._hold("FOLD", "", 0.3, quiet=True)
+            return
+
+        if recipe.prefold:
+            self._enter(
+                "FOLD",
+                "drop-gate halves the garment at the waist",
+                operation="PREFOLD",
+            )
+            yield from self._flip(FLAP_PREFOLD)
+            yield from self._hold("FOLD", "", 0.25, quiet=True)
+            yield from self._index_pack_to(HEM_HINGE_X)
+
+        if recipe.side_mode == "crease":
+            pos = self.positions()
+            hinge = self._flap_home[FLAP_LEFT.body].copy()
+            hinge[0] = self._mid_x(pos)
+            hinge[1] = 0.0
+            self._enter(
+                "FOLD",
+                "one leg over the other",
+                operation="FLAP_CREASE",
+            )
+            yield from self._flip(FLAP_LEFT, hinge=hinge)
+            yield from self._hold("FOLD", "", 0.3, quiet=True)
+        elif recipe.side_mode == "both":
+            for flap in (FLAP_LEFT, FLAP_RIGHT):
+                self._enter(
+                    "FOLD",
+                    flap.body.replace("flap_", "") + " flap over",
+                    operation=flap.body.upper(),
+                )
+                yield from self._flip(flap)
+                yield from self._hold("FOLD", "", 0.3, quiet=True)
+
+        crosses = max(1, int(recipe.cross_folds))
+        for index in range(crosses):
+            if index > 0:
+                yield from self._index_pack_to(HEM_HINGE_X)
+            label = "hem flap over" if index == 0 else f"cross-fold {index + 1}"
+            op = "FLAP_BOTTOM" if index == 0 else f"FLAP_CROSS{index + 1}"
+            self._enter("FOLD", label, operation=op)
+            pos = self.positions()
+            hinge = self._flap_home[FLAP_BOTTOM.body].copy()
+            hinge[0] = float(
+                np.clip(self._mid_x(pos), FOLDER_X[0] + 0.08, FOLDER_X[1] - 0.12)
+            )
+            yield from self._flip(FLAP_BOTTOM, hinge=hinge)
+            yield from self._hold("FOLD", "", 0.3, quiet=True)
+
+    def _flip(self, flap: Flap, *, hinge: np.ndarray | None = None):
         """Swing a flap over, carrying its cloth, let go, swing back.
 
         The hinge sits under the plates, clear of the cloth. It rides up as the
         flap swings, so the flap lands on the layers already folded instead of
-        cutting through them.
+        cutting through them. ``hinge`` overrides the parked pin (trousers
+        crease at y = 0, extra cross-folds at the pack midpoint).
         """
         mocap = self._mocap[flap.body]
-        hinge = self.data.mocap_pos[mocap].copy()
+        home = self._flap_home[flap.body].copy()
+        if hinge is None:
+            hinge = home.copy()
+        else:
+            hinge = np.asarray(hinge, dtype=float).copy()
+            hinge[2] = home[2]
         axis = np.asarray(flap.axis)
         up = np.array([0.0, 0.0, 1.0])
 
         pos = self.positions()
         ids = np.flatnonzero(flap.carries(pos, hinge))
         arm = pos[ids] - hinge
+        # Long sleeves (jersey) would fly past the far pin on a rigid 180°.
+        # Tuck the extra onto the pack, the way cloth drapes on a FlipFold.
+        if abs(flap.axis[0]) > 0.5:
+            arm = arm.copy()
+            arm[:, 1] = np.clip(arm[:, 1], -2.0 * SIDE_HINGE_Y, 2.0 * SIDE_HINGE_Y)
 
         risen = 0.0
         for angle, rate in self._swing(0.0, math.pi, flap.over):
@@ -1397,7 +1561,7 @@ class Line:
         for angle, _ in self._swing(math.pi, 0.0, flap.back):
             self._set_flap(mocap, axis, angle, hinge + flap.lift * _rise(angle) * up)
             yield
-        self._set_flap(mocap, axis, 0.0, hinge)
+        self._set_flap(mocap, axis, 0.0, home)
         self.model.geom_conaffinity[geom] = affinity
 
     def _swing(self, start: float, end: float, seconds: float):

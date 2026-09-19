@@ -246,6 +246,22 @@ def bake_catalog(mark_path: Path = DEFAULT_MARK) -> None:
     stamp(dress, mark, 0.07)
     _save_png(MODELS / "garment_dress.png", np.clip(dress, 0, 255).astype(np.uint8))
 
+    # Trousers: white + waistband / fly stitch (vision HSV stays cloth-white).
+    trousers = white()
+    img = Image.fromarray(np.clip(trousers, 0, 255).astype(np.uint8))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle(
+        (int(size * 0.32), int(size * 0.14), int(size * 0.68), int(size * 0.18)),
+        outline=ink,
+        width=3,
+    )
+    draw.line(
+        [(size // 2, int(size * 0.18)), (size // 2, int(size * 0.36))],
+        fill=ink,
+        width=3,
+    )
+    _save_png(MODELS / "garment_trousers.png", np.asarray(img))
+
     from xfold.garments import CATALOG, base_garment
 
     for item in CATALOG.values():
@@ -268,7 +284,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--mark", type=Path, default=DEFAULT_MARK)
     p.add_argument("-o", "--out", type=Path, default=DEFAULT_OUT)
     p.add_argument("--frac", type=float, default=MARK_FRAC)
-    p.add_argument("--catalog", action="store_true", help="Bake jersey / tank / polo / dress / work tee")
+    p.add_argument("--catalog", action="store_true", help="Bake jersey / tank / polo / dress / trousers / work tee")
     args = p.parse_args(argv)
     if not args.mark.is_file():
         raise SystemExit(f"mark image not found: {args.mark}")

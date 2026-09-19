@@ -25,6 +25,7 @@ TITLES = {
     "tank": "TANK TOP",
     "polo": "POLO SHIRT",
     "dress": "DRESS",
+    "trousers": "TROUSERS",
     "custom": "CUSTOM",
 }
 

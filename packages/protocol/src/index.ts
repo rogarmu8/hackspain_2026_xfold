@@ -141,6 +141,7 @@ export const CLOTH_TYPE_KEYS = [
   "tank",
   "polo",
   "dress",
+  "trousers",
   "custom",
 ] as const;
 

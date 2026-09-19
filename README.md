@@ -115,7 +115,7 @@ On macOS the windowed tasks run under `mjpython` (Cocoa main thread) via `script
 
 `moon run sim:run` asks for the cloth type, its condition, then whether
 it is laid square or skewed; `-g` skips the list and `--list-garments`
-prints all 30 SKUs.
+prints all 36 SKUs.
 
 | Condition | What it is | Example |
 |---|---|---|
@@ -124,9 +124,13 @@ prints all 30 SKUs.
 | stained | coffee, grease or mud on the base mesh | `-g tee_notgood1..3` (alias `tee_stain1..3`) |
 | off square | flat on the belt, heading from the seed | `--skewed` (and `--seed`), or launch condition `skewed` |
 
-Six clean SKUs — `tee`, `work_tee`, `jersey`, `tank`, `polo`, `dress` — times
+Seven clean SKUs — `tee`, `work_tee`, `jersey`, `tank`, `polo`, `dress`,
+`trousers` — times
 four conditions. The pose is separate from the SKU, so `-g dress_damaged
 --skewed --seed 7` is a torn pinafore put on the belt at a seeded heading.
+The QC camera measures the silhouette (OpenCV) and picks a fold recipe:
+T-shirts FlipFold, dresses get a waist drop-gate then FlipFold, trousers
+fold one leg over the other then two cross-folds.
 
 The dashboard launch form picks type and condition (exact or random, with
 weights). Random draws and the skewed heading use `seed`. `XFOLD_GARMENT`

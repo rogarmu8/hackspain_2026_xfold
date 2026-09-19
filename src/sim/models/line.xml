@@ -90,6 +90,7 @@
     <texture name="label_tank" type="2d" file="label_tank.png"/>
     <texture name="label_polo" type="2d" file="label_polo.png"/>
     <texture name="label_dress" type="2d" file="label_dress.png"/>
+    <texture name="label_trousers" type="2d" file="label_trousers.png"/>
     <texture name="label_custom" type="2d" file="label_custom.png"/>
     <material name="label_tee" texture="label_tee"/>
     <material name="label_work_tee" texture="label_work_tee"/>
@@ -97,6 +98,7 @@
     <material name="label_tank" texture="label_tank"/>
     <material name="label_polo" texture="label_polo"/>
     <material name="label_dress" texture="label_dress"/>
+    <material name="label_trousers" texture="label_trousers"/>
     <material name="label_custom" texture="label_custom"/>
     <material name="cardboard" rgba="0.62 0.47 0.30 1"/>
   </asset>
@@ -147,8 +149,8 @@
       QC station, just downstream of the press (the press frame sits around
       x = -1.0, so nothing of it hangs over this spot). The belt stops the
       pressed shirt here, the flash fires and `qc_cam` takes the product shot
-      straight down. 1.0 m above the belt at fovy 52 covers ~0.98 m, so the
-      0.91 m sleeve span fills the frame with a margin.
+      straight down. 1.06 m above the belt at fovy 58 covers ~1.18 m, so a
+      1.02 m dress or 1.00 m pair of trousers still fits with a margin.
       xyaxes points the camera's -z at the belt, collar up: right = -y, up = +x.
 
       Nothing of the rig may sit in that frustum. The frustum's half-width is
@@ -156,7 +158,7 @@
       gantry runs ABOVE the camera eye (z > 1.562) and the two flash heads
       hang off to the sides at |y| = 0.42, where the cone is only 0.14 wide.
     -->
-    <camera name="qc_cam" pos="-0.20 0 1.562" xyaxes="0 -1 0 1 0 0" fovy="52"/>
+    <camera name="qc_cam" pos="-0.20 0 1.622" xyaxes="0 -1 0 1 0 0" fovy="58"/>
     <light name="qc_flash_l" pos="-0.20 0.42 1.30" dir="0 -0.47 -0.88" diffuse="0 0 0" specular="0 0 0" cutoff="70" exponent="2"/>
     <light name="qc_flash_r" pos="-0.20 -0.42 1.30" dir="0 0.47 -0.88" diffuse="0 0 0" specular="0 0 0" cutoff="70" exponent="2"/>
     <body name="qc_rig" pos="-0.20 0 0">
@@ -347,6 +349,16 @@
     <body name="flap_bottom" mocap="true" pos="0.642 0 0.555">
       <geom name="flap_bottom" class="flap" size="0.16825 0.139 0.012" pos="-0.16875 0 -0.005"/>
       <geom name="flap_bottom_pin" class="deco" type="cylinder" size="0.005 0.139" euler="1.5708 0 0" material="chrome"/>
+    </body>
+    <!--
+      Drop-gate / pre-fold board at the folder inlet. Parked it is a bridge
+      plate between the belt (x = 0.30) and the hem flap. When a garment is
+      longer than the deck, Line hinges it here: the hem half (still on the
+      belt) folds over the waist onto the collar half, then FlipFold runs.
+    -->
+    <body name="flap_prefold" mocap="true" pos="0.305 0 0.555">
+      <geom name="flap_prefold" class="flap" size="0.18 0.40 0.010" pos="-0.185 0 -0.004"/>
+      <geom name="flap_prefold_pin" class="deco" type="cylinder" size="0.005 0.40" euler="1.5708 0 0" material="chrome"/>
     </body>
 
     <!--

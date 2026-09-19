@@ -1,8 +1,9 @@
-"""Catalogue of foldable upper-body sheets (same three FlipFold / ninja creases).
+"""Catalogue of foldable sheets.
 
 Each entry is one 2D panel + one PNG. Hoodies and open coats are not here.
-The dress is a longer A-line pinafore with braces; it can overhang the
-0.66 m folder.
+The dress is a longer A-line pinafore; trousers are a two-leg panel. The QC
+camera picks a fold recipe (FlipFold, waist pre-fold, or pants crease) so a
+long sheet is not run through the 0.66 m folder as if it were a T-shirt.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ _PRISTINE: tuple[tuple[str, str, str, str, str], ...] = (
     ("tank", "Sleeveless tank", "garment_tank.obj", "garment_tank.png", "tank"),
     ("polo", "Spread-collar polo", "garment_polo.obj", "garment_polo.png", "polo"),
     ("dress", "Pinafore dress + braces", "garment_dress.obj", "garment_dress.png", "dress"),
+    ("trousers", "Trousers", "garment_trousers.obj", "garment_trousers.png", "trousers"),
 )
 
 CATALOG: dict[str, Garment] = {}
@@ -102,6 +104,9 @@ def resolve_garment(name: str) -> Garment:
         "uniform": "work_tee",
         "pinafore": "dress",
         "jumper": "dress",
+        "pants": "trousers",
+        "trousers": "trousers",
+        "jeans": "trousers",
         "photo": "custom",
         "upload": "custom",
     }
