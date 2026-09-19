@@ -6,12 +6,16 @@ requires-python = ">=3.11"
 dependencies = ["numpy>=2.0", "fastapi>=0.115", "uvicorn[standard]>=0.32", "pydantic>=2.0", "pillow>=10"]
 
 [project.optional-dependencies]
-mujoco = ["mujoco>=3.2", "mujoco-menagerie", "mink"]
+mujoco = ["mujoco>=3.2", "mujoco-menagerie", "mink", "opencv-python>=4.10"]
 
 [project.scripts]
 xfold-mock = "xfold.mock_cycle:main"
 xfold-view = "xfold.view:main"
 xfold-bridge = "xfold.bridge.app:main"
+xfold-press = "xfold.press:main"
+xfold-load = "xfold.load_press:main"
+xfold-shirt-smoke = "xfold.shirt_smoke:main"
+xfold-shirt-play = "xfold.shirt_play:main"
 
 [build-system]
 requires = ["setuptools>=68"]

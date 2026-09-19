@@ -6,8 +6,8 @@ Actualizar al cerrar un bloque. Fecha del hackathon: _TBD_.
 
 | # | Bloque | Owner | Status | Notas / PR |
 |---|--------|-------|--------|------------|
-| 0 | Empty cell (rigid) | A | ⬜ | |
-| 1 | Shirt lives (flex estable 10s) | B | ⬜ | |
+| 0 | Empty cell (rigid) | A | ✅ | press_cell + stub cell.xml |
+| 1 | Shirt lives (flex estable 10s) | B | 🟡 | ninja-fold `shirt_t.obj` in press + playground |
 | 2 | FlipFold folds pre-laid shirt | C | ⬜ | **primer clip demo** |
 | 3 | Press flattens wrinkled shirt | C | ⬜ | |
 | 4 | Drop transfer → folder | C | ⬜ | |
@@ -39,4 +39,5 @@ Leyenda: ⬜ todo · 🟡 en curso · ✅ hecho · ⛔ bloqueado
 | Cuándo | Decisión | Quién |
 |--------|----------|-------|
 | 2026-09-19 | Bus sim↔UI = **journal + REST/SSE** (no WS/gRPC al browser). Contrato vinculante: `docs/INTEGRATION_CONTRACT.md`. Detalle: `docs/BRIDGE.md`. | equipo |
+| 2026-09-19 | Viewport MJPEG prefers `press_cell` (flex T + UR5e via `scene.build`); `cell.xml` keeps `overview` + cloth as fallback. No `shirt_free` proxy. | press track |
 | | | |

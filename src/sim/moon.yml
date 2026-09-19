@@ -42,3 +42,66 @@ tasks:
       cache: false
       persistent: true
       runFromWorkspaceRoot: true
+  # The cell: pick from the crate, place, camera check, press, dump.
+  run:
+    script: |
+      . ./scripts/pixi-path.sh
+      if [ "$(uname -s)" = Darwin ]; then
+        pixi run --environment mujoco mjpython -P -m xfold.load_press
+      else
+        pixi run --environment mujoco python -P -m xfold.load_press
+      fi
+    options:
+      cache: false
+      persistent: true
+      runFromWorkspaceRoot: true
+  shirt-smoke:
+    script: |
+      . ./scripts/pixi-path.sh
+      pixi run --environment mujoco python -P -m xfold.shirt_smoke
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+  shirt-play:
+    script: |
+      . ./scripts/pixi-path.sh
+      if [ "$(uname -s)" = Darwin ]; then
+        pixi run --environment mujoco mjpython -P -m xfold.shirt_play
+      else
+        pixi run --environment mujoco python -P -m xfold.shirt_play
+      fi
+    options:
+      cache: false
+      persistent: true
+      runFromWorkspaceRoot: true
+  shirt-shot:
+    script: |
+      . ./scripts/pixi-path.sh
+      pixi run --environment mujoco python -P -m xfold.shirt_shot --out shots
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
+  shirt-play-hi:
+    script: |
+      . ./scripts/pixi-path.sh
+      if [ "$(uname -s)" = Darwin ]; then
+        pixi run --environment mujoco mjpython -P -m xfold.shirt_play --hi
+      else
+        pixi run --environment mujoco python -P -m xfold.shirt_play --hi
+      fi
+    options:
+      cache: false
+      persistent: true
+      runFromWorkspaceRoot: true
+  shirt-play-poncho:
+    script: |
+      . ./scripts/pixi-path.sh
+      if [ "$(uname -s)" = Darwin ]; then
+        pixi run --environment mujoco mjpython -P -m xfold.shirt_play --poncho
+      else
+        pixi run --environment mujoco python -P -m xfold.shirt_play --poncho
+      fi
+    options:
+      cache: false
+      persistent: true
+      runFromWorkspaceRoot: true
