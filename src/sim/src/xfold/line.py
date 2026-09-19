@@ -7,19 +7,26 @@
    stops there with its hem on the folder's upstream edge.
 4. The folder flips its flaps, FlipFold style: left side, right side, then
    the hem half up over the collar half.
-5. The plate the pack sits on is a peel. It slides between two rails into a
-   stiff, ready-made bag, like a pizza into an oven, and pulls back out.
-6. The bag is ready-made: floor, roof, sides and far end already welded. Only
-   the mouth is left. Its tail folds down to the floor, and a seal bar welds
-   it while a stamp sticks an RFID label on the roof.
-7. Belt 2 carries the bag off its end and it drops into a carton.
+5. Meanwhile the bagger gets a bag ready. A vacuum picker takes the top one
+   off a magazine of flat, pre-made bags (three sides welded) and lays it on
+   belt 2, mouth toward the folder. A suction cup lifts the top lip, an air
+   knife blows the bag open and two spreader fingers hold the mouth square.
+6. The plate the pack sits on is a peel. Its side guides rise, it slides into
+   the bag like a pizza into an oven, tips its nose down so the pack's front
+   lands on the bag floor, and slides back out from under it.
+7. The opener lets go and the film settles on the pack. Belt 2 indexes the
+   bag to the seal station, where a seal bar presses the mouth flat and
+   welds it while a stamp puts the label on the top.
+8. Belt 2 carries the bag off its end and it drops into a carton.
 
 A peel or a flap is a mocap body, which the contact solver sees as standing
 still, so it cannot drag cloth by friction: whatever it carries is moved
 with it explicitly, and nothing it slides out from under is dragged back.
-Once sealed, the shirt is fixed inside the bag's frame every step, so it
-travels, falls and lands with the bag. The cloth is not simulated as
-touching the bag's films.
+The bag is carried kinematically until it lies on belt 2, and its films are
+visual geoms that the controller shapes: flat, blown open, settled on the
+pack, pressed shut at the mouth. Once the peel is out, the shirt is fixed
+inside the bag's frame every step, so it travels, falls and lands with the
+bag. The cloth is not simulated as touching the bag's films.
 
 The belt is not a moving body. Cloth lying on it is given the belt's speed
 each step, which is what a belt does to something that does not slip. The
@@ -96,22 +103,62 @@ STROKE_PRESSED = -0.755
 # same top height as the folder table, so the peel's bottom is flush with it.
 BELT2_X = (0.985, 2.10)
 BELT2_SPEED = 0.35
-# The bag's centre when it stands open at the bagger, and its half-length.
+# The bag's centre at the load station and at the seal station, and its
+# half-length.
 BAG_X = 1.32
+SEAL_X = 1.78
 BAG_HALF_LENGTH = 0.30
 # The shirt's leading edge stops this far short of the bag's closed end.
 BAG_END_MARGIN = 0.02
-# The tail is the last stretch of the bag's roof, at the mouth. It lies flat
-# while the bag is loaded and folds down to the floor to close it: hinge
-# position in the bag's frame, length, and the angle (down is negative) at
-# which its far end just touches the floor.
-BAG_TAIL_HINGE = (-0.19, 0.0, 0.0372)
-BAG_TAIL_LENGTH = 0.11
-BAG_TAIL_CLOSED = -math.asin(0.0727 / BAG_TAIL_LENGTH)
-# Seal bar and stamp: hover and pressed heights.
-PRESS_HOVER_Z = 0.70
-SEAL_BAR_Z = 0.562
-STAMP_Z = 0.637
+
+# Where the bag's centre is: on top of the magazine's stack, carried over the
+# belt by the picker, and lying on belt 2.
+MAG_Y = 0.66
+MAG_BAG_Z = 0.5676
+CARRY_BAG_Z = 0.72
+BELT2_BAG_Z = 0.586
+# Picker head (its cups' lips) parked, and its carriage's height on the beam.
+PICKER_PARK_Z = 0.78
+PICKER_CARRIAGE_Z = 1.017
+
+# The bag's films, in the bag's frame: the floor film's centre height, film
+# thickness, and how tall the bag stands flat, blown open, and at least once
+# settled on a pack.
+BAG_FLOOR = -0.0372
+FILM = 0.0008
+BAG_FLAT = 0.002
+BAG_OPEN = 0.11
+BAG_SETTLED_MIN = 0.02
+# The roof ends at the tail's hinge. The tail runs to the seal line and a lip
+# runs on from there to the mouth. Open, the mouth cup holds the tail flared
+# up by TAIL_FLARE; closed, the seal bar has pressed it down to the floor.
+TAIL_HINGE_X = -0.19
+TAIL_LENGTH = 0.078
+LIP_LENGTH = 0.032
+TAIL_FLARE = 0.30
+# Where along the tail the mouth cup holds it, from the hinge.
+MOUTH_CUP_ON_TAIL = 0.07
+MOUTH_CUP_PARK_Z = 0.74
+# Spreader fingers: parked tip height, tip height in the mouth, and their y
+# when they go in and when they have pushed out to hold the mouth square.
+FINGER_PARK_Z = 0.74
+FINGER_DOWN_Z = 0.556
+FINGER_IN_Y = 0.19
+FINGER_OUT_Y = 0.232
+
+# Peel: how far its side guides rise, and how far its nose tips down in the
+# bag to put the pack's front on the bag floor. It tips about the bottom of
+# its front edge, which is PEEL_HALF ahead of and PEEL_UNDER below its origin.
+GUIDE_RISE = 0.037
+PEEL_TILT = math.radians(4.0)
+PEEL_HALF = 0.16875
+PEEL_UNDER = 0.006
+
+# Seal bar and stamp hover heights. Their pressed heights come from where
+# the bag is.
+PRESS_HOVER_Z = 0.76
+SEAL_BAR_HALF = 0.010
+STAMP_UNDER = 0.0132  # stamp origin to the label's face
 # The bag counts as boxed once its centre is below this.
 BOXED_Z = 0.25
 
@@ -174,6 +221,8 @@ def build():
     load_mujoco_plugins()
     spec = spec_from_mjcf(LINE_PATH)
     apply_shirt_config(spec, claws=False)
+    for name in ("bag_sticker", "stamp_sticker"):
+        spec.geom(name).material = f"label_{shirt_config().garment}"
     # The belt runs through the press, so the belt is its bed now.
     spec.delete(spec.actuator("press_tilt"))
     for name in ("press_table", "press_bed"):
@@ -257,9 +306,40 @@ class Line:
             if model.geom(i).name.startswith("belt2_slat_")
         ]
         self._slat2_x0 = model.geom_pos[self._slats2, 0].copy()
-        self._peel = int(model.body("peel").mocapid[0])
-        self._seal_bar = int(model.body("seal_bar").mocapid[0])
-        self._stamp = int(model.body("stamp").mocapid[0])
+        mocap = {
+            name: int(model.body(name).mocapid[0])
+            for name in (
+                "peel",
+                "seal_bar",
+                "stamp",
+                "picker_head",
+                "picker_carriage",
+                "mouth_cup",
+                "finger_l",
+                "finger_r",
+            )
+        }
+        self._peel = mocap["peel"]
+        self._seal_bar = mocap["seal_bar"]
+        self._stamp = mocap["stamp"]
+        self._picker = mocap["picker_head"]
+        self._carriage = mocap["picker_carriage"]
+        self._mouth_cup = mocap["mouth_cup"]
+        self._fingers = ((mocap["finger_l"], 1.0), (mocap["finger_r"], -1.0))
+        self._peel_home = model.body("peel").pos.copy()
+        self._peel_pivot = self._peel_home + (PEEL_HALF, 0.0, -PEEL_UNDER)
+        self._peel_shift = 0.0
+        self._peel_tilt = 0.0
+        self._guides = [
+            model.geom(name).id
+            for name in (
+                "peel_guide_l",
+                "peel_guide_r",
+                "peel_guide_foot_l",
+                "peel_guide_foot_r",
+            )
+        ]
+        self._guide_z0 = model.geom_pos[self._guides, 2].copy()  # lowered
         bag = model.body("bag")
         joint = int(bag.jntadr[0])
         self._bag = bag.id
@@ -268,17 +348,32 @@ class Line:
         self._g = {
             name: model.geom(name).id
             for name in (
+                "bag_roof",
+                "bag_side_l",
+                "bag_side_r",
+                "bag_end",
+                "bag_weld_end",
+                "bag_weld_l",
+                "bag_weld_r",
                 "bag_tail",
+                "bag_lip",
+                "bag_tail_side_l",
+                "bag_tail_side_r",
                 "bag_seam",
                 "bag_sticker",
-                "bag_antenna",
                 "stamp_sticker",
-                "stamp_antenna",
                 "seal_bar_head",
+                "air_jet",
             )
         }
         self._rgba0 = {name: model.geom_rgba[gid].copy() for name, gid in self._g.items()}
         self._bag_local: np.ndarray | None = None  # shirt vertices in the bag's frame
+        # Where the bag's centre is held while it is not on the belt, or None.
+        self._bag_held: np.ndarray | None = None
+        self._bag_h = BAG_FLAT
+        self._bag_tail = 0.0
+        self._bagger = None  # the bagger's own sequence, run alongside the cycle
+        self._bag_ready = False
 
         self.belt_speed = 0.0
         self.belt2_speed = 0.0
@@ -301,10 +396,16 @@ class Line:
                 next(self._program)
             except StopIteration:
                 self.finished = True
+        if self._bagger is not None:
+            try:
+                next(self._bagger)
+            except StopIteration:
+                self._bagger = None
         self._drive_belt()
         self._drive_belt2()
         self._steam.follow(self.data)
         self._mujoco.mj_step(self.model, self.data)
+        self._hold_bag()
         self._carry_cloth()
         self._since_layers += 1
         if self._layers is not None and self._since_layers >= LAYER_EVERY:
@@ -353,6 +454,15 @@ class Line:
             self.data.qvel[adr : adr + 2] = (self.belt2_speed, 0.0)
             self.data.qvel[adr + 3 : adr + 6] = 0.0
 
+    def _hold_bag(self) -> None:
+        """Keep the bag where the magazine or the picker has it, level and still."""
+        if self._bag_held is None:
+            return
+        adr, dadr = self._bag_qadr, self._bag_dadr
+        self.data.qpos[adr : adr + 3] = self._bag_held
+        self.data.qpos[adr + 3 : adr + 7] = (1.0, 0.0, 0.0, 0.0)
+        self.data.qvel[dadr : dadr + 6] = 0.0
+
     def _carry_cloth(self) -> None:
         """Hold the shirt at the same place inside the bag, once it is sealed in."""
         if self._bag_local is None:
@@ -373,6 +483,11 @@ class Line:
         rotation = np.empty(9)
         self._mujoco.mju_quat2Mat(rotation, qpos[3:])
         self._bag_local = (self.positions() - qpos[:3]) @ rotation.reshape(3, 3)
+
+    def _settled_height(self) -> float:
+        """How tall the bag stands once its film lies on the pack."""
+        top = float(self._bag_local[:, 2].max()) + SHIRT_RADIUS
+        return float(np.clip(top - BAG_FLOOR + 0.004, BAG_SETTLED_MIN, BAG_OPEN))
 
     # --- the cycle ----------------------------------------------------
 
@@ -401,6 +516,8 @@ class Line:
         self._drive_to = FOLDER_X[1]
         yield from self._belt_until(lambda pos: FOLDER_X[0] + HEM_INSET - float(pos[:, 0].min()))
         self._drive_to = BELT_X[1]
+        # The bagger gets a bag ready while the folder works.
+        self._bagger = self._prepare_bag()
         yield from self._hold("SETTLE", "shirt on the folder", 0.5)
 
         self._layers = _Layers(self.model, self.data, thickness=0.5 * LAYER_GAP)
@@ -418,20 +535,42 @@ class Line:
         )
         yield from self._hold("FOLD", "", 0.6, quiet=True)
 
-        self._enter("BAG", "peel slides the pack through the rails into the ready-made bag")
+        if not self._bag_ready:
+            self._enter("WAIT", "the pack waits for the bagger to open a bag")
+            while not self._bag_ready:
+                yield
+
+        self._enter("BAG", "side guides rise on the peel")
+        for blend in self._tween(0.4):
+            self._set_guides(blend)
+            yield
+        self._enter("BAG", "peel carries the pack between its guides into the open bag")
         travel = BAG_X + BAG_HALF_LENGTH - BAG_END_MARGIN - float(pos[:, 0].max())
-        yield from self._slide_peel(travel, 2.4, carry=True)
-        self._enter("PEEL", "peel slides back out from under the shirt")
-        yield from self._slide_peel(-travel, 2.0, carry=False)
-        yield from self._hold("PEEL", "", 0.8, quiet=True)
+        yield from self._move_peel(travel, 0.0, 2.4, carry=True)
+        self._enter(
+            "TILT",
+            f"peel tips its nose down {math.degrees(PEEL_TILT):.0f} deg, "
+            "the pack's front lands on the bag floor",
+        )
+        yield from self._move_peel(travel, PEEL_TILT, 0.6, carry=True)
+        self._enter("PEEL", "peel slides back out, still tipped, from under the pack")
+        yield from self._move_peel(0.0, PEEL_TILT, 2.0, carry=False)
+        self._enter("PEEL", "peel levels off at home, guides drop")
+        for blend in self._tween(0.5):
+            self._set_peel(0.0, PEEL_TILT * (1.0 - blend))
+            self._set_guides(1.0 - blend)
+            yield
+        yield from self._hold("PEEL", "", 0.5, quiet=True)
         # The shirt lies still in the bag now. Fix it there: it cannot sag while
         # the bag closes, and it goes wherever the bag goes.
         self._layers = None
         self._seal_in()
 
-        self._enter("CLOSE", "the bag's tail folds down over the mouth")
-        yield from self._close_bag(1.2)
-        self._enter("SEAL", "seal bar welds the mouth shut, stamp sticks the RFID label on")
+        self._enter("RELEASE", "fingers and mouth cup let go, the film settles on the pack")
+        yield from self._release_bag(self._settled_height())
+        self._enter("INDEX", "belt 2 moves the bag on to the seal station")
+        yield from self._index_bag(SEAL_X)
+        self._enter("SEAL", "seal bar presses the mouth flat and welds it, stamp puts the label on")
         yield from self._seal_and_tag()
 
         self._enter("BELT", "belt 2 carries the bag to the carton")
@@ -455,8 +594,15 @@ class Line:
             self.model.geom_rgba[gid] = self._rgba0[name]
         self.model.geom_rgba[self._g["bag_seam"], 3] = 0.0
         self.model.geom_rgba[self._g["bag_sticker"], 3] = 0.0
-        self.model.geom_rgba[self._g["bag_antenna"], 3] = 0.0
-        self._pose_tail(0.0)
+        # The next bag waits flat on top of the magazine.
+        self._bagger = None
+        self._bag_ready = False
+        self._bag_held = np.array([BAG_X, MAG_Y, MAG_BAG_Z])
+        self._hold_bag()
+        self._shape_bag(BAG_FLAT, 0.0)
+        self._peel_shift = 0.0
+        self._peel_tilt = 0.0
+        self._set_guides(0.0)
         mujoco.mj_forward(self.model, self.data)
 
     def _enter(self, stage: str, message: str) -> None:
@@ -504,62 +650,224 @@ class Line:
         self._steam.reset()
         set_steam(self.model, False)
 
-    def _slide_peel(self, travel: float, seconds: float, carry: bool):
-        """Move the peel ``travel`` metres along x.
+    def _tween(self, seconds: float):
+        """Blend 0 -> 1 over ``seconds``, eased, one value per step."""
+        steps = self._steps(seconds)
+        for index in range(steps):
+            yield smoothstep((index + 1) / steps)
 
-        With ``carry`` the shirt goes with it, exactly. Without, the peel just
+    # --- the peel ------------------------------------------------------
+
+    def _set_peel(self, shift: float, tilt: float) -> None:
+        """Put the peel ``shift`` metres downstream, nose down by ``tilt``.
+
+        It tips about the bottom of its front edge, so the nose stays on
+        whatever it rests on and the back end rises.
+        """
+        pivot = self._peel_pivot + (shift, 0.0, 0.0)
+        arm = self._peel_home - self._peel_pivot
+        self.data.mocap_pos[self._peel] = pivot + _pitch(arm[None, :], tilt)[0]
+        self.data.mocap_quat[self._peel] = _pitch_quat(tilt)
+        self._peel_shift, self._peel_tilt = shift, tilt
+
+    def _move_peel(self, shift: float, tilt: float, seconds: float, carry: bool):
+        """Slide and tip the peel from where it is to ``shift`` and ``tilt``.
+
+        With ``carry`` the shirt goes with it, rigidly. Without, the peel just
         goes: nothing in the solver drags the shirt, which is the point.
         """
-        start = self.data.mocap_pos[self._peel].copy()
+        shift0, tilt0 = self._peel_shift, self._peel_tilt
         cloth = self.positions()
+        # The shirt in the peel's frame at the start, about its pivot.
+        local = cloth - (self._peel_pivot + (shift0, 0.0, 0.0))
         everything = np.arange(self.model.nflexvert)
-        steps = self._steps(seconds)
-        done = 0.0
-        for index in range(steps):
-            blend = smoothstep((index + 1) / steps)
-            shift = np.array([travel * blend, 0.0, 0.0])
-            self.data.mocap_pos[self._peel] = start + shift
+        previous = cloth
+        for blend in self._tween(seconds):
+            now_shift = shift0 + (shift - shift0) * blend
+            now_tilt = tilt0 + (tilt - tilt0) * blend
+            self._set_peel(now_shift, now_tilt)
             if carry:
-                # Absolute, not incremental: the velocity given here is integrated
-                # by the step that follows, so an increment would be counted twice.
-                velocity = (travel * (blend - done) / self.dt, 0.0, 0.0)
-                self._pin(everything, cloth + shift, velocity)
-            done = blend
+                # Absolute positions, and the velocity that got them there: an
+                # increment would be counted twice by the step that follows.
+                pivot = self._peel_pivot + (now_shift, 0.0, 0.0)
+                world = pivot + _pitch(local, now_tilt - tilt0)
+                self._pin(everything, world, (world - previous) / self.dt)
+                previous = world
             yield
 
-    def _pose_tail(self, angle: float) -> None:
-        """Hold the bag's tail ``angle`` radians off the roof, negative is down.
+    def _set_guides(self, up: float) -> None:
+        """Raise the peel's side guides, 0 down in their slots, 1 up."""
+        self.model.geom_pos[self._guides, 2] = self._guide_z0 + GUIDE_RISE * up
 
-        The tail is hinged along the mouth end of the roof, so its far end
-        swings about the hinge.
+    # --- the bagger ----------------------------------------------------
+
+    def _prepare_bag(self):
+        """The bagger's own sequence, alongside the fold: pick, place, open.
+
+        Leaves ``_bag_ready`` set, with the bag on belt 2 blown open and its
+        mouth held square.
         """
-        hinge = np.asarray(BAG_TAIL_HINGE)
-        half = 0.5 * BAG_TAIL_LENGTH
-        gid = self._g["bag_tail"]
-        self.model.geom_pos[gid] = hinge + half * np.array([-math.cos(angle), 0.0, math.sin(angle)])
-        self.model.geom_quat[gid] = [math.cos(0.5 * angle), 0.0, math.sin(0.5 * angle), 0.0]
+        model, data = self.model, self.data
 
-    def _close_bag(self, seconds: float):
-        steps = self._steps(seconds)
-        for index in range(steps):
-            self._pose_tail(BAG_TAIL_CLOSED * smoothstep((index + 1) / steps))
+        def log(message: str) -> None:
+            self.log(f"[line {self.cycles}] BAGGER {message}")
+
+        log("picker takes the top bag off the magazine")
+        grip_mag = MAG_BAG_Z + BAG_FLOOR + BAG_FLAT + FILM
+        yield from self._move_picker(MAG_Y, PICKER_PARK_Z, grip_mag, 0.6)
+        yield from self._hold("", "", 0.25, quiet=True)  # vacuum builds
+        grip = BAG_FLOOR + BAG_FLAT + FILM  # cups' lips above the bag's centre
+        yield from self._move_picker(MAG_Y, grip_mag, CARRY_BAG_Z + grip, 0.6, carry=True)
+        log("picker carries it over belt 2 and lays it down, mouth toward the folder")
+        yield from self._move_picker(MAG_Y, CARRY_BAG_Z + grip, CARRY_BAG_Z + grip, 1.2,
+                                     carry=True, to_y=0.0)
+        yield from self._move_picker(0.0, CARRY_BAG_Z + grip, BELT2_BAG_Z + grip, 0.6, carry=True)
+        # Vacuum off: the bag lies on the belt, and the belt's vacuum box holds
+        # its bottom film.
+        self._bag_held = None
+        yield from self._hold("", "", 0.2, quiet=True)
+        yield from self._move_picker(0.0, BELT2_BAG_Z + grip, PICKER_PARK_Z, 0.5)
+
+        log("mouth cup lifts the top lip, air knife blows the bag open")
+        cup = self._mouth_cup
+        bag_z = float(data.qpos[self._bag_qadr + 2])
+        park_back = self._move_picker(0.0, PICKER_PARK_Z, PICKER_PARK_Z, 1.2, to_y=MAG_Y)
+        for blend in self._tween(0.5):
+            data.mocap_pos[cup][2] = MOUTH_CUP_PARK_Z + (self._mouth_cup_z(bag_z) - MOUTH_CUP_PARK_Z) * blend
+            next(park_back, None)
             yield
+        jet = self._g["air_jet"]
+        for index, blend in enumerate(self._tween(1.4)):
+            self._shape_bag(BAG_FLAT + (BAG_OPEN - BAG_FLAT) * blend, TAIL_FLARE * blend)
+            data.mocap_pos[cup][2] = self._mouth_cup_z(bag_z)
+            model.geom_rgba[jet, 3] = 0.16 + 0.08 * math.sin(0.35 * index)
+            next(park_back, None)
+            yield
+        for _ in park_back:
+            yield
+
+        log("spreader fingers drop into the mouth's corners and hold it square")
+        for blend in self._tween(0.5):
+            self._set_fingers(FINGER_IN_Y, FINGER_PARK_Z + (FINGER_DOWN_Z - FINGER_PARK_Z) * blend)
+            yield
+        for blend in self._tween(0.4):
+            self._set_fingers(FINGER_IN_Y + (FINGER_OUT_Y - FINGER_IN_Y) * blend, FINGER_DOWN_Z)
+            yield
+        model.geom_rgba[jet, 3] = 0.0
+        log("bag open, ready for the pack")
+        self._bag_ready = True
+
+    def _move_picker(self, y: float, z0: float, z1: float, seconds: float,
+                     carry: bool = False, to_y: float | None = None):
+        """Move the picker's head from height ``z0`` to ``z1`` (and along the
+        beam from ``y`` to ``to_y``); with ``carry`` the bag hangs on its cups."""
+        data = self.data
+        y1 = y if to_y is None else to_y
+        grip = BAG_FLOOR + BAG_FLAT + FILM
+        for blend in self._tween(seconds):
+            now_y = y + (y1 - y) * blend
+            now_z = z0 + (z1 - z0) * blend
+            data.mocap_pos[self._picker] = (BAG_X, now_y, now_z)
+            data.mocap_pos[self._carriage] = (BAG_X, now_y, PICKER_CARRIAGE_Z)
+            if carry:
+                self._bag_held = np.array([BAG_X, now_y, now_z - grip])
+            yield
+
+    def _mouth_cup_z(self, bag_z: float) -> float:
+        """Height of the mouth cup's lip on the bag's tail, as the bag is now."""
+        return (
+            bag_z + BAG_FLOOR + self._bag_h + FILM
+            + MOUTH_CUP_ON_TAIL * math.sin(self._bag_tail)
+        )
+
+    def _set_fingers(self, y: float, z: float) -> None:
+        for mocap, side in self._fingers:
+            self.data.mocap_pos[mocap][1:] = (side * y, z)
+
+    def _release_bag(self, settled: float):
+        """Fingers in and up, mouth cup off: the film settles on the pack."""
+        data = self.data
+        for blend in self._tween(0.4):
+            self._set_fingers(FINGER_OUT_Y + (FINGER_IN_Y - FINGER_OUT_Y) * blend, FINGER_DOWN_Z)
+            yield
+        for blend in self._tween(0.5):
+            self._set_fingers(FINGER_IN_Y, FINGER_DOWN_Z + (FINGER_PARK_Z - FINGER_DOWN_Z) * blend)
+            yield
+        cup_z = float(data.mocap_pos[self._mouth_cup][2])
+        h0, tail0 = self._bag_h, self._bag_tail
+        for blend in self._tween(1.0):
+            self._shape_bag(h0 + (settled - h0) * blend, tail0 * (1.0 - blend))
+            data.mocap_pos[self._mouth_cup][2] = cup_z + (MOUTH_CUP_PARK_Z - cup_z) * blend
+            yield
+
+    def _index_bag(self, target: float):
+        """Run belt 2 until the bag's centre is at ``target``, braking in."""
+        while True:
+            left = target - float(self.data.qpos[self._bag_qadr])
+            if left <= 0.002:
+                break
+            self.belt2_speed = min(
+                BELT2_SPEED,
+                self.belt2_speed + BELT_ACCEL * self.dt,
+                max(0.02, math.sqrt(2.0 * BELT_ACCEL * left)),
+            )
+            yield
+        self.belt2_speed = 0.0
+        self.data.qvel[self._bag_dadr : self._bag_dadr + 6] = 0.0
+
+    def _shape_bag(self, height: float, tail: float) -> None:
+        """Shape the bag's films: ``height`` from floor to roof, and the tail
+        ``tail`` radians off the roof's line (up is positive).
+
+        The tail's sides follow it while it is flared or flat; pressed down,
+        the gussets fold in and they go.
+        """
+        g, pos, size, quat = self._g, self.model.geom_pos, self.model.geom_size, self.model.geom_quat
+        half = 0.5 * height
+        roof = BAG_FLOOR + height
+        pos[g["bag_roof"], 2] = roof
+        pos[g["bag_sticker"], 2] = roof + FILM + 0.0006
+        for name in ("bag_side_l", "bag_side_r", "bag_end", "bag_weld_end", "bag_weld_l", "bag_weld_r"):
+            pos[g[name], 2] = BAG_FLOOR + half
+            size[g[name], 2] = max(half, FILM)
+
+        hinge = np.array([TAIL_HINGE_X, 0.0, roof])
+        along = np.array([-math.cos(tail), 0.0, math.sin(tail)])
+        normal = np.array([math.sin(tail), 0.0, math.cos(tail)])
+        middle = hinge + 0.5 * TAIL_LENGTH * along
+        pos[g["bag_tail"]] = middle
+        quat[g["bag_tail"]] = _pitch_quat(tail)
+        # The lip runs on from the seal line: flared with the tail, else flat.
+        lip = max(tail, 0.0)
+        pos[g["bag_lip"]] = hinge + TAIL_LENGTH * along + 0.5 * LIP_LENGTH * np.array(
+            [-math.cos(lip), 0.0, math.sin(lip)]
+        )
+        quat[g["bag_lip"]] = _pitch_quat(lip)
+        depth = max(0.0, min(height, height + TAIL_LENGTH * math.sin(tail))) * math.cos(tail)
+        for name, y in (("bag_tail_side_l", 0.2442), ("bag_tail_side_r", -0.2442)):
+            gid = g[name]
+            pos[gid] = middle - 0.5 * depth * normal
+            pos[gid, 1] = y
+            size[gid, 2] = max(0.5 * depth, 1e-4)
+            quat[gid] = _pitch_quat(tail)
+        self._bag_h, self._bag_tail = height, tail
 
     def _seal_and_tag(self):
         """Lower the seal bar and the stamp together, dwell, lift.
 
-        On contact the mouth seam shows, and the label moves from the stamp
-        to the bag.
+        The bar presses the tail down to the floor on its way. On contact the
+        mouth seam shows, and the label moves from the stamp to the bag.
         """
-        model, data = self.model, self.data
-        bar, stamp, g = self._seal_bar, self._stamp, self._g
-        yield from self._move_presses(SEAL_BAR_Z, STAMP_Z, 1.2)
+        model = self.model
+        g = self._g
+        bag_z = float(self.data.qpos[self._bag_qadr + 2])
+        bar_z = bag_z + BAG_FLOOR + 3.0 * FILM + SEAL_BAR_HALF
+        stamp_z = bag_z + BAG_FLOOR + self._bag_h + FILM + STAMP_UNDER
+        yield from self._move_presses(bar_z, stamp_z, 1.2, press_tail=True)
 
         model.geom_rgba[g["bag_seam"]] = (0.70, 0.84, 0.95, 0.85)
         model.geom_rgba[g["stamp_sticker"], 3] = 0.0
-        model.geom_rgba[g["stamp_antenna"], 3] = 0.0
         model.geom_rgba[g["bag_sticker"], 3] = 1.0
-        model.geom_rgba[g["bag_antenna"], 3] = 1.0
         cold = self._rgba0["seal_bar_head"]
         hot = np.array([1.0, 0.45, 0.15, 1.0])
         dwell = 1.6
@@ -571,15 +879,27 @@ class Line:
 
         yield from self._move_presses(PRESS_HOVER_Z, PRESS_HOVER_Z, 1.0)
 
-    def _move_presses(self, bar_z: float, stamp_z: float, seconds: float):
+    def _move_presses(self, bar_z: float, stamp_z: float, seconds: float, press_tail: bool = False):
         bar, stamp = self._seal_bar, self._stamp
         bar0, stamp0 = float(self.data.mocap_pos[bar][2]), float(self.data.mocap_pos[stamp][2])
-        steps = self._steps(seconds)
-        for index in range(steps):
-            blend = smoothstep((index + 1) / steps)
+        bag_z = float(self.data.qpos[self._bag_qadr + 2])
+        for blend in self._tween(seconds):
             self.data.mocap_pos[bar][2] = bar0 + (bar_z - bar0) * blend
             self.data.mocap_pos[stamp][2] = stamp0 + (stamp_z - stamp0) * blend
+            if press_tail:
+                self._press_tail(float(self.data.mocap_pos[bar][2]) - bag_z)
             yield
+
+    def _press_tail(self, bar_z: float) -> None:
+        """Push the tail's end down to just under the seal bar at ``bar_z``,
+        in the bag's frame, if the bar is lower than it."""
+        height = self._bag_h
+        closed = -math.asin(min(1.0, (height - 2.0 * FILM) / TAIL_LENGTH))
+        drop = (bar_z - SEAL_BAR_HALF - FILM) - (BAG_FLOOR + height)
+        angle = math.asin(float(np.clip(drop / TAIL_LENGTH, -1.0, 0.0)))
+        angle = max(angle, closed)
+        if angle < self._bag_tail:
+            self._shape_bag(height, angle)
 
     def _convey(self):
         """Run belt 2 until the bag is in the carton."""
@@ -665,6 +985,19 @@ def _rotate(points: np.ndarray, axis: np.ndarray, angle: float) -> np.ndarray:
     )
 
 
+def _pitch(points: np.ndarray, angle: float) -> np.ndarray:
+    """Rotate points about +y by ``angle``: positive takes +x down."""
+    cos, sin = math.cos(angle), math.sin(angle)
+    out = points.copy()
+    out[:, 0] = cos * points[:, 0] + sin * points[:, 2]
+    out[:, 2] = -sin * points[:, 0] + cos * points[:, 2]
+    return out
+
+
+def _pitch_quat(angle: float) -> list[float]:
+    return [math.cos(0.5 * angle), 0.0, math.sin(0.5 * angle), 0.0]
+
+
 class FollowCam:
     """A free camera that drifts along with the shirt.
 
@@ -726,7 +1059,8 @@ def main() -> None:
     parser.add_argument(
         "--camera",
         default="follow",
-        help="follow (tracks the shirt) or a fixed one: overview, press_cam, fold_cam",
+        help="follow (tracks the shirt) or a fixed one: overview, press_cam, fold_cam, "
+        "bagger_cam, bag_cam",
     )
     args = parser.parse_args()
     chosen = garment_from_args(
