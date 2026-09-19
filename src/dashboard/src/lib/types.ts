@@ -127,6 +127,8 @@ export type RunSummary = {
 
 export type RunDetail = RunSummary & {
   config: RunConfig;
+  /** The QC camera fired for this run; GET /runs/{id}/photo has the shot. */
+  hasPhoto?: boolean;
   stages: StageProgress[];
   events: RunEvent[];
   telemetry: Telemetry | null;

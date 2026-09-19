@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from xfold.bridge.photo import save_photo
 from xfold.bridge.trajectory import TrajectoryRecorder
 from xfold.fsm import CellState
 
@@ -45,6 +46,7 @@ _STAGE_STATE: dict[str, CellState] = {
     "PRESS": CellState.PRESS,
     "STEAM": CellState.PRESS,
     "LIFT": CellState.PRESS,
+    "PHOTO": CellState.PRESS,  # the QC shot, still at the press end of the line
     "SETTLE": CellState.FOLD,
     "BAGGER": CellState.FOLD,  # runs interleaved with the flap folds
     "FOLD": CellState.FOLD,
@@ -162,10 +164,20 @@ class LineDriver:
             run_id, observation["message"], t=observation["t"],
             source="bagger" if observation["parallel"] else "line",
             operation=observation["operation"], station=observation["station"],
-            parallel=observation["parallel"],
+            parallel=observation["parallel"], level=observation.get("level", "info"),
         )
         if observation["measurements"]:
             self.runtime.emit_metrics(run_id, observation["t"], observation["measurements"])
+
+    def _capture_photo(self, run_id: str, line) -> str | None:
+        got = self.session.render_photo("qc_cam")
+        if not got:
+            line._observe("PHOTO_UNAVAILABLE", "foto de producto no disponible (sin GL)", level="warning")
+            return None
+        payload, mime = got
+        path = save_photo(run_id, payload, mime)
+        line._observe("PHOTO_SAVED", f"foto de producto · {path.name} · {len(payload) // 1024} kB")
+        return path.name
 
     # --- the cycle -------------------------------------------------------
 
@@ -184,6 +196,18 @@ class LineDriver:
         pending: list[dict] = []
 
         try:
+            shot: list[str] = []
+
+            def take_photo() -> None:
+                """QC camera → data/photos/{run}.jpg. Runs under session.lock.
+
+                Only touches `pending` / `shot`; the journal call happens on
+                the driver loop once the lock is released.
+                """
+                name = self._capture_photo(run_id, line)
+                if name:
+                    shot.append(name)
+
             session.reset_time()
             with session.lock:
                 line = Line(
@@ -193,6 +217,7 @@ class LineDriver:
                     log=lambda message: None,
                     skewed=skewed,
                     on_event=pending.append,
+                    on_photo=take_photo,
                 )
             cfg = shirt_config()
             self._log(
@@ -225,6 +250,9 @@ class LineDriver:
                     self._publish(run_id, observation)
                     last_event = time.monotonic()
                 pending.clear()
+                if shot:
+                    shot.clear()
+                    self.runtime.mark_photo(run_id)
 
                 if cloth is not None:
                     session.track_camera(cloth, _TRACK_EVERY * dt)

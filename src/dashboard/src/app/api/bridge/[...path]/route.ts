@@ -10,6 +10,7 @@
  */
 
 import type { NextRequest } from "next/server";
+import { bridgeOrigin } from "@/lib/bridge-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,14 +27,6 @@ const HOP_BY_HOP = new Set([
   "host",
   "content-length",
 ]);
-
-function bridgeOrigin(): string {
-  const raw =
-    process.env.NEXT_PUBLIC_XFOLD_BRIDGE_URL?.trim() ||
-    process.env.XFOLD_BRIDGE_URL?.trim() ||
-    "http://127.0.0.1:8765";
-  return raw.replace(/\/$/, "");
-}
 
 async function proxy(
   req: NextRequest,

@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from xfold.bridge.journal import Journal
 from xfold.bridge.line_driver import LineDriver
+from xfold.bridge.photo import find_photo
 from xfold.bridge.mock_driver import MockDriver
 from xfold.bridge.press_driver import PressBridgeDriver
 from xfold.bridge.runtime import Runtime
@@ -361,6 +362,23 @@ def create_app(*, persist: bool = True) -> FastAPI:
             "mime": mime,
             "imageBase64": base64.b64encode(payload).decode("ascii"),
         }
+
+    @app.get("/runs/{run_id}/photo")
+    def run_photo(run_id: str) -> Response:
+        """The QC camera's product shot for this run.
+
+        A file, not a journal event — same rule as the viewport frames. Cached
+        hard: a run's shot never changes once the flash has fired.
+        """
+        path = find_photo(run_id)
+        if path is None:
+            raise HTTPException(404, "no product shot for run")
+        mime = "image/png" if path.suffix == ".png" else "image/jpeg"
+        return Response(
+            content=path.read_bytes(),
+            media_type=mime,
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
 
     @app.get("/batches/{batch_id}")
     def get_batch(batch_id: str) -> dict:

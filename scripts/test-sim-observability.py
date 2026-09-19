@@ -78,6 +78,51 @@ class ObservabilityTests(unittest.TestCase):
         self.assertEqual(events[0]["t"], 11.03)
         self.assertEqual(events[0]["operation"], "BELT")
 
+    def test_qc_capture_observations(self):
+        from pathlib import Path
+        from unittest.mock import Mock, patch
+        from xfold.bridge.line_driver import LineDriver
+
+        for result, operation in ((None, "PHOTO_UNAVAILABLE"), ((b"jpeg", "image/jpeg"), "PHOTO_SAVED")):
+            with self.subTest(operation=operation):
+                events = []
+                line = Line.__new__(Line)
+                line.phase = "PHOTO"
+                line.data = SimpleNamespace(time=14.5)
+                line.on_event = events.append
+                driver = LineDriver.__new__(LineDriver)
+                driver.runtime = self.runtime
+                driver.session = SimpleNamespace(render_photo=Mock(return_value=result))
+                with patch("xfold.bridge.line_driver.save_photo", return_value=Path("test.jpg")) as save:
+                    name = driver._capture_photo(self.run_id, line)
+                    self.assertEqual(name, "test.jpg" if result else None)
+                    self.assertEqual(save.call_count, int(result is not None))
+                self.assertEqual(events[0]["operation"], operation)
+                self.assertEqual(events[0]["state"], "PHOTO")
+                driver._publish(self.run_id, events[0])
+                log = self.runtime.get_run(self.run_id)["events"][-1]
+                self.assertEqual(log["station"], "qc")
+                self.assertEqual(log["level"], "info" if result else "warning")
+
+    def test_qc_camera_failure_keeps_structured_warning(self):
+        from unittest.mock import Mock
+
+        events = []
+        line = Line.__new__(Line)
+        line.data = SimpleNamespace(time=14)
+        line.dt = 0.002
+        line.cycles = 1
+        line.phase = "TO_QC"
+        line.log = lambda message: None
+        line.on_event = events.append
+        line.on_photo = Mock(side_effect=RuntimeError("camera unavailable"))
+        line._set_flash = lambda level: None
+        for _ in line._shoot():
+            line.data.time += line.dt
+        line.on_photo.assert_called_once()
+        warning = next(e for e in events if e["operation"] == "PHOTO_FAILED")
+        self.assertEqual((warning["state"], warning["station"], warning["level"]), ("PHOTO", "qc", "warning"))
+
     def test_unknown_phase_is_not_silently_hidden(self):
         with self.assertRaises(ValueError):
             self.runtime.emit_state(self.run_id, "NEW_UNDECLARED_PHASE", 1)
@@ -106,7 +151,9 @@ class PhysicsObservabilityTests(unittest.TestCase):
         model = build()
         data = mujoco.MjData(model)
         pending = []
-        line = Line(model, data, repeat=False, log=lambda message: None, on_event=pending.append)
+        photos = []
+        line = Line(model, data, repeat=False, log=lambda message: None, on_event=pending.append,
+                    on_photo=lambda: photos.append((line.phase, float(data.time))))
         while not line.finished and data.time < 120:
             line.step()
             for event in pending:
@@ -121,6 +168,11 @@ class PhysicsObservabilityTests(unittest.TestCase):
         self.assertEqual(states, [p["state"] for p in LINE_PHASES])
         press = next(s for s in run["stages"] if s["state"] == "PRESS")
         self.assertEqual(press["durationSimS"], 7.5)
+        self.assertEqual(len(photos), 1)
+        self.assertEqual(photos[0][0], "PHOTO")
+        photo = next(s for s in run["stages"] if s["state"] == "PHOTO")
+        self.assertEqual(photo["durationSimS"], 1.02)
+        self.assertGreater(photos[0][1], photo["startedAtSimS"])
         measurements = run["metrics"]["measurements"]
         self.assertEqual(set(measurements), {"flatnessPreM", "flatnessPostM", "packLengthM", "packWidthM", "packHeightM"})
         self.assertTrue(all(np.isfinite(v) and v >= 0 for v in measurements.values()))

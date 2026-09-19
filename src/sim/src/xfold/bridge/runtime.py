@@ -58,6 +58,7 @@ class RunRecord:
     paused: bool = False
     cancel_requested: bool = False
     driverLabel: str = "Bridge mock driver"
+    hasPhoto: bool = False
 
     def telemetry(self) -> dict[str, Any] | None:
         if self.currentState is None:
@@ -84,6 +85,7 @@ class RunRecord:
             "startedAtIso": self.startedAtIso,
             "finishedAtIso": self.finishedAtIso,
             "failReason": self.failReason,
+            "hasPhoto": self.hasPhoto,
             "metrics": {
                 "cycleTimeSimS": self.t if self.lifecycle in {"succeeded", "failed", "cancelled"} else None,
                 "cycleTimeWallS": (
@@ -641,6 +643,13 @@ class Runtime:
                 t=round(at, 3) if at is not None else None,
                 **context,
             )
+
+    def mark_photo(self, run_id: str) -> None:
+        """The QC shot for this run is on disk; the UI may ask for it."""
+        with self._lock:
+            run = self.runs.get(run_id)
+            if run:
+                run.hasPhoto = True
 
     def bump_sim_time(self, run_id: str, t: float) -> None:
         """Update live telemetry clock without a journal event (substep ticks)."""
