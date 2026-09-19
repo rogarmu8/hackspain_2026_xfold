@@ -108,10 +108,17 @@ def shirt_config() -> ShirtConfig:
     return _CFG
 
 
-def select_garment(name: str) -> ShirtConfig:
-    """Switch the active catalogue item (CLI / XFOLD_GARMENT)."""
+def select_garment(name: str, *, texture: str | None = None) -> ShirtConfig:
+    """Switch the active catalogue item (CLI / XFOLD_GARMENT).
+
+    ``texture`` overrides the catalogue PNG (custom operator print).
+    """
     global _CFG, _MESH_CACHE, SHIRT_MESH
     item = resolve_garment(name)
+    if item.key == "custom":
+        from xfold.generate_shirt_mesh import ensure_custom_mesh
+
+        ensure_custom_mesh()
     _MESH_CACHE = None
     _CFG = ShirtConfig(
         mass=_CFG.mass,
@@ -128,7 +135,7 @@ def select_garment(name: str) -> ShirtConfig:
         claw_hz=_CFG.claw_hz,
         garment=item.key,
         mesh=item.mesh,
-        texture=item.texture,
+        texture=texture or item.texture,
         path=_CFG.path,
     )
     SHIRT_MESH = _CFG.mesh

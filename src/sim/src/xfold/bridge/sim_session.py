@@ -159,7 +159,7 @@ class SimSession:
         self.camera = self.follow.cam
         from xfold.shirt import shirt_config
 
-        self._garment_key = shirt_config().garment
+        self._garment_key = f"{shirt_config().garment}:{shirt_config().texture}"
         print("[sim-session] line.xml (belt, press, folder, bagger)", flush=True)
         return True
 
@@ -202,24 +202,29 @@ class SimSession:
         if self.follow is not None:
             self.follow.track(cloth, dt)
 
-    def ensure_garment(self, name: str) -> None:
+    def ensure_garment(self, name: str, *, texture: str | None = None) -> None:
         """Recompile the line if the launch SKU is a different mesh/texture.
 
         Different catalogue items are different flexcomps. Pose-only changes
         (``skewed``) do not need a rebuild — ``Line`` handles those per cycle.
+        A custom garment swaps in a silhouette mesh plus the cut-out PNG:
+        still rebuilds, because both are compiled into the MJCF asset.
         """
         if not self._ok or self.kind != "line":
             return
         from xfold.shirt import select_garment
 
-        cfg = select_garment(name)
+        cfg = select_garment(name, texture=texture)
+        token = f"{cfg.garment}:{cfg.texture}"
         with self.lock:
-            if self._garment_key == cfg.garment:
+            # Same SKU token would skip a second custom photo. Always recompile.
+            if self._garment_key == token and cfg.garment != "custom":
                 return
             self._rebuild_line_unlocked()
-            self._garment_key = cfg.garment
+            self._garment_key = token
             print(
-                f"[sim-session] rebuilt line for garment={cfg.garment} nq={self.model.nq}",
+                f"[sim-session] rebuilt line for garment={cfg.garment} "
+                f"tex={cfg.texture} nq={self.model.nq}",
                 flush=True,
             )
 

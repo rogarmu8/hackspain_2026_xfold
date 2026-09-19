@@ -55,9 +55,22 @@ for _key, _label, _mesh, _tex, _style in _PRISTINE:
         )
 GARMENT_KEYS = tuple(CATALOG)
 
+# Operator photo → silhouette flexcomp (no torn/stain twins).
+CUSTOM_KEY = "custom"
+CATALOG[CUSTOM_KEY] = Garment(
+    CUSTOM_KEY,
+    "Custom garment",
+    "garment_custom.obj",
+    "_custom_garment.png",
+    "custom",
+)
+GARMENT_KEYS = tuple(CATALOG)
+
 # Operator-facing axes (CLI picker + dashboard launch). SKU keys in CATALOG
-# are the cartesian product of these plus stain 1–3.
-CLOTH_TYPE_KEYS = tuple(k for k, *_ in _PRISTINE)
+# are the cartesian product of these plus stain 1–3. ``custom`` is opt-in
+# (needs a photo) and is not drawn in random mixes.
+CATALOGUE_TYPE_KEYS = tuple(k for k, *_ in _PRISTINE)
+CLOTH_TYPE_KEYS = (*CATALOGUE_TYPE_KEYS, CUSTOM_KEY)
 CLOTH_CONDITION_KEYS = ("good", "damaged", "notgood", "skewed")
 CLOTH_CONDITION_LABELS = {
     "good": "clean, square on the belt",
@@ -89,6 +102,8 @@ def resolve_garment(name: str) -> Garment:
         "uniform": "work_tee",
         "pinafore": "dress",
         "jumper": "dress",
+        "photo": "custom",
+        "upload": "custom",
     }
     key = aliases.get(key, key)
     if key.endswith("_torn"):
@@ -113,10 +128,22 @@ def format_catalog() -> str:
     return "\n".join(lines)
 
 
-def public_catalog() -> dict[str, list[dict[str, str]]]:
+def public_catalog() -> dict[str, list[dict]]:
     """Wire shape for GET /capabilities (dashboard launch form)."""
+    from xfold.generate_shirt_mesh import outline_uv
+
+    types = []
+    for key, lab, *_rest, style in _PRISTINE:
+        types.append({"key": key, "label": lab, "outlineUv": outline_uv(style)})
+    types.append(
+        {
+            "key": CUSTOM_KEY,
+            "label": CATALOG[CUSTOM_KEY].label,
+            "outlineUv": outline_uv("custom"),
+        }
+    )
     return {
-        "clothTypes": [{"key": k, "label": lab} for k, lab, *_ in _PRISTINE],
+        "clothTypes": types,
         "clothConditions": [
             {"key": k, "label": CLOTH_CONDITION_LABELS[k]} for k in CLOTH_CONDITION_KEYS
         ],
@@ -135,6 +162,8 @@ def compose_pick(cloth: str, condition: str, rng) -> GarmentPick:
         raise ValueError(
             f"unknown condition {condition!r}; choose one of: {', '.join(CLOTH_CONDITION_KEYS)}"
         )
+    if base == CUSTOM_KEY:
+        return GarmentPick(CUSTOM_KEY, skewed=(cond == "skewed"))
     if cond == "damaged":
         return GarmentPick(f"{base}_damaged", skewed=False)
     if cond == "notgood":
@@ -212,8 +241,11 @@ def resolve_launch(
         cond_seed = (cond_seed + index + 1) & 0xFFFFFFFF
     cloth_rng = random.Random(cloth_seed)
     cond_rng = random.Random(cond_seed)
+    cloth_universe = (
+        CATALOGUE_TYPE_KEYS if cloth_mix == "random" else CLOTH_TYPE_KEYS
+    )
     cloth = _mix_choice(
-        cloth_mix, types, CLOTH_TYPE_KEYS, cloth_rng, cloth_weights
+        cloth_mix, types, cloth_universe, cloth_rng, cloth_weights
     )
     cond = _mix_choice(
         condition_mix, conds, CLOTH_CONDITION_KEYS, cond_rng, condition_weights

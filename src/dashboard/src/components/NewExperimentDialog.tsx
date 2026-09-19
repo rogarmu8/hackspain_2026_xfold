@@ -14,6 +14,7 @@ import type {
   ClothType,
   ClothWeightMap,
   ConditionWeightMap,
+  CustomDesignPayload,
 } from "@xfold/protocol";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,6 +43,8 @@ import {
   DEFAULT_CLOTH_TYPES,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { DesignPreview } from "@/components/DesignPreview";
+import { cutOutGarment } from "@/lib/garment-cutout";
 
 const WEIGHT_MAX = 10;
 
@@ -62,6 +65,22 @@ function payloadWeights(
   const out: Record<string, number> = {};
   for (const key of keys) out[key] = Math.max(0, Number(weights[key] ?? 1));
   return out;
+}
+
+function readDesignFile(file: File): Promise<CustomDesignPayload> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result ?? "");
+      const comma = text.indexOf(",");
+      resolve({
+        mime: file.type || "image/png",
+        data: comma >= 0 ? text.slice(comma + 1) : text,
+      });
+    };
+    reader.onerror = () => reject(new Error("No se pudo leer la imagen."));
+    reader.readAsDataURL(file);
+  });
 }
 
 export type NewExperimentDefaults = {
@@ -173,6 +192,14 @@ function NewExperimentDialogBody({
       ...defaults?.clothConditionWeights,
     }),
   );
+  const [designPreview, setDesignPreview] = useState<string | null>(null);
+  const [designFile, setDesignFile] = useState<File | null>(null);
+  const [designPayload, setDesignPayload] = useState<CustomDesignPayload | null>(null);
+  const [designOutline, setDesignOutline] = useState<number[][]>([]);
+  const [designAttached, setDesignAttached] = useState(false);
+  const [attaching, setAttaching] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [designInputKey, setDesignInputKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -206,6 +233,12 @@ function NewExperimentDialogBody({
       ...evenWeights(DEFAULT_CLOTH_CONDITIONS),
       ...defaults?.clothConditionWeights,
     });
+    setDesignPreview(null);
+    setDesignFile(null);
+    setDesignPayload(null);
+    setDesignOutline([]);
+    setDesignAttached(false);
+    setDesignInputKey((key) => key + 1);
     setError(null);
   }
 
@@ -227,10 +260,18 @@ function NewExperimentDialogBody({
           .filter((key): key is ClothCondition => key != null)
       : DEFAULT_CLOTH_CONDITIONS;
 
-  const typePool = catalogTypes.length ? catalogTypes : DEFAULT_CLOTH_TYPES;
+  const typePool: ClothType[] = [
+    ...(catalogTypes.length ? catalogTypes : DEFAULT_CLOTH_TYPES).filter(
+      (key) => key !== "custom",
+    ),
+    "custom",
+  ];
+  const catalogPool = typePool.filter((key) => key !== "custom");
   const condPool = catalogConditions.length
     ? catalogConditions
     : DEFAULT_CLOTH_CONDITIONS;
+  const selectedType = clothTypes[0] ?? typePool[0] ?? "tee";
+  const customGarment = clothMix === "same" && selectedType === "custom";
 
   function summarizeMix(
     mix: ClothMix,
@@ -244,6 +285,64 @@ function NewExperimentDialogBody({
       return selected.map(labelOf).join(", ");
     }
     return labelOf(selected[0] ?? "tee");
+  }
+
+  function clearDesign() {
+    if (designPreview) URL.revokeObjectURL(designPreview);
+    setDesignPreview(null);
+    setDesignFile(null);
+    setDesignPayload(null);
+    setDesignOutline([]);
+    setDesignAttached(false);
+    setDesignInputKey((key) => key + 1);
+  }
+
+  async function onPickDesign(file: File | undefined) {
+    if (designPreview?.startsWith("blob:")) URL.revokeObjectURL(designPreview);
+    setDesignAttached(false);
+    setDesignPayload(null);
+    setDesignOutline([]);
+    if (!file) {
+      setDesignPreview(null);
+      setDesignFile(null);
+      return;
+    }
+    setDesignFile(file);
+    setDetecting(true);
+    setError(null);
+    try {
+      const cut = await cutOutGarment(file);
+      setDesignPreview(cut.previewUrl);
+      setDesignOutline(cut.outline);
+    } catch (err) {
+      setDesignPreview(null);
+      setDesignFile(null);
+      setDesignInputKey((key) => key + 1);
+      setError(err instanceof Error ? err.message : "No se pudo recortar la prenda.");
+    } finally {
+      setDetecting(false);
+    }
+  }
+
+  async function attachDesign() {
+    if (!designFile) {
+      setError("Elige una imagen primero.");
+      return;
+    }
+    if (!customGarment) {
+      setError("Elige Personalizada para usar una foto como prenda.");
+      return;
+    }
+    setAttaching(true);
+    setError(null);
+    try {
+      setDesignPayload(await readDesignFile(designFile));
+      setDesignAttached(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo leer la imagen.");
+    } finally {
+      setAttaching(false);
+    }
   }
 
   async function onSubmit(event: FormEvent) {
@@ -278,12 +377,20 @@ function NewExperimentDialogBody({
       setError("Selecciona al menos una condición para la fila.");
       return;
     }
-    if (clothMix === "random" && weightTotal(clothWeights, typePool) <= 0) {
+    if (clothMix === "random" && weightTotal(clothWeights, catalogPool) <= 0) {
       setError("Sube el peso de al menos un tipo de prenda.");
       return;
     }
     if (conditionMix === "random" && weightTotal(conditionWeights, condPool) <= 0) {
       setError("Sube el peso de al menos una condición.");
+      return;
+    }
+    if (customGarment && !designAttached) {
+      setError("Sube la foto de la prenda (o elige otro tipo) antes de lanzar.");
+      return;
+    }
+    if (designAttached && !customGarment) {
+      setError("Elige Personalizada para usar una foto como prenda.");
       return;
     }
 
@@ -302,12 +409,16 @@ function NewExperimentDialogBody({
               clothTypes: clothMix === "random" ? [] : clothTypes,
               conditionMix,
               conditions: conditionMix === "random" ? [] : conditions,
-              clothTypeWeights: payloadWeights(clothMix, typePool, clothWeights),
+              clothTypeWeights: payloadWeights(clothMix, catalogPool, clothWeights),
               clothConditionWeights: payloadWeights(
                 conditionMix,
                 condPool,
                 conditionWeights,
               ),
+              customDesign:
+                customGarment && designAttached
+                  ? designPayload ?? undefined
+                  : undefined,
             })
           : launch({
               mode: "individual",
@@ -317,12 +428,16 @@ function NewExperimentDialogBody({
               clothType: clothMix === "random" ? "random" : clothTypes[0],
               clothCondition:
                 conditionMix === "random" ? "random" : conditions[0],
-              clothTypeWeights: payloadWeights(clothMix, typePool, clothWeights),
+              clothTypeWeights: payloadWeights(clothMix, catalogPool, clothWeights),
               clothConditionWeights: payloadWeights(
                 conditionMix,
                 condPool,
                 conditionWeights,
               ),
+              customDesign:
+                customGarment && designAttached
+                  ? designPayload ?? undefined
+                  : undefined,
             }),
       );
 
@@ -415,12 +530,21 @@ function NewExperimentDialogBody({
             axis="prenda"
             batch={batch}
             mix={clothMix}
-            onMixChange={setClothMix}
-            options={typePool}
+            onMixChange={(mix) => {
+              setClothMix(mix);
+              if (mix !== "same") {
+                clearDesign();
+                if (clothTypes[0] === "custom") setClothTypes(["tee"]);
+              }
+            }}
+            options={clothMix === "same" ? typePool : catalogPool}
             selected={clothTypes}
-            onSelectedChange={setClothTypes}
+            onSelectedChange={(next) => {
+              setClothTypes(next);
+              if (next[0] !== "custom") clearDesign();
+            }}
             labelOf={clothTypeLabel}
-            pickHint="Una sola prenda para toda la fila."
+            pickHint="Una sola prenda para toda la fila. Personalizada = recorte del contorno de la foto."
             randomHint="Cada camisa sale del catálogo según los pesos y la semilla."
             listHint="Cada camisa sale de los tipos marcados."
             weights={clothWeights}
@@ -447,6 +571,50 @@ function NewExperimentDialogBody({
               setConditionWeights((prev) => ({ ...prev, [key]: value }))
             }
           />
+
+          {customGarment ? (
+          <Field>
+            <FieldLabel htmlFor={`${formId}-design`}>Foto de la prenda</FieldLabel>
+            <Input
+              key={designInputKey}
+              id={`${formId}-design`}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              onChange={(event) => void onPickDesign(event.target.files?.[0])}
+            />
+            <FieldDescription>
+              {detecting
+                ? "Detectando el recorte…"
+                : "Fondo liso, prenda centrada. Recortamos el contorno y lo convertimos en la prenda (las dos caras)."}
+            </FieldDescription>
+            {designPreview ? (
+              <div className="mt-2 flex flex-col gap-2">
+                <DesignPreview
+                  src={designPreview}
+                  outline={designOutline}
+                  attached={designAttached}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={attaching || designAttached || detecting}
+                    onClick={() => void attachDesign()}
+                  >
+                    {attaching
+                      ? "Subiendo…"
+                      : designAttached
+                        ? "Prenda subida"
+                        : "Subir prenda"}
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={clearDesign}>
+                    Quitar
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </Field>
+          ) : null}
 
           <details className="border-t border-border pt-3">
             <summary className="cursor-pointer text-sm font-semibold">

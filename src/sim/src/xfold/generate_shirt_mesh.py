@@ -114,9 +114,58 @@ def shirt_outline(style: str = "tee") -> np.ndarray:
         return _outline_polo()
     if style == "dress":
         return _outline_dress()
+    if style == "custom":
+        loaded = load_custom_outline()
+        return loaded if loaded is not None else _outline_square()
     if style != "tee":
         raise ValueError(f"unknown panel style {style!r}")
     return _outline_crew()
+
+
+def _outline_square(side: float = BODY_W) -> np.ndarray:
+    """Fallback sheet when the operator photo has no usable silhouette."""
+    h = side / 2.0
+    return np.array(
+        ((-h, -h), (h, -h), (h, h), (-h, h), (-h, -h)),
+        dtype=np.float64,
+    )
+
+
+CUSTOM_MESH_PATH = MODELS / "garment_custom.obj"
+CUSTOM_OUTLINE_PATH = MODELS / "_custom_outline.npy"
+
+
+def load_custom_outline() -> np.ndarray | None:
+    """Detected garment loop in metres, or ``None`` to keep the square sheet."""
+    path = CUSTOM_OUTLINE_PATH
+    if not path.is_file():
+        return None
+    try:
+        poly = np.load(path)
+    except Exception:
+        return None
+    if poly.ndim != 2 or poly.shape[-1] != 2 or len(poly) < 4:
+        return None
+    return np.asarray(poly, dtype=np.float64)
+
+
+def square_domain_uvs(verts: np.ndarray, side: float = BODY_W) -> np.ndarray:
+    """UVs against the letterboxed PNG, not the silhouette AABB.
+
+    The print is baked into a square. After the mesh is cut to the outline,
+    sampling the same square keeps the photo aligned with the cut.
+    """
+    u = verts[:, 0] / side + 0.5
+    v = verts[:, 1] / side + 0.5
+    return np.column_stack((u, v))
+
+
+def ensure_custom_mesh() -> Path:
+    """Rebuild ``garment_custom.obj`` from the latest detected outline."""
+    path = CUSTOM_MESH_PATH
+    verts, faces = build_panel(DEFAULT_SPACING, style="custom")
+    write_obj(path, verts, faces, shell=False, uvs=square_domain_uvs(verts))
+    return path
 
 
 def _outline_crew(
@@ -542,17 +591,23 @@ def build_panel(
     style: str = "tee",
     *,
     cuts: tuple[tuple[float, float, float, float], ...] = (),
+    poly: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """One foldable 2D panel (z = 0) from the sewing pattern."""
-    poly = shirt_outline(style)
+    outline = np.asarray(
+        poly if poly is not None else shirt_outline(style),
+        dtype=np.float64,
+    )
+    if len(outline) >= 2 and not np.allclose(outline[0], outline[-1]):
+        outline = np.vstack((outline, outline[0]))
     pad = 0.5 * spacing
-    xs = _axis(float(poly[:, 0].min()) - pad, float(poly[:, 0].max()) + pad, spacing)
-    ys = _axis(float(poly[:, 1].min()) - pad, float(poly[:, 1].max()) + pad, spacing)
+    xs = _axis(float(outline[:, 0].min()) - pad, float(outline[:, 0].max()) + pad, spacing)
+    ys = _axis(float(outline[:, 1].min()) - pad, float(outline[:, 1].max()) + pad, spacing)
     idx = -np.ones((len(ys), len(xs)), dtype=np.int32)
     verts: list[tuple[float, float, float]] = []
     for j, y in enumerate(ys):
         for i, x in enumerate(xs):
-            if not _point_in_poly(float(x), float(y), poly):
+            if not _point_in_poly(float(x), float(y), outline):
                 continue
             if cuts and _in_cut(float(x), float(y), cuts):
                 continue
@@ -580,7 +635,7 @@ def build_panel(
         raise RuntimeError("T-shirt panel is empty — check silhouette bounds")
     mesh_v = np.asarray(verts, dtype=np.float64)
     mesh_f = np.asarray(faces, dtype=np.int32)
-    fitted_v, fitted_f = _fit_boundary(mesh_v, mesh_f, poly, cuts=cuts)
+    fitted_v, fitted_f = _fit_boundary(mesh_v, mesh_f, outline, cuts=cuts)
     try:
         validate_mesh(fitted_v, fitted_f, shell=False)
     except RuntimeError:
@@ -714,7 +769,7 @@ def validate_mesh(verts: np.ndarray, faces: np.ndarray, *, shell: bool) -> list[
     return loops
 
 
-def planar_uvs(verts: np.ndarray) -> np.ndarray:
+def planar_uvs(verts: np.ndarray, *, span: float | None = None) -> np.ndarray:
     """Map the T in metres onto the unit square, isotropic, collar at the top.
 
     Independent 0–1 axes would stretch a chest print: the panel is wider
@@ -723,18 +778,38 @@ def planar_uvs(verts: np.ndarray) -> np.ndarray:
     """
     cx = 0.5 * (float(verts[:, 0].min()) + float(verts[:, 0].max()))
     cy = 0.5 * (float(verts[:, 1].min()) + float(verts[:, 1].max()))
-    span = max(float(np.ptp(verts[:, 0])), float(np.ptp(verts[:, 1])), 1e-6)
-    u = (verts[:, 0] - cx) / span + 0.5
+    used = span if span and span > 1e-6 else max(
+        float(np.ptp(verts[:, 0])), float(np.ptp(verts[:, 1])), 1e-6
+    )
+    u = (verts[:, 0] - cx) / used + 0.5
     # v=0 is the first PNG row. Collar (+Y) must sample the top of the print.
-    v = (verts[:, 1] - cy) / span + 0.5
+    v = (verts[:, 1] - cy) / used + 0.5
     return np.column_stack((u, v))
 
 
-def write_obj(path: Path, verts: np.ndarray, faces: np.ndarray, *, shell: bool = False) -> None:
+def outline_uv(style: str = "tee") -> list[list[float]]:
+    """Closed garment silhouette in canvas space (u, v), collar at the top.
+
+    ``planar_uvs`` is OpenGL-style (v up). This flips v so a 2D preview
+    (y down) and a PNG bake line up with the cloth in MuJoCo.
+    """
+    poly = np.asarray(shirt_outline(style), dtype=np.float64)
+    uv = planar_uvs(poly)
+    return [[float(u), float(1.0 - v)] for u, v in uv]
+
+
+def write_obj(
+    path: Path,
+    verts: np.ndarray,
+    faces: np.ndarray,
+    *,
+    shell: bool = False,
+    uvs: np.ndarray | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     loops = validate_mesh(verts, faces, shell=shell)
     kind = "hollow shell" if shell else "single T panel (ninja fold)"
-    uvs = planar_uvs(verts)
+    uv = planar_uvs(verts) if uvs is None else np.asarray(uvs, dtype=np.float64)
     with path.open("w", encoding="utf-8") as f:
         f.write(f"# XFOLD {kind}\n")
         f.write(f"# verts={len(verts)} faces={len(faces)} loops={len(loops)}\n")
@@ -744,7 +819,7 @@ def write_obj(path: Path, verts: np.ndarray, faces: np.ndarray, *, shell: bool =
         )
         for x, y, z in verts:
             f.write(f"v {x:.6f} {y:.6f} {z:.6f}\n")
-        for u, v in uvs:
+        for u, v in uv:
             f.write(f"vt {u:.6f} {v:.6f}\n")
         for a, b, c in faces:
             ia, ib, ic = a + 1, b + 1, c + 1

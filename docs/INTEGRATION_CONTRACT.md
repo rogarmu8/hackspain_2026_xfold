@@ -72,7 +72,7 @@ Every event has: `seq`, `tsIso`, `type`, `runId`, `batchId`.
 | GET | `/runs/{id}/timeline` | FSM markers for scrubber |
 | GET | `/runs/{id}/recording` | Trajectory metadata |
 | GET | `/runs/{id}/recording/frame?t=` | Replay seek (JPEG + state) |
-| POST | `/runs`, `/batches` | Launch. Run: `name`, `seed`, `scenario`, `clothType` (`tee`… or `random`), `clothCondition` (`good`/`damaged`/`notgood`/`skewed` or `random`), optional `clothTypeWeights` / `clothConditionWeights` when random (0 = never). Batch: `count`, `baseSeed`, `clothMix`/`conditionMix` (`same`/`random`/`list`) + `clothTypes`/`conditions` + the same weight maps. `seed` also draws a skewed heading (flat on the belt). Catalogue on `GET /capabilities`. |
+| POST | `/runs`, `/batches` | Launch. Run: `name`, `seed`, `scenario`, `clothType` (`tee`… / `custom` or `random`), `clothCondition` (`good`/`damaged`/`notgood`/`skewed` or `random`), optional `clothTypeWeights` / `clothConditionWeights` when random (0 = never). `custom` is a silhouette sheet: send `customDesign` `{ mime, data }` (base64 photo; the bridge cuts the garment out of the photo, builds a flexcomp to that outline, and prints both faces; never a journal payload). Batch: `count`, `baseSeed`, `clothMix`/`conditionMix` (`same`/`random`/`list`) + `clothTypes`/`conditions` + the same weight maps; the photo is required if the mix can draw `custom`. `seed` also draws a skewed heading (flat on the belt). Catalogue on `GET /capabilities`. |
 | POST | `/commands` | `{ clientCommandId, kind, runId?, batchId? }` |
 
 **Two planes (do not mix):**

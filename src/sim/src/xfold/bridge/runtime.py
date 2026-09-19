@@ -12,7 +12,13 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from xfold.bridge.journal import Journal
-from xfold.bridge.schema import BridgeCapabilities, CatalogOption, CommandKind, CommandRequest
+from xfold.bridge.schema import (
+    BridgeCapabilities,
+    CatalogOption,
+    CommandKind,
+    CommandRequest,
+    CustomDesignPayload,
+)
 from xfold.fsm import CYCLE, CellState
 from xfold.garments import public_catalog, resolve_launch
 
@@ -58,6 +64,8 @@ class RunRecord:
     clothType: str = "tee"
     clothCondition: str = "good"
     skewed: bool = False
+    customTexture: str | None = None
+    customDesign: bool = False
 
     def telemetry(self) -> dict[str, Any] | None:
         if self.currentState is None and self.lifecycle == "queued":
@@ -82,6 +90,7 @@ class RunRecord:
             "clothType": self.clothType,
             "clothCondition": self.clothCondition,
             "skewed": self.skewed,
+            "customDesign": self.customDesign,
             "currentState": self.currentState,
             "startedAtIso": self.startedAtIso,
             "finishedAtIso": self.finishedAtIso,
@@ -103,6 +112,7 @@ class RunRecord:
                 "clothType": self.clothType,
                 "clothCondition": self.clothCondition,
                 "skewed": self.skewed,
+                "customDesign": self.customDesign,
             },
             "stages": [
                 {
@@ -291,6 +301,20 @@ class Runtime:
             items.sort(key=lambda x: x.get("startedAtIso") or "", reverse=True)
             return items
 
+    def _bake_custom_design(
+        self, payload: CustomDesignPayload | None, cloth: str
+    ) -> str | None:
+        """Cut the operator photo to a silhouette mesh and print both faces."""
+        if cloth != "custom":
+            return None
+        if payload is None or not (payload.data or "").strip():
+            raise ValueError("la prenda personalizada necesita una foto")
+        from xfold.custom_design import CUSTOM_TEXTURE, bake_custom_design, decode_payload
+
+        blob = decode_payload(payload.data, payload.mime)
+        bake_custom_design(blob)
+        return CUSTOM_TEXTURE
+
     def launch_run(
         self,
         *,
@@ -301,6 +325,7 @@ class Runtime:
         cloth_condition: str = "good",
         cloth_weights: dict[str, float] | None = None,
         condition_weights: dict[str, float] | None = None,
+        custom_design: CustomDesignPayload | None = None,
     ) -> dict[str, Any]:
         cloth_mix = "random" if cloth_type == "random" else "same"
         cond_mix = "random" if cloth_condition == "random" else "same"
@@ -316,6 +341,7 @@ class Runtime:
             cloth_weights=cloth_weights if cloth_mix == "random" else None,
             condition_weights=condition_weights if cond_mix == "random" else None,
         )
+        custom_tex = self._bake_custom_design(custom_design, cloth)
         with self._lock:
             if self.active_run_id and self.runs[self.active_run_id].lifecycle in {"running", "paused"}:
                 raise ValueError("Ya hay una ejecución activa")
@@ -328,6 +354,7 @@ class Runtime:
                 cloth_type=cloth,
                 cloth_condition=cond,
                 skewed=pick.skewed,
+                custom_texture=custom_tex,
             )
             self.active_run_id = run.id
             self.active_batch_id = None
@@ -348,6 +375,7 @@ class Runtime:
         conditions: list[str] | None = None,
         cloth_weights: dict[str, float] | None = None,
         condition_weights: dict[str, float] | None = None,
+        custom_design: CustomDesignPayload | None = None,
     ) -> dict[str, Any]:
         types = list(cloth_types or [])
         conds = list(conditions or [])
@@ -355,6 +383,13 @@ class Runtime:
             raise ValueError("Selecciona al menos un tipo de prenda")
         if condition_mix == "list" and not conds:
             raise ValueError("Selecciona al menos una condición")
+        wants_custom = (
+            (cloth_mix == "same" and (types[:1] == ["custom"]))
+            or (cloth_mix == "list" and "custom" in types)
+        )
+        custom_tex = (
+            self._bake_custom_design(custom_design, "custom") if wants_custom else None
+        )
         with self._lock:
             if self.active_run_id and self.runs[self.active_run_id].lifecycle in {"running", "paused"}:
                 raise ValueError("Ya hay una ejecución activa")
@@ -391,6 +426,7 @@ class Runtime:
                     cloth_type=cloth,
                     cloth_condition=cond,
                     skewed=pick.skewed,
+                    custom_texture=custom_tex if cloth == "custom" else None,
                 )
                 batch.run_ids.append(run.id)
             first = self.runs[batch.run_ids[0]]
@@ -413,6 +449,7 @@ class Runtime:
         cloth_type: str = "tee",
         cloth_condition: str = "good",
         skewed: bool = False,
+        custom_texture: str | None = None,
     ) -> RunRecord:
         run = RunRecord(
             id=self._next_run_id(),
@@ -426,6 +463,8 @@ class Runtime:
             clothType=cloth_type,
             clothCondition=cloth_condition,
             skewed=skewed,
+            customTexture=custom_texture,
+            customDesign=bool(custom_texture),
         )
         self.runs[run.id] = run
         return run
@@ -456,6 +495,7 @@ class Runtime:
             clothType=run.clothType,
             clothCondition=run.clothCondition,
             skewed=run.skewed,
+            customDesign=run.customDesign,
         )
         self.journal.append(
             "state_changed",
