@@ -66,8 +66,8 @@
   --color-divider: var(--border);
   --color-danger: var(--destructive);
   --color-on-primary: var(--primary-foreground);
-  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-sans: var(--font-plex-sans), "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 6px;

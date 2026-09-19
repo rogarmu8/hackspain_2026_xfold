@@ -58,7 +58,7 @@ El visor ocupa aproximadamente dos tercios del espacio útil en escritorio. Nave
 
 ## Lanzamiento, batches y comandos
 
-«Nuevo experimento» abre un formulario dedicado: Individual / Batch, nombre opcional, configuración compatible con el simulador y semillas. En batch, mostrar cantidad y estrategia de semillas. Opciones avanzadas plegadas; validar antes de lanzar y resumir qué se ejecutará.
+«Nuevo experimento» abre un Dialog (shadcn) modal: Individual / Batch, nombre opcional, configuración compatible con el simulador y semillas. En batch, mostrar cantidad y estrategia de semillas. Opciones avanzadas plegadas; validar antes de lanzar y resumir qué se ejecutará.
 
 Batch significa grupo de ejecuciones, no paralelismo garantizado. MVP: cola secuencial. Distinguir pausa de la ejecución y pausa de la cola: «Pausar ejecución» y «Pausar cola» solo si el backend soporta cada acción.
 

@@ -161,11 +161,8 @@ function NewExperimentDialogBody({
       }
 
       onClose();
-      if (mode === "batch") {
-        router.push(`/experimentos/${result.id}`);
-      } else {
-        router.push(`/historial/${result.id}`);
-      }
+      // Live monitoring lives on Control; Historial is for finished runs / replay.
+      router.push("/");
     } finally {
       setSubmitting(false);
     }
