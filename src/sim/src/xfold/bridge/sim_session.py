@@ -58,6 +58,11 @@ class SimSession:
         self._render_broken = False
         # Last SKU compiled into line.xml. None until the first successful compile.
         self._garment_key: str | None = None
+        # ``render_jpeg`` drops the lock before GL rasterises. Rebuild must wait
+        # until that native call returns, or closing the Renderer / MjModel
+        # under it segfaults (custom SKU always recompiles).
+        self._idle = threading.Condition(self.lock)
+        self._gl_inflight = 0
 
     @property
     def ok(self) -> bool:
@@ -230,6 +235,8 @@ class SimSession:
 
     def _rebuild_line_unlocked(self) -> None:
         """Swap MjModel/MjData after ``select_garment``. Caller holds ``lock``."""
+        while self._gl_inflight:
+            self._idle.wait(timeout=2.0)
         for renderer in self._renderers.values():
             try:
                 renderer.close()
@@ -381,6 +388,7 @@ class SimSession:
             try:
                 renderer = self._renderer_for_current_thread()
                 renderer.update_scene(self.data, camera=self.camera)
+                self._gl_inflight += 1
             except Exception as exc:  # noqa: BLE001
                 self._render_broken = True
                 self._renderers.pop(threading.get_ident(), None)
@@ -395,6 +403,10 @@ class SimSession:
         except Exception as exc:  # noqa: BLE001
             print(f"[sim-session] render failed: {exc}", flush=True)
             return None
+        finally:
+            with self.lock:
+                self._gl_inflight = max(0, self._gl_inflight - 1)
+                self._idle.notify_all()
 
     def render_jpeg_unlocked(self, camera: Any = None) -> tuple[bytes, str] | None:
         if not self._ok or self._mujoco is None or self._render_broken:
