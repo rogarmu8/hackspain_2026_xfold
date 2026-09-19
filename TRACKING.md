@@ -40,4 +40,5 @@ Leyenda: ⬜ todo · 🟡 en curso · ✅ hecho · ⛔ bloqueado
 |--------|----------|-------|
 | 2026-09-19 | Bus sim↔UI = **journal + REST/SSE** (no WS/gRPC al browser). Contrato vinculante: `docs/INTEGRATION_CONTRACT.md`. Detalle: `docs/BRIDGE.md`. | equipo |
 | 2026-09-19 | Viewport MJPEG prefers `press_cell` (flex T + UR5e via `scene.build`); `cell.xml` keeps `overview` + cloth as fallback. No `shirt_free` proxy. | press track |
+| 2026-09-19 | Flat lay = hang → opposite corner → set down on the press → slide both hands to the T pose. | press track |
 | | | |

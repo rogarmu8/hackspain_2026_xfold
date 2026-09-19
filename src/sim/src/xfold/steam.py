@@ -12,8 +12,8 @@ import math
 import numpy as np
 
 ALPHA = 0.44
-PLATEN_HALF_X = 0.24
-PLATEN_HALF_Y = 0.29
+PLATEN_HALF_X = 0.34
+PLATEN_HALF_Y = 0.37
 
 HOSE_RADIUS = 0.016
 HOSE_RIB = 0.021
