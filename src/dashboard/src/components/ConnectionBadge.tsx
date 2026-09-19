@@ -1,7 +1,9 @@
+import { CircleHelp, FlaskConical, PlugZap, TimerOff, Unplug } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { formatIso } from "@/lib/format";
 import type { ConnectionStatus, DataProvenance } from "@/lib/types";
 
+/** Connection + provenance in one glance: icon (shape) + tone + short label. */
 export function ConnectionBadge({
   connection,
   provenance,
@@ -11,62 +13,50 @@ export function ConnectionBadge({
   provenance: DataProvenance;
   lastUpdatedIso: string | null;
 }) {
+  const stamp = lastUpdatedIso ? (
+    <span className="font-mono font-normal tabular">{formatIso(lastUpdatedIso)}</span>
+  ) : null;
+
   if (connection === "disconnected") {
     return (
-      <StatusBadge tone="danger" icon={<Dot className="bg-danger" />}>
-        Sin conexión
-        {lastUpdatedIso ? (
-          <span className="font-normal text-muted-foreground">
-            · último dato {formatIso(lastUpdatedIso)}
-          </span>
-        ) : null}
+      <StatusBadge tone="danger" icon={<Unplug className="size-3.5" aria-hidden />} title="Bridge sin conexión">
+        Sin conexión {stamp}
       </StatusBadge>
     );
   }
 
   if (provenance === "fixture") {
     return (
-      <StatusBadge tone="neutral" icon={<Dot className="bg-muted" />}>
-        Datos de ejemplo
-        <span className="font-normal">· demo local</span>
+      <StatusBadge tone="neutral" icon={<FlaskConical className="size-3.5" aria-hidden />} title="Fixtures locales · bridge offline">
+        Ejemplo
       </StatusBadge>
     );
   }
 
   if (provenance === "stale") {
     return (
-      <StatusBadge tone="danger" icon={<Dot className="bg-danger" />}>
-        Datos obsoletos
-        {lastUpdatedIso ? (
-          <span className="font-normal">· {formatIso(lastUpdatedIso)}</span>
-        ) : null}
+      <StatusBadge tone="danger" icon={<TimerOff className="size-3.5" aria-hidden />} title="Último dato recibido">
+        Obsoleto {stamp}
       </StatusBadge>
     );
   }
 
   if (connection === "connected") {
     return (
-      <StatusBadge tone="active" icon={<Dot className="bg-active" />}>
-        {provenance === "live" ? "Bridge conectado" : "Simulador conectado"}
-        <span className="font-normal">
-          {provenance === "live" ? "· journal live" : "· OpenArm v2"}
-        </span>
+      <StatusBadge
+        tone="active"
+        pulse
+        icon={<PlugZap className="size-3.5" aria-hidden />}
+        title={provenance === "live" ? "Bridge · journal + SSE" : "Simulador OpenArm v2"}
+      >
+        {provenance === "live" ? "Live" : "Simulador"}
       </StatusBadge>
     );
   }
 
   return (
-    <StatusBadge tone="neutral" icon={<Dot className="bg-muted" />}>
-      Estado de conexión desconocido
+    <StatusBadge tone="neutral" icon={<CircleHelp className="size-3.5" aria-hidden />}>
+      Desconocido
     </StatusBadge>
-  );
-}
-
-function Dot({ className }: { className: string }) {
-  return (
-    <span
-      className={`inline-block size-2 shrink-0 rounded-full ${className}`}
-      aria-hidden
-    />
   );
 }

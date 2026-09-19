@@ -36,7 +36,7 @@ export function BatchDetailView({ batchId }: { batchId: string }) {
   return (
     <AppShell
       title={batch.id}
-      description={batch.name}
+      eyebrow={batch.name}
       actions={
         <StatusBadge
           tone={batch.lifecycle === "running" ? "active" : "neutral"}

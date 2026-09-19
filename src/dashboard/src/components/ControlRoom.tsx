@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { CellState } from "@xfold/protocol";
 import { AppShell } from "@/components/AppShell";
 import { BatchContextPanel } from "@/components/BatchContextPanel";
@@ -11,6 +11,7 @@ import { useDashboard } from "@/lib/dashboard-context";
 import type { FixtureScenario } from "@/lib/adapter";
 import { formatSeconds, stageLabel } from "@/lib/format";
 import Link from "next/link";
+import { ArrowUpRight, TriangleAlert } from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./ui/sheet";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
@@ -25,6 +26,72 @@ const SCENARIOS: { id: FixtureScenario; label: string }[] = [
   { id: "finished", label: "Finalizado" },
 ];
 
+const INSPECTOR_KEY = "xfold.inspectorWidth";
+const INSPECTOR_MIN = 260;
+const INSPECTOR_MAX = 480;
+const INSPECTOR_DEFAULT = 312;
+
+const clamp = (n: number) => Math.min(INSPECTOR_MAX, Math.max(INSPECTOR_MIN, n));
+
+const INSPECTOR_EVENT = "xfold:inspector-width";
+
+function readStoredWidth() {
+  const stored = Number(window.localStorage.getItem(INSPECTOR_KEY));
+  return stored ? clamp(stored) : INSPECTOR_DEFAULT;
+}
+
+function subscribeStoredWidth(onChange: () => void) {
+  window.addEventListener(INSPECTOR_EVENT, onChange);
+  return () => window.removeEventListener(INSPECTOR_EVENT, onChange);
+}
+
+function writeStoredWidth(w: number) {
+  window.localStorage.setItem(INSPECTOR_KEY, String(w));
+  window.dispatchEvent(new Event(INSPECTOR_EVENT));
+}
+
+/** Persisted inspector width; live drag value overrides until pointer-up. */
+function useInspectorWidth() {
+  const stored = useSyncExternalStore(
+    subscribeStoredWidth,
+    readStoredWidth,
+    () => INSPECTOR_DEFAULT,
+  );
+  const [drag, setDrag] = useState<number | null>(null);
+  const width = drag ?? stored;
+  const dragging = drag !== null;
+
+  const commit = (next: number) => writeStoredWidth(clamp(next));
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startW = width;
+    setDrag(startW);
+    const move = (e: PointerEvent) => setDrag(clamp(startW + (startX - e.clientX)));
+    const up = (e: PointerEvent) => {
+      commit(startW + (startX - e.clientX));
+      setDrag(null);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 40 : 16;
+    if (event.key === "ArrowLeft") commit(width + step);
+    else if (event.key === "ArrowRight") commit(width - step);
+    else if (event.key === "Home") commit(INSPECTOR_MAX);
+    else if (event.key === "End") commit(INSPECTOR_MIN);
+    else return;
+    event.preventDefault();
+  };
+
+  return { width, dragging, onPointerDown, onKeyDown };
+}
+
 export function ControlRoom() {
   const {
     snapshot,
@@ -37,6 +104,7 @@ export function ControlRoom() {
   } = useDashboard();
   const [selectedStage, setSelectedStage] = useState<CellState | null>(null);
   const stageTrigger = useRef<HTMLElement | null>(null);
+  const inspector = useInspectorWidth();
 
   const run = snapshot.activeRun;
   const stageDetail =
@@ -51,7 +119,8 @@ export function ControlRoom() {
   return (
     <AppShell
       title="Centro de control"
-      description="Celda OpenArm · prensa · pliegue ninja · tolva → bolsa"
+      eyebrow="OpenArm · prensa · pliegue · bolsa"
+      fit
       actions={
         <>
           <ConnectionBadge
@@ -64,16 +133,25 @@ export function ControlRoom() {
       }
     >
       {snapshot.incident ? (
-        <Alert variant="destructive" className="mb-6">
+        <Alert variant="destructive" className="mb-3 py-2">
+          <TriangleAlert className="size-4" />
           <AlertTitle>Incidencia</AlertTitle>
-          <AlertDescription>{snapshot.incident.message}
-            {snapshot.incident.runId && <Link href={`/historial/${snapshot.incident.runId}`}>Ver ejecución</Link>}
+          <AlertDescription>
+            {snapshot.incident.message}
+            {snapshot.incident.runId && (
+              <Link href={`/historial/${snapshot.incident.runId}`} className="inline-flex items-center gap-1">
+                Ver ejecución <ArrowUpRight className="size-3.5" aria-hidden />
+              </Link>
+            )}
           </AlertDescription>
         </Alert>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_var(--inspector-width)]">
-        <div className="flex min-w-0 flex-col gap-6">
+      <div
+        className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_12px_var(--inspector-width)] xl:gap-0"
+        style={{ "--inspector-width": `${inspector.width}px` } as CSSProperties}
+      >
+        <div className="flex min-h-0 min-w-0 flex-col gap-3">
           <SimulationViewport
             run={run}
             provenance={snapshot.provenance}
@@ -81,11 +159,7 @@ export function ControlRoom() {
             bridgeUrl={bridgeUrl}
           />
 
-          <section className="border border-divider bg-surface p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold">Etapas del proceso</h2>
-
-            </div>
+          <section className="shrink-0 border border-divider bg-surface px-4 py-3">
             <StageStepper
               stages={run?.stages ?? null}
               selected={selectedStage}
@@ -111,7 +185,23 @@ export function ControlRoom() {
           </section>
         </div>
 
-        <div className="min-w-0 xl:sticky xl:top-[calc(var(--header-height)+24px)] xl:self-start">
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Ancho del panel lateral"
+          aria-valuemin={INSPECTOR_MIN}
+          aria-valuemax={INSPECTOR_MAX}
+          aria-valuenow={inspector.width}
+          tabIndex={0}
+          data-dragging={inspector.dragging}
+          onPointerDown={inspector.onPointerDown}
+          onKeyDown={inspector.onKeyDown}
+          className="resize-handle hidden cursor-col-resize items-center justify-center outline-none xl:flex"
+        >
+          <span className="h-10 w-1 rounded-full bg-border opacity-70 transition-[background,opacity] duration-[var(--motion-feedback)]" />
+        </div>
+
+        <div className="min-h-0 min-w-0 xl:overflow-y-auto">
           <BatchContextPanel
             batch={snapshot.activeBatch}
             run={run}
@@ -124,12 +214,13 @@ export function ControlRoom() {
       </div>
 
       {source === "live" ? (
-        <p className="mt-8 border-t border-divider pt-4 font-mono text-xs text-muted-foreground">
-          Fuente live · bridge {bridgeUrl} · journal + REST/SSE
+        <p className="eyebrow mt-3 shrink-0 truncate">
+          live · {bridgeUrl} · journal + REST/SSE
         </p>
       ) : snapshot.provenance === "fixture" || snapshot.provenance === "stale" ? (
-        <details className="mt-8 border-t border-divider pt-4"><summary className="cursor-pointer text-sm text-muted-foreground">Escenarios de demostración (fixtures · bridge offline)</summary>
-          <ToggleGroup type="single" value={scenario} onValueChange={(value) => { if (value) setScenario(value as FixtureScenario); }} variant="outline" className="mt-3 flex-wrap" aria-label="Escenario de demostración">
+        <details className="mt-3 shrink-0">
+          <summary className="eyebrow cursor-pointer">Escenarios de demostración · fixtures</summary>
+          <ToggleGroup type="single" value={scenario} onValueChange={(value) => { if (value) setScenario(value as FixtureScenario); }} variant="outline" size="sm" className="mt-2 flex-wrap" aria-label="Escenario de demostración">
             {SCENARIOS.map(item => <ToggleGroupItem key={item.id} value={item.id}>{item.label}</ToggleGroupItem>)}
           </ToggleGroup>
         </details>
