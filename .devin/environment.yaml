@@ -1,0 +1,64 @@
+initialize:
+  - run: |
+      set -euo pipefail
+      # Toolchain: Pixi (Python 3.12 + Node 22 env) and moon (task runner). Both are user-local.
+      curl -fsSL https://pixi.sh/install.sh | sh
+      bash <(curl -fsSL https://moonrepo.dev/install/moon.sh)
+      export PATH="$HOME/.pixi/bin:$HOME/.moon/bin:$PATH"
+      pixi --version && moon --version
+      # Make tools + headless MuJoCo rendering available in every future shell.
+      cat >> "$HOME/.bashrc" <<'EOF'
+      export PATH="$HOME/.pixi/bin:$HOME/.moon/bin:$PATH"
+      export MUJOCO_GL=egl
+      EOF
+      cd ~/repos/hackspain-2026-xfold
+      # pixi install (default + mujoco envs share solve-group) + npm install workspaces
+      moon run setup
+      moon run install-mujoco
+
+maintenance:
+  - run: |
+      set -euo pipefail
+      export PATH="$HOME/.pixi/bin:$HOME/.moon/bin:$PATH"
+      cd ~/repos/hackspain-2026-xfold
+      git pull --ff-only || true
+      pixi install
+      pixi install -e mujoco
+      npm install
+
+knowledge:
+  - name: environment
+    contents: |
+      Run every command from the repo root (~/repos/hackspain-2026-xfold) through moon: `moon run <task>`.
+      PATH must include ~/.pixi/bin and ~/.moon/bin (already in ~/.bashrc; in non-login shells run
+      `export PATH="$HOME/.pixi/bin:$HOME/.moon/bin:$PATH"`).
+      Headless box: always `export MUJOCO_GL=egl` for anything that imports mujoco (bridge, shirt-smoke, shirt-shot).
+      Tasks that open a mujoco.viewer window (`sim:view`, `sim:run`, `sim:shirt-play*`) need a display and do NOT
+      work here; use the bridge viewport stream (`/viewport/stream`) or `sim:shirt-shot` (PNG to `shots/`) instead.
+      Python: `pixi run python -P ...` (default env) or `pixi run -e mujoco python -P ...`. `-P` is required so the
+      root `xfold/` stub does not shadow `src/sim/src/xfold`.
+      Read AGENTS.md and docs/INTEGRATION_CONTRACT.md before touching sim<->dashboard data flow.
+  - name: lint
+    contents: |
+      export PATH="$HOME/.pixi/bin:$HOME/.moon/bin:$PATH"; export MUJOCO_GL=egl
+      cd ~/repos/hackspain-2026-xfold
+      pixi run bash scripts/check-bridge-contract.sh   # protocol TS <-> Python schema in sync
+      moon run dashboard:lint                          # eslint on src/dashboard
+      # Known: dashboard:lint currently fails on a pre-existing source issue
+      # (src/dashboard/src/components/NewExperimentDialog.tsx:106 react-hooks/set-state-in-effect).
+  - name: test
+    contents: |
+      export PATH="$HOME/.pixi/bin:$HOME/.moon/bin:$PATH"; export MUJOCO_GL=egl
+      cd ~/repos/hackspain-2026-xfold
+      moon run sim:mock          # mock cell cycle, JSON lines PICK -> BAG, exits 0
+      moon run sim:shirt-smoke   # headless flex shirt stability check ("OK: shirt stable for 10 s")
+      moon run dashboard:build   # Next.js production build + typecheck
+      pixi run -e mujoco python -P -c "import mujoco, mink; print(mujoco.__version__)"
+  - name: startup
+    contents: |
+      export PATH="$HOME/.pixi/bin:$HOME/.moon/bin:$PATH"; export MUJOCO_GL=egl
+      cd ~/repos/hackspain-2026-xfold
+      moon run pack   # bridge (REST/SSE + MJPEG viewport) on :8765 and Next.js dashboard on :3000
+      # Or separately: `moon run sim:bridge` and `moon run dashboard:dev`.
+      # Check: curl -s localhost:8765/capabilities ; open http://localhost:3000 (forward ports 3000 and 8765).
+      # OpenAPI: http://localhost:8765/docs
