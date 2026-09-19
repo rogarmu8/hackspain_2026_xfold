@@ -1,4 +1,4 @@
-<!-- Shirt-only playground: CLOTH3D T-shirt + poncho-style edge cloth. -->
+<!-- Shirt-only playground: generated T-shirt + poncho-style edge cloth. -->
 <mujoco model="xfold-shirt-playground">
   <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast" solver="CG"/>
   <visual>
@@ -30,9 +30,15 @@
           solref="0.005 1.2" solimp="0.99 0.999 0.0002"/>
     <camera name="play" pos="0.95 -1.05 0.75" xyaxes="0.75 0.65 0 -0.25 0.3 0.92"/>
 
-    <flexcomp name="shirt" type="mesh" dim="2" file="shirt_cloth3d.obj"
+    <!-- 3D button: double-click it (or press N) to run the ninja fold. -->
+    <body name="ninja_button" mocap="true" pos="0.58 -0.40 0.08">
+      <geom name="ninja_button" type="box" size="0.13 0.05 0.018"
+            rgba="0.92 0.58 0.12 1" contype="0" conaffinity="0"/>
+    </body>
+
+    <flexcomp name="shirt" type="mesh" dim="2" file="shirt_t.obj"
               radius="0.004" mass="0.22" flatskin="false"
-              pos="0 0 0.35" euler="0.2 0.05 0.3"
+              pos="0 0 0.28" euler="0.04 0 0.08"
               material="shirt_cloth">
       <contact internal="false" selfcollide="bvh"
                solref="0.005 1.2" solimp="0.99 0.999 0.0002"

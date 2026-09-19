@@ -109,7 +109,8 @@ Enactic OpenArm v2, 7-DOF × 2 + grippers, Apache-2.0. Cite Enactic for the MJCF
 | **Contact budget: `mjMAXCONPAIR` = 50** | **CONSTRAINT** | See below. Sets the vertex count, so decide it before anything else. |
 | Bundled flex models (`flag.xml`, `poncho.xml`, …) | **USE** | Poncho is the closest garment-shaped **param** reference (`refs/PONCHO.md`). |
 | Elasticity shell plugin `mujoco.elasticity.shell` | SKIP (3.13 pip) | Only `cable` is registered; use native `<elasticity>` (discrete) or edge equality. |
-| CLOTH3D / ClothesNet T-meshes | **USE** | Geometry only — convert with `xfold.convert_cloth3d_mesh` → `shirt_cloth3d.obj`. |
+| Generated T-outline (`xfold.generate_shirt_mesh`) | **USE** | Default shirt: torso + sleeves + crew neck → `shirt_t.obj`. Sized for the 0.70 m press. |
+| CLOTH3D / ClothesNet T-meshes | **ADAPT** | Geometry only if we want a scanned drape; convert with `xfold.convert_cloth3d_mesh`. |
 | [Issue #1433 — Shirt/Cloth with flexcomp](https://github.com/google-deepmind/mujoco/issues/1433) | **USE** | Tunings that stop explosions: `internal="false"`, Young ~`1e3–5e3`, damping `1–10`. |
 | ICARSC 2026 *Clothing Simulation in MuJoCo* | INSPIRE | Cite on the slide. |
 
@@ -182,7 +183,7 @@ half-thickness `radius`, and 0.008 was a 16 mm yoga mat.
 
 If this diverges: lower Young, raise damping, disable internal contacts, reduce `count`. OpenArm’s 9×9 is a proven foldable sheet; a 12×16 grid is plenty for a shirt demo.
 
-T-shirt shape later: generate a T-outline mesh in Python (or a low-poly OBJ) and switch `type="mesh" file="shirt.obj"`. Same contact/elasticity block as above.
+T-shirt shape: `python -m xfold.generate_shirt_mesh` writes `shirt_t.obj` — 0.60×0.64 m body (thirds = 0.20 m), short sleeves, crew neck. Same contact / edge-equality block. Native bend elasticity needs `integrator="discrete"` and runs at ~0.5x realtime, so it stays in the poncho playground. Stay near 150 verts so the platen can support the whole T. Crease vertices live in `xfold.ninja`.
 
 ### 4.4 Mechanisms we build ourselves (no good OSS)
 
@@ -319,7 +320,7 @@ Vendor OpenArm as a copy or git submodule under `src/sim/models/openarm` + a thi
 |------|------------------|------------------|
 | Initial pose | Random yaw, small crumple from a drop | Fully wadded, overlapping pile |
 | Shirt size | One adult T | S / M / L via `shirt.py` spacing/count |
-| Shirt shape | Rectangle cloth | T-mesh (sleeves) |
+| Shirt shape | T-mesh (sleeves + crew neck) | Second size |
 | Colour / texture | One | Two colours (visual only) |
 | Scene | Fixed cell | Slight press/chute offset |
 

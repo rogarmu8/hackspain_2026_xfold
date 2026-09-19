@@ -6,9 +6,9 @@ from pathlib import Path
 
 import numpy as np
 
-# Matches models/shirt.xml / shirt_cloth3d.obj — keep in sync when retuning.
+# Matches models/shirt.xml / shirt_t.obj — keep in sync when retuning.
 # Params adapted from mujoco/model/flex/poncho_edgeequality.xml.
-SHIRT_MESH = "shirt_cloth3d.obj"
+SHIRT_MESH = "shirt_t.obj"
 SHIRT_MASS = 0.22
 # Half-thickness of the rendered slab as well as the collision margin. 8 mm
 # looked like a yoga mat; 4 mm is the thinnest that still never clips.
@@ -31,8 +31,13 @@ SHIRT_XML = MODELS_DIR / "shirt.xml"
 CELL_XML = MODELS_DIR / "cell.xml"
 
 # Press bed centre / half-extents from cell.xml (for smoke AABB checks).
+# Bed is the size of the T plus sleeves (SOLUTION.md §5.2).
 PRESS_BED_POS = np.array([0.15, 0.0, 0.08], dtype=np.float64)
-PRESS_BED_HALF = np.array([0.35, 0.35, 0.015], dtype=np.float64)
+PRESS_BED_HALF = np.array([0.48, 0.40, 0.015], dtype=np.float64)
+
+# Steam: raise edge damping so wrinkles relax under the platen (§5.2).
+STEAM_EDGE_DAMPING = 10.0
+DRY_EDGE_DAMPING = SHIRT_EDGE_DAMPING
 
 
 def load_mujoco_plugins() -> None:
@@ -77,6 +82,13 @@ def shirt_aabb(model, data) -> tuple[np.ndarray, np.ndarray]:
     """Return (mins, maxs) of shirt vertices."""
     pos = shirt_vertex_positions(model, data)
     return pos.min(axis=0), pos.max(axis=0)
+
+
+def set_steam(model, on: bool) -> None:
+    """Press 'steam': extra edge damping, not thermodynamics."""
+    if model.nflexedge == 0:
+        return
+    model.flex_edgedamping[:] = STEAM_EDGE_DAMPING if on else DRY_EDGE_DAMPING
 
 
 def aabb_overlaps_press(model, data, margin: float = 0.05) -> bool:

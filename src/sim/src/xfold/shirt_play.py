@@ -16,11 +16,13 @@ from xfold.shirt import (
     PLAYGROUND_XML,
     load_mujoco_plugins,
 )
+from xfold.ninja_fold import NinjaFoldDemo, button_body_id
 from xfold.shirt_grab import (
     KEY_DOWN,
     KEY_E,
     KEY_G,
     KEY_LEFT,
+    KEY_N,
     KEY_Q,
     KEY_R,
     KEY_RIGHT,
@@ -32,10 +34,12 @@ from xfold.shirt_grab import (
 )
 
 CONTROLS = """
-XFOLD shirt playground — CLOTH3D T-shirt (cloth physics)
+XFOLD shirt playground — adult T-shirt (cloth physics)
 --------------------------------------------------------
 Trackpad friendly — no right-click needed.
 
+  N            NINJA FOLD demo (or double-click the orange button)
+               left third → right third → hem to collar
   G            grab / release the shirt
                (grabs the vertex you double-clicked, else the highest one)
   arrows       steer the grab across the floor, relative to the camera
@@ -95,25 +99,34 @@ def _configure_viewer(viewer, model) -> None:
     viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_PERTFORCE] = 1
 
 
-def _draw_grab_marker(viewer, grab) -> None:
-    """Show where the grab target is, so the pull is not invisible."""
+def _draw_markers(viewer, grab, demo) -> None:
+    """Grab target, ninja-fold hands, and a pressed-state on the 3D button."""
     import mujoco
 
     scene = viewer.user_scn
     if scene is None:
         return
     scene.ngeom = 0
-    if not grab.active:
-        return
-    mujoco.mjv_initGeom(
-        scene.geoms[0],
-        type=mujoco.mjtGeom.mjGEOM_SPHERE,
-        size=np.array([0.018, 0.0, 0.0]),
-        pos=grab.target,
-        mat=np.eye(3).flatten(),
-        rgba=np.array([1.0, 0.75, 0.1, 0.9]),
-    )
-    scene.ngeom = 1
+    mat = np.eye(3).flatten()
+
+    def _sphere(pos, radius, rgba) -> None:
+        i = scene.ngeom
+        if i >= scene.maxgeom:
+            return
+        mujoco.mjv_initGeom(
+            scene.geoms[i],
+            type=mujoco.mjtGeom.mjGEOM_SPHERE,
+            size=np.array([radius, 0.0, 0.0]),
+            pos=pos,
+            mat=mat,
+            rgba=np.asarray(rgba, dtype=np.float64),
+        )
+        scene.ngeom = i + 1
+
+    if grab.active:
+        _sphere(grab.target, 0.018, (1.0, 0.75, 0.1, 0.9))
+    for hand in demo.hands:
+        _sphere(hand, 0.022, (0.95, 0.35, 0.12, 0.95))
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -155,8 +168,22 @@ def main(argv: list[str] | None = None) -> None:
     model = mujoco.MjModel.from_xml_path(scene.as_posix())
     data = mujoco.MjData(model)
     grab = ClothGrab(model, data)
+    demo = NinjaFoldDemo(model, data)
+    btn_id = button_body_id(model)
+    btn_geom = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "ninja_button")
     paused = False
     handle = {}
+
+    def _start_fold() -> None:
+        grab.release()
+        print(demo.start(), flush=True)
+        if btn_geom >= 0:
+            model.geom_rgba[btn_geom] = (0.25, 0.72, 0.32, 1.0)
+
+    def _stop_fold() -> None:
+        demo.stop()
+        if btn_geom >= 0:
+            model.geom_rgba[btn_geom] = (0.92, 0.58, 0.12, 1.0)
 
     def on_key(key: int) -> None:
         nonlocal paused
@@ -167,11 +194,24 @@ def main(argv: list[str] | None = None) -> None:
             return
         if key == KEY_R:
             grab.release()
+            _stop_fold()
             mujoco.mj_resetData(model, data)
             print("reset", flush=True)
             return
+        if key == KEY_N:
+            if demo.active:
+                _stop_fold()
+                print("ninja fold: cancelled", flush=True)
+            else:
+                _start_fold()
+            return
+        if demo.active:
+            return
         if key == KEY_G:
             selected = int(viewer.perturb.select) if viewer is not None else 0
+            if selected == btn_id and btn_id >= 0:
+                _start_fold()
+                return
             print(grab.toggle(selected), flush=True)
             return
         if key == KEY_X:
@@ -218,7 +258,10 @@ def main(argv: list[str] | None = None) -> None:
             else:
                 steps = 0
                 while sim_clock < frame_start and steps < max_steps_per_frame:
-                    grab.apply(model.opt.timestep)
+                    if demo.active:
+                        demo.apply(model.opt.timestep)
+                    else:
+                        grab.apply(model.opt.timestep)
                     mujoco.mj_step(model, data)
                     sim_clock += model.opt.timestep
                     steps += 1
@@ -229,7 +272,16 @@ def main(argv: list[str] | None = None) -> None:
             # sync() zeroes xfrc_applied and folds in mouse input, so the grab
             # force is written by grab.apply() on the next step, never before.
             viewer.sync()
-            _draw_grab_marker(viewer, grab)
+            if (
+                not demo.active
+                and btn_id >= 0
+                and int(viewer.perturb.select) == btn_id
+            ):
+                _start_fold()
+                viewer.perturb.select = 0
+            if not demo.active and btn_geom >= 0:
+                model.geom_rgba[btn_geom] = (0.92, 0.58, 0.12, 1.0)
+            _draw_markers(viewer, grab, demo)
 
             leftover = frame_dt - (time.perf_counter() - frame_start)
             if leftover > 0:

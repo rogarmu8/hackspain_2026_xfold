@@ -19,6 +19,7 @@ import numpy as np
 KEY_SPACE = 32
 KEY_E = 69
 KEY_G = 71
+KEY_N = 78
 KEY_Q = 81
 KEY_R = 82
 KEY_X = 88

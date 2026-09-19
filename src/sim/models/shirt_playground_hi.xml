@@ -1,9 +1,4 @@
-<!-- Shirt playground, detail mesh (385 verts / 683 tris).
-
-     Finer folds, but past the contact budget: ~380 vertices compete for the
-     50 slots MuJoCo allows per flex-vs-geom pair, so a few tens of them hang
-     through the floor and the sheet keeps a ~1.6 mm resting ripple. Use it for
-     stills and close-ups, not for the folding cycle or the flatness metric. -->
+<!-- Shirt playground, finer T-mesh. Stills only — past the contact budget. -->
 <mujoco model="xfold-shirt-playground-hi">
   <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast" solver="CG"/>
   <visual>
@@ -33,9 +28,14 @@
           solref="0.005 1.2" solimp="0.99 0.999 0.0002"/>
     <camera name="play" pos="0.95 -1.05 0.75" xyaxes="0.75 0.65 0 -0.25 0.3 0.92"/>
 
-    <flexcomp name="shirt" type="mesh" dim="2" file="shirt_cloth3d_hi.obj"
+    <body name="ninja_button" mocap="true" pos="0.58 -0.40 0.08">
+      <geom name="ninja_button" type="box" size="0.13 0.05 0.018"
+            rgba="0.92 0.58 0.12 1" contype="0" conaffinity="0"/>
+    </body>
+
+    <flexcomp name="shirt" type="mesh" dim="2" file="shirt_t_hi.obj"
               radius="0.004" mass="0.22" flatskin="false"
-              pos="0 0 0.35" euler="0.2 0.05 0.3"
+              pos="0 0 0.28" euler="0.04 0 0.08"
               material="shirt_cloth">
       <contact internal="false" selfcollide="bvh"
                solref="0.005 1.2" solimp="0.99 0.999 0.0002"

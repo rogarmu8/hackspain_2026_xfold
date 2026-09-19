@@ -21,7 +21,7 @@
           solref="0.005 1.2" solimp="0.99 0.999 0.0002"/>
     <camera name="play" pos="0.95 -1.05 0.75" xyaxes="0.75 0.65 0 -0.25 0.3 0.92"/>
 
-    <flexcomp name="shirt" type="mesh" dim="2" file="shirt_cloth3d.obj"
+    <flexcomp name="shirt" type="mesh" dim="2" file="shirt_t.obj"
               radius="0.01" mass="0.35" flatskin="false"
               pos="0 0 0.4" euler="0.2 0.05 0.25"
               rgba="0.75 0.22 0.2 1">

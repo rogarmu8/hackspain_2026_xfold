@@ -22,13 +22,12 @@
     </body>
 
     <body name="press_bed" pos="0.15 0 0.08">
-      <!-- Same contact stiffness as the shirt: a 0.04 timeconst let the cloth
-           sink ~26 mm into the bed, which reads as the platen swallowing it. -->
-      <geom type="box" size="0.35 0.35 0.015" rgba="0.55 0.55 0.58 1"
+      <!-- Sized for the T plus sleeves. Sticky while folding (ninja). -->
+      <geom type="box" size="0.48 0.40 0.015" rgba="0.55 0.55 0.58 1"
             friction="1.2 0.05 0.0001" solref="0.005 1.2" solimp="0.99 0.999 0.0002"/>
     </body>
     <body name="press_platen" pos="0.15 0 0.85">
-      <geom type="box" size="0.35 0.35 0.02" rgba="0.45 0.45 0.5 1"/>
+      <geom type="box" size="0.48 0.40 0.02" rgba="0.45 0.45 0.5 1"/>
     </body>
 
     <body name="chute" pos="0.72 0 0.16" euler="0 0.65 0">

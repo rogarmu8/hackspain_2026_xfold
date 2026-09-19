@@ -1,18 +1,12 @@
-<!-- XFOLD T-shirt — CLOTH3D flat mesh + MuJoCo flexcomp.
-     Asset: shirt_cloth3d.obj (161 verts / 268 tris, single layer)
-       python -m xfold.convert_cloth3d_mesh <cloth3d_flat.obj> --spacing 0.050
+<!-- XFOLD T-shirt — ninja-fold proportions + MuJoCo flexcomp.
+     Asset: shirt_t.obj (torso 0.60×0.64 m, sleeves 0.15 m, crew neck)
+       python -m xfold.generate_shirt_mesh --spacing 0.052
+     Thirds are 0.20 m so the Japanese fold lands on the 0.20×0.28 packet.
 
-     Vertex count is a physics budget, not a looks knob. MuJoCo caps a
-     flex-vs-geom pair at mjMAXCONPAIR = 50 contacts, however many vertices
-     touch. At 365 verts, 363 lay on the floor competing for 50 slots, the
-     unsupported ones hung ~6 mm through the plane and the support pattern
-     reshuffled every step — a permanent 7 Hz ripple. At 161 verts the sheet
-     asks for ~51 contacts, so it is fully supported: nothing clips and the
-     resting ripple drops from 1.6 mm to 0.15 mm. See SOLUTION.md §4.3.
-
-     CG beats Newton here (equality-heavy, ~480 constraints) and is what buys
-     real time. No joint damping: it is absolute-frame drag, so it slowed free
-     fall by 1.5x and read as slow motion. The scene owns <option>. -->
+     Vertex count is a physics budget (mjMAXCONPAIR = 50). Stay near 160.
+     Edge equality keeps taut. Native bend elasticity needs integrator=discrete
+     and drops us to ~0.5x realtime, so it lives in the poncho playground only.
+     No joint damping. The scene owns <option>. -->
 <mujoco model="xfold-shirt">
   <asset>
     <!-- Matte and desaturated. A saturated rgba with MuJoCo's default specular
@@ -24,7 +18,7 @@
   </asset>
 
   <worldbody>
-    <flexcomp name="shirt" type="mesh" dim="2" file="shirt_cloth3d.obj"
+    <flexcomp name="shirt" type="mesh" dim="2" file="shirt_t.obj"
               radius="0.004" mass="0.22" flatskin="false"
               pos="0.15 0 0.55" euler="0.25 0.08 0.3"
               material="shirt_cloth">

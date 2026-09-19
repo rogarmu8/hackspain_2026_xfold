@@ -22,8 +22,9 @@ Notes:
 - Poncho is a cape on a mannequin, not a T-shirt — best **parameter** reference.
 - Exact `young=3e5` + free fall is rank-deficient on our CLOTH3D mesh; use ~`1e3`
   bend elasticity (or edge-equality only) for the playground.
-- CLOTH3D / ClothesNet supply T-shirt geometry; convert with
-  `python -m xfold.convert_cloth3d_mesh <flat.obj>`. The converter keeps only the
+- Default geometry is the generated T-outline (`python -m xfold.generate_shirt_mesh`).
+  CLOTH3D / ClothesNet are an optional scanned source; convert with
+  `python -m xfold.convert_cloth3d_mesh <flat.obj>`. That converter keeps only the
   front panel: CLOTH3D shirts are closed tubes, and flattening both layers welds
   them into non-manifold edges. It also rewinds every triangle CCW — mixed winding
   is what renders half the shirt as black triangles.
