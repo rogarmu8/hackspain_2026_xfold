@@ -12,7 +12,7 @@
        not inherit armature/damping, which read as slow-motion drag. CG is
        ~2x faster than Newton on this equality-heavy flex. -->
   <include file="shirt.xml"/>
-  <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast"
+  <option gravity="0 0 -9.81" timestep="0.002" integrator="discrete"
           solver="CG" cone="elliptic" impratio="10"/>
 
   <visual>
@@ -40,9 +40,9 @@
     <light name="bed_light" pos="0.45 0 1.15" dir="-0.5 0 -1" diffuse="0.35 0.35 0.38"/>
     <geom name="floor" type="plane" size="2.0 1.6 0.05" material="floor"/>
 
-    <camera name="cell_cam" pos="-1.05 -2.00 1.65" mode="targetbody" target="press_bed"/>
-    <camera name="overview" pos="-1.05 -2.00 1.65" mode="targetbody" target="press_bed"/>
-    <camera name="press_cam" pos="-1.15 -1.40 1.25" mode="targetbody" target="press_bed"/>
+    <camera name="cell_cam" pos="-0.35 -2.20 1.75" mode="targetbody" target="press_bed"/>
+    <camera name="overview" pos="-0.35 -2.20 1.75" mode="targetbody" target="press_bed"/>
+    <camera name="press_cam" pos="-0.55 -1.55 1.30" mode="targetbody" target="press_bed"/>
 
     <!--
       Top-down: crate of shirts on the left, press on the right, arm in front
@@ -65,10 +65,16 @@
 
     <!--
       Pedestal in front of the crate, not in front of the press.
+      A second pedestal on the far side of the dump edge: that arm
+      stretches the free cloth once the picker has pinned a corner.
     -->
     <body name="arm_mount" pos="-0.52 -0.48 0.62">
       <geom name="arm_column" type="cylinder" size="0.07 0.31" pos="0 0 -0.31" material="steel"/>
       <geom name="arm_base_plate" type="cylinder" size="0.13 0.012" pos="0 0 -0.608" material="steel"/>
+    </body>
+    <body name="arm2_mount" pos="0.50 -0.32 0.62">
+      <geom name="arm2_column" type="cylinder" size="0.07 0.31" pos="0 0 -0.31" material="steel"/>
+      <geom name="arm2_base_plate" type="cylinder" size="0.13 0.012" pos="0 0 -0.608" material="steel"/>
     </body>
   </worldbody>
 </mujoco>

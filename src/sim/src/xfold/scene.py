@@ -22,6 +22,7 @@ import numpy as np
 
 from .shirt import (
     SHIRT_RADIUS,
+    apply_shirt_config,
     load_mujoco_plugins,
     set_shirt_world,
     shirt_band_local,
@@ -40,6 +41,8 @@ CELL_PATH = MODEL_DIR / "press_cell.xml"
 ARM_ENTRY = ("universal_robots_ur5e", "ur5e")
 ARM_PREFIX = "ur5e/"
 ARM_MOUNT_BODY = "arm_mount"
+HELPER_PREFIX = "ur5e_b/"
+HELPER_MOUNT_BODY = "arm2_mount"
 
 HAND_ENTRY = ("robotiq_2f85", "2f85")
 HAND_PREFIX = "hand/"
@@ -47,6 +50,22 @@ HAND_PREFIX = "hand/"
 PINCH_SITE = f"{ARM_PREFIX}{HAND_PREFIX}pinch"
 HAND_ACTUATOR = f"{ARM_PREFIX}{HAND_PREFIX}fingers_actuator"
 INSPECT_CAMERA = f"{ARM_PREFIX}inspect_cam"
+_ARM_ACTUATOR_NAMES = (
+    "shoulder_pan",
+    "shoulder_lift",
+    "elbow",
+    "wrist_1",
+    "wrist_2",
+    "wrist_3",
+)
+_ARM_JOINT_NAMES = (
+    "shoulder_pan_joint",
+    "shoulder_lift_joint",
+    "elbow_joint",
+    "wrist_1_joint",
+    "wrist_2_joint",
+    "wrist_3_joint",
+)
 
 # The driver joint drives both fingers through the 2F-85's linkage, so how far
 # it has turned says how wide the jaws are - and therefore whether they shut on
@@ -62,21 +81,8 @@ HAND_SHUT = 255.0
 # for rigid parts. The hand has to hold a shirt by its neckband and drag it.
 PAD_FRICTION = (1.4, 0.05, 0.001)
 
-ARM_ACTUATORS = tuple(
-    f"{ARM_PREFIX}{name}"
-    for name in ("shoulder_pan", "shoulder_lift", "elbow", "wrist_1", "wrist_2", "wrist_3")
-)
-ARM_JOINTS = tuple(
-    f"{ARM_PREFIX}{name}"
-    for name in (
-        "shoulder_pan_joint",
-        "shoulder_lift_joint",
-        "elbow_joint",
-        "wrist_1_joint",
-        "wrist_2_joint",
-        "wrist_3_joint",
-    )
-)
+ARM_ACTUATORS = tuple(f"{ARM_PREFIX}{name}" for name in _ARM_ACTUATOR_NAMES)
+ARM_JOINTS = tuple(f"{ARM_PREFIX}{name}" for name in _ARM_JOINT_NAMES)
 
 # Menagerie's home, facing the aisle (-y). The crate and the open C-frame both
 # sit on that side of the pedestal, so this is the basin every solve starts in.
@@ -88,12 +94,33 @@ PRESS_YAW = -0.5 * math.pi
 
 
 @dataclass(frozen=True)
+class ArmKit:
+    """One mounted UR5e: ids in the full cell plus a private IK model."""
+
+    prefix: str
+    pinch_site_name: str
+    base: np.ndarray
+    ik_model: object
+    actuators: np.ndarray
+    qposadr: np.ndarray
+    hand_actuator: int
+    hand_qposadr: int
+    pinch_site: int
+    empty_close: float
+    finger_reach: float
+    seed_q: np.ndarray
+
+
+@dataclass(frozen=True)
 class Cell:
     """Compiled models plus the handful of ids and poses the demo needs."""
 
     model: object
     ik_model: object
+    picker: ArmKit
+    helper: ArmKit
     bed_center: np.ndarray
+    bed_half: np.ndarray
     bed_surface_z: float
     bin_center: np.ndarray
     bin_surface_z: float
@@ -123,6 +150,15 @@ class Cell:
     def shirt_top_z(self) -> float:
         """Height of the shirt's upper face when it lies on the bed."""
         return self.bed_surface_z + 2.0 * self.shirt_half_thickness
+
+    def bed_corner(self, sign_x: float, sign_y: float, inset: float = 0.10) -> np.ndarray:
+        """World xy of a bed corner, pulled in so the pads land on the plate."""
+        return self.bed_center + np.array(
+            [
+                float(sign_x) * (float(self.bed_half[0]) - inset),
+                float(sign_y) * (float(self.bed_half[1]) - inset),
+            ]
+        )
 
 
 @dataclass(frozen=True)
@@ -199,15 +235,49 @@ def _arm_spec(*, stand_in: _Hand | None = None):
     return spec
 
 
-def _ik_model(hand: _Hand, mount_pos, mount_quat, integrator):
+def _ik_model(hand: _Hand, mount_pos, mount_quat, integrator, prefix: str, mount_name: str):
     """The same arm on the same mount, with nothing else in the world."""
     import mujoco
 
     spec = mujoco.MjSpec()
     spec.option.integrator = integrator
-    mount = spec.worldbody.add_body(name=ARM_MOUNT_BODY, pos=mount_pos, quat=mount_quat)
-    spec.attach(_arm_spec(stand_in=hand), prefix=ARM_PREFIX, frame=mount.add_frame())
+    mount = spec.worldbody.add_body(name=mount_name, pos=mount_pos, quat=mount_quat)
+    spec.attach(_arm_spec(stand_in=hand), prefix=prefix, frame=mount.add_frame())
     return spec.compile()
+
+
+def _bind_kit(model, hand: _Hand, mount_pos, mount_quat, prefix: str, mount_name: str) -> ArmKit:
+    """Read one attached arm out of the compiled cell."""
+    return ArmKit(
+        prefix=prefix,
+        pinch_site_name=f"{prefix}{HAND_PREFIX}pinch",
+        base=np.asarray(mount_pos[:2], dtype=float).copy(),
+        ik_model=_ik_model(
+            hand, mount_pos, mount_quat, model.opt.integrator, prefix, mount_name
+        ),
+        actuators=np.array([model.actuator(f"{prefix}{name}").id for name in _ARM_ACTUATOR_NAMES]),
+        qposadr=np.array(
+            [
+                int(np.atleast_1d(model.joint(f"{prefix}{name}").qposadr)[0])
+                for name in _ARM_JOINT_NAMES
+            ]
+        ),
+        hand_actuator=model.actuator(f"{prefix}{HAND_PREFIX}fingers_actuator").id,
+        hand_qposadr=int(
+            np.atleast_1d(model.joint(f"{prefix}{HAND_JOINT}").qposadr)[0]
+        ),
+        pinch_site=model.site(f"{prefix}{HAND_PREFIX}pinch").id,
+        empty_close=hand.empty_close,
+        finger_reach=hand.finger_reach,
+        seed_q=ARM_SEED_Q.copy(),
+    )
+
+
+def _world_box_half_xy(model, data, geom_name: str) -> np.ndarray:
+    """World-xy half-extents of a box geom, after body yaw."""
+    size = np.asarray(model.geom(geom_name).size, dtype=float)
+    rot = np.asarray(data.geom(geom_name).xmat, dtype=float).reshape(3, 3)
+    return (np.abs(rot) @ size)[:2]
 
 
 def _measure_hand() -> _Hand:
@@ -255,6 +325,56 @@ def _measure_hand() -> _Hand:
     )
 
 
+# Collision bits. The cloth only touches geoms that carry CLOTH_BIT in their
+# affinity; the hands carry HAND_BIT instead, so they still hit the press,
+# the arms and each other but pass through the shirt.
+WORLD_BIT = 1
+CLOTH_BIT = 2
+HAND_BIT = 4
+
+
+def _keep_hands_off_cloth(model) -> None:
+    """Let the shirt collide with everything except the two grippers.
+
+    The hands hold cloth through PinchHold, not through finger contact. With
+    contact on as well, the fingers close on vertices the spring is pulling
+    into them, and the 2F-85's stiff, tiny-mass linkage takes the solver
+    with it. Vertex spheres stay (cloth, world) so they hit the press and
+    floor but not each other; flex-element contacts stay off (50-pair cap).
+    """
+    import mujoco
+
+    hand_bodies = {
+        index
+        for index in range(model.nbody)
+        if model.body(index).name.startswith((ARM_PREFIX + HAND_PREFIX, HELPER_PREFIX + HAND_PREFIX))
+    }
+    for index in range(model.ngeom):
+        if model.geom_contype[index] == 0 and model.geom_conaffinity[index] == 0:
+            continue
+        body = int(model.geom_bodyid[index])
+        body_name = model.body(body).name
+        if body_name.startswith("shirt_") and model.geom_type[index] == mujoco.mjtGeom.mjGEOM_SPHERE:
+            model.geom_contype[index] = CLOTH_BIT
+            model.geom_conaffinity[index] = WORLD_BIT
+            continue
+        if body in hand_bodies:
+            model.geom_contype[index] = HAND_BIT
+            model.geom_conaffinity[index] = HAND_BIT | WORLD_BIT
+        else:
+            model.geom_conaffinity[index] |= CLOTH_BIT
+    model.flex_contype[:] = 0
+    model.flex_conaffinity[:] = 0
+    # The broadphase prunes on per-body masks the compiler ORed together from
+    # the geoms; rebuild them or the new bits are ignored.
+    model.body_contype[:] = 0
+    model.body_conaffinity[:] = 0
+    for index in range(model.ngeom):
+        body = int(model.geom_bodyid[index])
+        model.body_contype[body] |= model.geom_contype[index]
+        model.body_conaffinity[body] |= model.geom_conaffinity[index]
+
+
 def build() -> Cell:
     """Compile the cell and the matching IK-only arm model."""
     import mujoco
@@ -265,13 +385,21 @@ def build() -> Cell:
     load_mujoco_plugins()
     hand = _measure_hand()
     spec = mujoco.MjSpec.from_file(CELL_PATH.as_posix())
+    apply_shirt_config(spec, claws=False)
     half = 0.5 * PRESS_YAW
     spec.body("press_origin").quat = [math.cos(half), 0.0, 0.0, math.sin(half)]
-    mount = spec.body(ARM_MOUNT_BODY)
-    mount_pos = np.array(mount.pos, dtype=float)
-    mount_quat = np.array(mount.quat, dtype=float)
-    spec.attach(_arm_spec(), prefix=ARM_PREFIX, frame=mount.add_frame())
+    mounts = []
+    for body_name, prefix in (
+        (ARM_MOUNT_BODY, ARM_PREFIX),
+        (HELPER_MOUNT_BODY, HELPER_PREFIX),
+    ):
+        mount = spec.body(body_name)
+        mount_pos = np.array(mount.pos, dtype=float)
+        mount_quat = np.array(mount.quat, dtype=float)
+        spec.attach(_arm_spec(), prefix=prefix, frame=mount.add_frame())
+        mounts.append((body_name, prefix, mount_pos, mount_quat))
     model = spec.compile()
+    _keep_hands_off_cloth(model)
 
     # Read the working heights off the model so the XML stays the one source.
     data = mujoco.MjData(model)
@@ -284,27 +412,30 @@ def build() -> Cell:
     bin_surface_z = float(
         data.geom("bin_floor").xpos[2] + model.geom("bin_floor").size[2]
     )
+    picker = _bind_kit(model, hand, mounts[0][2], mounts[0][3], ARM_PREFIX, ARM_MOUNT_BODY)
+    helper = _bind_kit(
+        model, hand, mounts[1][2], mounts[1][3], HELPER_PREFIX, HELPER_MOUNT_BODY
+    )
 
     return Cell(
         model=model,
-        ik_model=_ik_model(hand, mount_pos, mount_quat, model.opt.integrator),
+        ik_model=picker.ik_model,
+        picker=picker,
+        helper=helper,
         bed_center=bed[:2].copy(),
+        bed_half=_world_box_half_xy(model, data, "bed_plate"),
         bed_surface_z=bed_surface_z,
         bin_center=bin_site[:2].copy(),
         bin_surface_z=bin_surface_z,
-        arm_base=mount_pos[:2].copy(),
-        arm_actuators=np.array([model.actuator(n).id for n in ARM_ACTUATORS]),
-        arm_qposadr=np.array(
-            [int(np.atleast_1d(model.joint(n).qposadr)[0]) for n in ARM_JOINTS]
-        ),
-        hand_actuator=model.actuator(HAND_ACTUATOR).id,
-        hand_qposadr=int(
-            np.atleast_1d(model.joint(f"{ARM_PREFIX}{HAND_JOINT}").qposadr)[0]
-        ),
-        empty_close=hand.empty_close,
+        arm_base=picker.base.copy(),
+        arm_actuators=picker.actuators,
+        arm_qposadr=picker.qposadr,
+        hand_actuator=picker.hand_actuator,
+        hand_qposadr=picker.hand_qposadr,
+        empty_close=picker.empty_close,
         press_yaw=PRESS_YAW,
-        pinch_site=model.site(PINCH_SITE).id,
-        finger_reach=hand.finger_reach,
+        pinch_site=picker.pinch_site,
+        finger_reach=picker.finger_reach,
         shirt_qposadr=shirt_vertex_qposadr(model),
         shirt_rest_world=shirt_rest_world(model, data),
         shirt_rest_local=shirt_rest_local(),
@@ -316,24 +447,26 @@ def build() -> Cell:
 
 
 def spawn_shirt_in_bin(cell: Cell, data, rng: np.random.Generator) -> None:
-    """Drop a folded cloth shirt in the middle of the crate.
+    """Lay a shirt in the crate, folded in half down the spine.
 
-    Flat, the T is wider than the crate. Folding one sleeve over the other
-    makes a pack that fits; it sits on the crate centre with the neck on
-    top so the hand can pinch it without fishing in a corner.
+    Flat, the T is wider than the crate. Folding the right half over the left
+    along the spine gives a 0.42 x 0.57 m pack, which fits the crate's
+    0.44 x 0.60 m inside once its length runs along the crate's long side.
+    The fold is true to size: squeezing the mesh smaller than its rest
+    lengths only makes the edge constraints spring it back out over the lip.
+    The right sleeve ends up on top, at the front of the crate by the low lip,
+    clear of the tall far wall.
     """
     local = cell.shirt_rest_local.copy()
-    local -= local.mean(axis=0)
-    folded = local[:, 1] > 0.0
+    folded = local[:, 1] < 0.0
     local[folded, 1] = -local[folded, 1]
     local[folded, 2] += 0.010
-    local[:, :2] *= 0.70
     local -= local.mean(axis=0)
-    local[cell.shirt_collar_ids, 2] += 0.028
-    local[:, 2] += 0.006 * np.sin(9.0 * local[:, 0])
+    local[:, 2] += 0.004 * np.sin(9.0 * local[:, 0])
 
-    # Collar toward the press / open lip, not the back wall.
-    yaw = float(rng.uniform(-0.15, 0.15))
+    # Collar toward the front wall, near the arm; the crate leaves a
+    # centimetre or two each side, so only a small twist fits.
+    yaw = -0.5 * math.pi + float(rng.uniform(-0.03, 0.03))
     cos, sin = math.cos(yaw), math.sin(yaw)
     rotation = np.array([[cos, -sin, 0.0], [sin, cos, 0.0], [0.0, 0.0, 1.0]])
     world = local @ rotation.T

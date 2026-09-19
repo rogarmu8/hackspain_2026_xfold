@@ -11,7 +11,7 @@ import struct
 import zlib
 from pathlib import Path
 
-from xfold.shirt import PLAYGROUND_HI_XML, PLAYGROUND_XML, load_mujoco_plugins
+from xfold.shirt import PLAYGROUND_HI_XML, PLAYGROUND_XML, load_mjcf, load_mujoco_plugins
 
 # (name, distance, elevation, azimuth) — grazing angles expose floor clipping.
 VIEWS = (
@@ -54,8 +54,7 @@ def main(argv: list[str] | None = None) -> None:
 
     load_mujoco_plugins()
     scene = PLAYGROUND_HI_XML if args.hi else PLAYGROUND_XML
-    model = mujoco.MjModel.from_xml_path(scene.as_posix())
-    data = mujoco.MjData(model)
+    model, data = load_mjcf(scene)
     for _ in range(args.steps):
         mujoco.mj_step(model, data)
 

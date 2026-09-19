@@ -1,0 +1,1191 @@
+"""The line, no robots: belt -> press -> flap folder -> bagger -> carton.
+
+1. A shirt lies flat on the belt, collar leading, already where it belongs.
+2. The belt carries it under the press and stops. The platen comes down on
+   the belt itself, steams, and lifts.
+3. The belt runs on. The shirt leaves the belt's end onto the folder, and
+   stops there with its hem on the folder's upstream edge.
+4. The folder flips its flaps, FlipFold style: left side, right side, then
+   the hem half up over the collar half.
+5. Meanwhile the bagger gets a bag ready. A vacuum picker takes the top one
+   off a magazine of flat, pre-made bags (three sides welded) and lays it on
+   belt 2, mouth toward the folder. A suction cup lifts the top lip, an air
+   knife blows the bag open and two spreader fingers hold the mouth square.
+6. The plate the pack sits on is a peel. Its side guides rise, it slides into
+   the bag like a pizza into an oven, tips its nose down so the pack's front
+   lands on the bag floor, and slides back out from under it.
+7. The opener lets go and the film settles on the pack. Belt 2 indexes the
+   bag to the seal station, where a seal bar presses the mouth flat and
+   welds it while a stamp puts the label on the top.
+8. Belt 2 carries the bag off its end and it drops into a carton.
+
+A peel or a flap is a mocap body, which the contact solver sees as standing
+still, so it cannot drag cloth by friction: whatever it carries is moved
+with it explicitly, and nothing it slides out from under is dragged back.
+The bag is carried kinematically until it lies on belt 2, and its films are
+visual geoms that the controller shapes: flat, blown open, settled on the
+pack, pressed shut at the mouth. Once the peel is out, the shirt is fixed
+inside the bag's frame every step, so it travels, falls and lands with the
+bag. The cloth is not simulated as touching the bag's films.
+
+The belt is not a moving body. Cloth lying on it is given the belt's speed
+each step, which is what a belt does to something that does not slip. The
+folder's infeed runs with the belt while it takes the shirt over: cloth
+cannot be pushed, so a folder that only let the belt shove the shirt onto
+it would get a heap, not a shirt.
+
+A flap carries the cloth lying on it rigidly while it swings, the way a
+real flap's friction does, and lets go at the top of the swing. The cloth
+does not collide with itself in MuJoCo, so ClothLayers keeps the folded
+layers apart from then on.
+
+With a window:  moon run sim:run              # type, then good / damaged / notGood / skewed
+                moon run sim:run -- -g tee --skewed
+                moon run sim:run -- -g dress  # skip the list
+Headless:       pixi run -e mujoco python -P -m xfold.line --headless --cycles 1 -g jersey
+Catalogue:      moon run sim:run -- --list-garments
+"""
+
+from __future__ import annotations
+
+import argparse
+import math
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+
+from .garments import (
+    add_garment_arguments,
+    base_garment,
+    garment_from_args,
+    rewrite_argv_garment,
+)
+from .platform import reexec_under_mjpython
+from .self_collide import ClothLayers
+from .shirt import (
+    SHIRT_RADIUS,
+    apply_shirt_config,
+    load_mujoco_plugins,
+    load_shirt_mesh,
+    select_garment,
+    set_steam,
+    shirt_config,
+    shirt_rest_world,
+    shirt_vertex_qposadr,
+    spec_from_mjcf,
+)
+from .sim_loop import smoothstep
+from .steam import SteamField
+
+LINE_PATH = Path(__file__).resolve().parents[2] / "models" / "line.xml"
+
+# Belt top and folder plates, from line.xml.
+SURFACE_Z = 0.562
+BELT_X = (-2.00, 0.30)
+# The folder's boards, hem edge to collar edge.
+FOLDER_X = (0.305, 0.98)
+# The hem stops this far onto the folder, not hanging off its edge.
+HEM_INSET = 0.012
+BELT_SPEED = 0.35  # m/s
+BELT_ACCEL = 0.6  # m/s^2, both speeding up and braking
+# Cloth this close above the belt top rides with it.
+ON_BELT = 0.03
+
+# How far a "not square on the belt" drop is rotated / shifted.
+SKEW_YAW = math.radians(35.0)
+SKEW_Y = 0.09
+# The shirt's centre when it is put on the belt, and where the press is.
+SPAWN_X = -1.55
+PRESS_X = -0.75
+# The press's columns move out this far from press_rig.xml's +/-0.46, so the
+# belt between them (+/-0.485) is wider than the sleeves (+/-0.456).
+PRESS_WIDEN = 0.08
+
+# press_stroke commands (press_rig.xml): 0 is open, PRESSED squeezes cloth
+# lying at SURFACE_Z.
+STROKE_OPEN = 0.0
+STROKE_PRESSED = -0.755
+
+# Belt 2, the bag and the stations along it (xfold: line.xml). Belt 2 has the
+# same top height as the folder table, so the peel's bottom is flush with it.
+BELT2_X = (0.985, 2.10)
+BELT2_SPEED = 0.35
+# The bag's centre at the load station and at the seal station, and its
+# half-length.
+BAG_X = 1.32
+SEAL_X = 1.78
+BAG_HALF_LENGTH = 0.30
+# The shirt's leading edge stops this far short of the bag's closed end.
+BAG_END_MARGIN = 0.02
+
+# Where the bag's centre is: on top of the magazine's stack, carried over the
+# belt by the picker, and lying on belt 2.
+MAG_Y = 0.66
+MAG_BAG_Z = 0.5676
+CARRY_BAG_Z = 0.72
+BELT2_BAG_Z = 0.586
+# Picker head (its cups' lips) parked, and its carriage's height on the beam.
+PICKER_PARK_Z = 0.78
+PICKER_CARRIAGE_Z = 1.017
+
+# The bag's films, in the bag's frame: the floor film's centre height, film
+# thickness, and how tall the bag stands flat, blown open, and at least once
+# settled on a pack.
+BAG_FLOOR = -0.0372
+FILM = 0.0008
+BAG_FLAT = 0.002
+BAG_OPEN = 0.11
+BAG_SETTLED_MIN = 0.02
+# The roof ends at the tail's hinge. The tail runs to the seal line and a lip
+# runs on from there to the mouth. Open, the mouth cup holds the tail flared
+# up by TAIL_FLARE; closed, the seal bar has pressed it down to the floor.
+TAIL_HINGE_X = -0.19
+TAIL_LENGTH = 0.078
+LIP_LENGTH = 0.032
+TAIL_FLARE = 0.30
+# Where along the tail the mouth cup holds it, from the hinge.
+MOUTH_CUP_ON_TAIL = 0.07
+MOUTH_CUP_PARK_Z = 0.74
+# Spreader fingers: parked tip height, tip height in the mouth, and their y
+# when they go in and when they have pushed out to hold the mouth square.
+FINGER_PARK_Z = 0.74
+FINGER_DOWN_Z = 0.556
+FINGER_IN_Y = 0.19
+FINGER_OUT_Y = 0.232
+
+# Peel: how far its side guides rise, and how far its nose tips down in the
+# bag to put the pack's front on the bag floor. It tips about the bottom of
+# its front edge, which is PEEL_HALF ahead of and PEEL_UNDER below its origin.
+GUIDE_RISE = 0.037
+PEEL_TILT = math.radians(4.0)
+PEEL_HALF = 0.16875
+PEEL_UNDER = 0.006
+
+# Seal bar and stamp hover heights. Their pressed heights come from where
+# the bag is.
+PRESS_HOVER_Z = 0.76
+SEAL_BAR_HALF = 0.010
+STAMP_UNDER = 0.0132  # stamp origin to the label's face
+# The bag counts as boxed once its centre is below this.
+BOXED_Z = 0.25
+
+# Gap the folded layers keep between them. Each flap lands on the layers
+# already folded, so its hinge rides up by its ``lift`` as it goes over.
+LAYER_GAP = 0.008
+# Keeping the layers apart is Python, not MuJoCo; every step is 3x too slow
+# for a live window, and under gravity a layer sags ~0.5 mm in 5 steps.
+LAYER_EVERY = 5
+
+
+@dataclass(frozen=True)
+class Flap:
+    body: str
+    axis: tuple[float, float, float]
+    over: float  # seconds for the swing up and over
+    back: float  # seconds to swing back down, empty
+    lift: float  # metres the hinge rides up by the time the flap lies over
+
+    def carries(self, pos: np.ndarray, hinge: np.ndarray) -> np.ndarray:
+        """Which cloth vertices lie on this flap's side of the hinge.
+
+        All of them: one left behind on the flap side loses its support when
+        the flap swings and drops into the seam.
+        """
+        if self.axis[1]:
+            return pos[:, 0] < hinge[0]
+        side = math.copysign(1.0, self.axis[0])
+        return side * (pos[:, 1] - hinge[1]) > 0.0
+
+
+# In folding order.
+FLAPS = (
+    Flap("flap_left", (1.0, 0.0, 0.0), over=1.2, back=0.8, lift=0.028),
+    Flap("flap_right", (-1.0, 0.0, 0.0), over=1.2, back=0.8, lift=0.036),
+    Flap("flap_bottom", (0.0, 1.0, 0.0), over=1.4, back=0.9, lift=0.060),
+)
+
+
+class _Layers(ClothLayers):
+    """ClothLayers with a dense pair search. At 410 vertices one distance
+    matrix is ~3x faster than the spatial hash, which is built for the
+    1080-vertex playground mesh. Its floor is the folder's plates, not the
+    ground: pushing two layers apart must not push the lower one into them."""
+
+    def __init__(self, model, data, thickness: float) -> None:
+        super().__init__(model, data, thickness=thickness)
+        self._floor = SURFACE_Z + SHIRT_RADIUS
+
+    def _near_pairs(self, pos: np.ndarray) -> np.ndarray:
+        sq = np.einsum("ij,ij->i", pos, pos)
+        near = sq[:, None] + sq[None, :] - 2.0 * pos @ pos.T < self._sep**2
+        return np.column_stack(np.nonzero(near & self._allow))
+
+
+def build():
+    """Compile line.xml, with the press's own bed and table taken out."""
+    import mujoco
+
+    load_mujoco_plugins()
+    spec = spec_from_mjcf(LINE_PATH)
+    apply_shirt_config(spec, claws=False)
+    # One bag label per clean SKU: a torn / stained twin ships in its base
+    # SKU's bag, so key the sticker off the base garment, not the variant.
+    label = f"label_{base_garment(shirt_config().garment).key}"
+    for name in ("bag_sticker", "stamp_sticker"):
+        spec.geom(name).material = label
+    # The belt runs through the press, so the belt is its bed now.
+    spec.delete(spec.actuator("press_tilt"))
+    for name in ("press_table", "press_bed"):
+        spec.delete(spec.body(name))
+    spec.body("press_origin").pos = [PRESS_X, 0.0, 0.0]
+    _widen_press(spec, PRESS_WIDEN)
+    return spec.compile()
+
+
+def _widen_press(spec, dy: float) -> None:
+    """Move the press's columns, and all that hangs on them, ``dy`` further out.
+
+    The press was built for a bed, not for a belt carrying a shirt with its
+    sleeves spread: at y = +/-0.46 the columns stood in the sleeves' way.
+    """
+    for geom in spec.body("press_frame").find_all("geom"):
+        pos = np.array(geom.pos)
+        size = np.array(geom.size)
+        if geom.name == "beam":
+            size[1] += dy
+        elif geom.name in ("steam_run", "nut_arm_l", "nut_arm_r"):
+            # Pieces that span from the middle out to a column: stretch them.
+            size[1] += 0.5 * dy
+            pos[1] += math.copysign(0.5 * dy, pos[1])
+        elif abs(pos[1]) >= 0.40:
+            pos[1] += math.copysign(dy, pos[1])
+        geom.pos = pos
+        geom.size = size
+
+
+def flat_shirt(center_x: float, *, yaw: float = 0.0, y: float = 0.0) -> np.ndarray:
+    """World vertices of the shirt lying flat on the belt, collar toward +x.
+
+    ``yaw`` is rotation about +Z (radians). ``y`` is a lateral shift. A
+    square drop is yaw=0, y=0; a bad belt place uses SKEW_YAW / SKEW_Y.
+    """
+    mesh = load_shirt_mesh()[0]  # OBJ frame: sleeves along x, collar at +y
+    world = np.empty_like(mesh)
+    world[:, 0] = mesh[:, 1] - 0.5 * (mesh[:, 1].min() + mesh[:, 1].max()) + center_x
+    world[:, 1] = -mesh[:, 0]
+    world[:, 2] = SURFACE_Z + SHIRT_RADIUS
+    if yaw or y:
+        mid = world.mean(axis=0)
+        rel = world - mid
+        cos, sin = math.cos(yaw), math.sin(yaw)
+        rot = np.empty_like(rel)
+        rot[:, 0] = rel[:, 0] * cos - rel[:, 1] * sin
+        rot[:, 1] = rel[:, 0] * sin + rel[:, 1] * cos
+        rot[:, 2] = rel[:, 2]
+        world = rot + mid
+        world[:, 1] += y
+        world[:, 2] = SURFACE_Z + SHIRT_RADIUS
+    return world
+
+
+class Line:
+    """Runs the line one physics step at a time: ``step()`` forever.
+
+    The cycle is a generator that sets this step's commands and yields; the
+    viewer, a headless run and the dashboard viewport all just call step().
+    """
+
+    def __init__(self, model, data, repeat: bool = True, log=print, *, skewed: bool = False) -> None:
+        import mujoco
+
+        self._mujoco = mujoco
+        self.model = model
+        self.data = data
+        self.repeat = repeat
+        self.log = log
+        self.skewed = skewed
+        self.dt = float(model.opt.timestep)
+
+        self._qadr = shirt_vertex_qposadr(model)
+        self._dadr = np.array(
+            [int(model.jnt_dofadr[model.body_jntadr[b]]) for b in model.flex_vertbodyid]
+        )
+        mujoco.mj_resetData(model, data)
+        mujoco.mj_forward(model, data)
+        self._rest = shirt_rest_world(model, data)
+        self._xyz = np.arange(3)
+
+        self._stroke = model.actuator("press_stroke").id
+        self._steam = SteamField(model)
+        self._slats = [
+            model.geom(i).id
+            for i in range(model.ngeom)
+            if model.geom(i).name.startswith("belt_slat_")
+        ]
+        self._slat_x0 = model.geom_pos[self._slats, 0].copy()
+        self._mocap = {f.body: int(model.body(f.body).mocapid[0]) for f in FLAPS}
+        self._flap_geom = {f.body: model.geom(f.body).id for f in FLAPS}
+
+        self._slats2 = [
+            model.geom(i).id
+            for i in range(model.ngeom)
+            if model.geom(i).name.startswith("belt2_slat_")
+        ]
+        self._slat2_x0 = model.geom_pos[self._slats2, 0].copy()
+        mocap = {
+            name: int(model.body(name).mocapid[0])
+            for name in (
+                "peel",
+                "seal_bar",
+                "stamp",
+                "picker_head",
+                "picker_carriage",
+                "mouth_cup",
+                "finger_l",
+                "finger_r",
+            )
+        }
+        self._peel = mocap["peel"]
+        self._seal_bar = mocap["seal_bar"]
+        self._stamp = mocap["stamp"]
+        self._picker = mocap["picker_head"]
+        self._carriage = mocap["picker_carriage"]
+        self._mouth_cup = mocap["mouth_cup"]
+        self._fingers = ((mocap["finger_l"], 1.0), (mocap["finger_r"], -1.0))
+        self._peel_home = model.body("peel").pos.copy()
+        self._peel_pivot = self._peel_home + (PEEL_HALF, 0.0, -PEEL_UNDER)
+        self._peel_shift = 0.0
+        self._peel_tilt = 0.0
+        self._guides = [
+            model.geom(name).id
+            for name in (
+                "peel_guide_l",
+                "peel_guide_r",
+                "peel_guide_foot_l",
+                "peel_guide_foot_r",
+            )
+        ]
+        self._guide_z0 = model.geom_pos[self._guides, 2].copy()  # lowered
+        bag = model.body("bag")
+        joint = int(bag.jntadr[0])
+        self._bag = bag.id
+        self._bag_qadr = int(model.jnt_qposadr[joint])
+        self._bag_dadr = int(model.jnt_dofadr[joint])
+        self._g = {
+            name: model.geom(name).id
+            for name in (
+                "bag_roof",
+                "bag_side_l",
+                "bag_side_r",
+                "bag_end",
+                "bag_weld_end",
+                "bag_weld_l",
+                "bag_weld_r",
+                "bag_tail",
+                "bag_lip",
+                "bag_tail_side_l",
+                "bag_tail_side_r",
+                "bag_seam",
+                "bag_sticker",
+                "stamp_sticker",
+                "seal_bar_head",
+                "air_jet",
+            )
+        }
+        self._rgba0 = {name: model.geom_rgba[gid].copy() for name, gid in self._g.items()}
+        self._bag_local: np.ndarray | None = None  # shirt vertices in the bag's frame
+        # Where the bag's centre is held while it is not on the belt, or None.
+        self._bag_held: np.ndarray | None = None
+        self._bag_h = BAG_FLAT
+        self._bag_tail = 0.0
+        self._bagger = None  # the bagger's own sequence, run alongside the cycle
+        self._bag_ready = False
+
+        self.belt_speed = 0.0
+        self.belt2_speed = 0.0
+        self._belt_travel = 0.0
+        self._belt2_travel = 0.0
+        self._drive_to = BELT_X[1]  # cloth rides the belt up to this x
+        self._layers: ClothLayers | None = None
+        self._since_layers = 0
+        self.stage = "idle"
+        self.cycles = 0
+        self.finished = False
+        self._program = self._run()
+
+    # --- stepping -----------------------------------------------------
+
+    def step(self) -> None:
+        """Advance the line by one physics step."""
+        if not self.finished:
+            try:
+                next(self._program)
+            except StopIteration:
+                self.finished = True
+        if self._bagger is not None:
+            try:
+                next(self._bagger)
+            except StopIteration:
+                self._bagger = None
+        self._drive_belt()
+        self._drive_belt2()
+        self._steam.follow(self.data)
+        self._mujoco.mj_step(self.model, self.data)
+        self._hold_bag()
+        self._carry_cloth()
+        self._since_layers += 1
+        if self._layers is not None and self._since_layers >= LAYER_EVERY:
+            self._layers.separate()
+            self._since_layers = 0
+
+    def positions(self) -> np.ndarray:
+        """Cloth vertices in the world, current as of this step's qpos."""
+        return self._rest + self.data.qpos[self._qadr[:, None] + self._xyz]
+
+    def _pin(self, ids: np.ndarray, world: np.ndarray, vel: np.ndarray | None) -> None:
+        self.data.qpos[self._qadr[ids, None] + self._xyz] = world - self._rest[ids]
+        self.data.qvel[self._dadr[ids, None] + self._xyz] = 0.0 if vel is None else vel
+
+    def _drive_belt(self) -> None:
+        if self.belt_speed == 0.0:
+            return
+        self._belt_travel += self.belt_speed * self.dt
+        span = BELT_X[1] - BELT_X[0]
+        self.model.geom_pos[self._slats, 0] = (
+            BELT_X[0] + (self._slat_x0 - BELT_X[0] + self._belt_travel) % span
+        )
+        pos = self.positions()
+        riding = (
+            (pos[:, 0] >= BELT_X[0])
+            & (pos[:, 0] <= self._drive_to)
+            & (pos[:, 2] < SURFACE_Z + ON_BELT)
+        )
+        self.data.qvel[self._dadr[riding]] = self.belt_speed
+
+    def _drive_belt2(self) -> None:
+        """Belt 2 carries the bag while the bag's centre is over it.
+
+        The belt is not a body, so the bag is given the belt's speed and kept
+        level; past the belt's end it is on its own and tips off.
+        """
+        if self.belt2_speed == 0.0:
+            return
+        self._belt2_travel += self.belt2_speed * self.dt
+        span = BELT2_X[1] - BELT2_X[0]
+        self.model.geom_pos[self._slats2, 0] = (
+            BELT2_X[0] + (self._slat2_x0 - BELT2_X[0] + self._belt2_travel) % span
+        )
+        adr = self._bag_dadr
+        if self.data.xpos[self._bag][0] < BELT2_X[1]:
+            self.data.qvel[adr : adr + 2] = (self.belt2_speed, 0.0)
+            self.data.qvel[adr + 3 : adr + 6] = 0.0
+
+    def _hold_bag(self) -> None:
+        """Keep the bag where the magazine or the picker has it, level and still."""
+        if self._bag_held is None:
+            return
+        adr, dadr = self._bag_qadr, self._bag_dadr
+        self.data.qpos[adr : adr + 3] = self._bag_held
+        self.data.qpos[adr + 3 : adr + 7] = (1.0, 0.0, 0.0, 0.0)
+        self.data.qvel[dadr : dadr + 6] = 0.0
+
+    def _carry_cloth(self) -> None:
+        """Hold the shirt at the same place inside the bag, once it is sealed in."""
+        if self._bag_local is None:
+            return
+        qpos = self.data.qpos[self._bag_qadr : self._bag_qadr + 7]
+        rotation = np.empty(9)
+        self._mujoco.mju_quat2Mat(rotation, qpos[3:])
+        rotation = rotation.reshape(3, 3)
+        world = qpos[:3] + self._bag_local @ rotation.T
+        adr = self._bag_dadr
+        spin = rotation @ self.data.qvel[adr + 3 : adr + 6]  # free-joint spin is body-frame
+        vel = self.data.qvel[adr : adr + 3] + np.cross(spin, world - qpos[:3])
+        self._pin(np.arange(len(world)), world, vel)
+
+    def _seal_in(self) -> None:
+        """Fix every shirt vertex to the bag from here on."""
+        qpos = self.data.qpos[self._bag_qadr : self._bag_qadr + 7]
+        rotation = np.empty(9)
+        self._mujoco.mju_quat2Mat(rotation, qpos[3:])
+        self._bag_local = (self.positions() - qpos[:3]) @ rotation.reshape(3, 3)
+
+    def _settled_height(self) -> float:
+        """How tall the bag stands once its film lies on the pack."""
+        top = float(self._bag_local[:, 2].max()) + SHIRT_RADIUS
+        return float(np.clip(top - BAG_FLOOR + 0.004, BAG_SETTLED_MIN, BAG_OPEN))
+
+    # --- the cycle ----------------------------------------------------
+
+    def _run(self):
+        while True:
+            self.cycles += 1
+            yield from self._cycle()
+            if not self.repeat:
+                return
+
+    def _cycle(self):
+        self._load()
+        load_msg = (
+            "skewed shirt on the belt" if self.skewed else "flat shirt on the belt"
+        )
+        yield from self._hold("LOAD", load_msg, 0.6)
+
+        self._enter("BELT", "carry the shirt under the press")
+        yield from self._belt_until(lambda pos: PRESS_X - float(pos[:, 0].mean()))
+
+        self._enter("PRESS", "platen down on the belt")
+        yield from self._ramp_stroke(STROKE_PRESSED, 2.5)
+        self._enter("STEAM", "steam under the platen")
+        yield from self._steam_for(3.0)
+        self._enter("LIFT", "platen up")
+        yield from self._ramp_stroke(STROKE_OPEN, 2.0)
+
+        self._enter("BELT", "run the shirt off the belt onto the folder")
+        self._drive_to = FOLDER_X[1]
+        yield from self._belt_until(lambda pos: FOLDER_X[0] + HEM_INSET - float(pos[:, 0].min()))
+        self._drive_to = BELT_X[1]
+        # The bagger gets a bag ready while the folder works.
+        self._bagger = self._prepare_bag()
+        yield from self._hold("SETTLE", "shirt on the folder", 0.5)
+
+        self._layers = _Layers(self.model, self.data, thickness=0.5 * LAYER_GAP)
+        for flap in FLAPS:
+            self._enter("FOLD", flap.body.replace("flap_", "") + " flap over")
+            yield from self._flip(flap)
+            yield from self._hold("FOLD", "", 0.3, quiet=True)
+
+        pos = self.positions()
+        size = pos.max(axis=0) - pos.min(axis=0)
+        self._enter(
+            "FOLD",
+            f"folded pack {size[0] * 100:.0f} x {size[1] * 100:.0f} cm, "
+            f"{size[2] * 1000:.0f} mm tall",
+        )
+        yield from self._hold("FOLD", "", 0.6, quiet=True)
+
+        if not self._bag_ready:
+            self._enter("WAIT", "the pack waits for the bagger to open a bag")
+            while not self._bag_ready:
+                yield
+
+        self._enter("BAG", "side guides rise on the peel")
+        for blend in self._tween(0.4):
+            self._set_guides(blend)
+            yield
+        self._enter("BAG", "peel carries the pack between its guides into the open bag")
+        travel = BAG_X + BAG_HALF_LENGTH - BAG_END_MARGIN - float(pos[:, 0].max())
+        yield from self._move_peel(travel, 0.0, 2.4, carry=True)
+        self._enter(
+            "TILT",
+            f"peel tips its nose down {math.degrees(PEEL_TILT):.0f} deg, "
+            "the pack's front lands on the bag floor",
+        )
+        yield from self._move_peel(travel, PEEL_TILT, 0.6, carry=True)
+        self._enter("PEEL", "peel slides back out, still tipped, from under the pack")
+        yield from self._move_peel(0.0, PEEL_TILT, 2.0, carry=False)
+        self._enter("PEEL", "peel levels off at home, guides drop")
+        for blend in self._tween(0.5):
+            self._set_peel(0.0, PEEL_TILT * (1.0 - blend))
+            self._set_guides(1.0 - blend)
+            yield
+        yield from self._hold("PEEL", "", 0.5, quiet=True)
+        # The shirt lies still in the bag now. Fix it there: it cannot sag while
+        # the bag closes, and it goes wherever the bag goes.
+        self._layers = None
+        self._seal_in()
+
+        self._enter("RELEASE", "fingers and mouth cup let go, the film settles on the pack")
+        yield from self._release_bag(self._settled_height())
+        self._enter("INDEX", "belt 2 moves the bag on to the seal station")
+        yield from self._index_bag(SEAL_X)
+        self._enter("SEAL", "seal bar presses the mouth flat and welds it, stamp puts the label on")
+        yield from self._seal_and_tag()
+
+        self._enter("BELT", "belt 2 carries the bag to the carton")
+        yield from self._convey()
+        yield from self._hold("DONE", "bagged, sealed, tagged, boxed", 2.5)
+
+    def _load(self) -> None:
+        mujoco = self._mujoco
+        mujoco.mj_resetData(self.model, self.data)
+        self._layers = None
+        self._bag_local = None
+        self.belt_speed = 0.0
+        self.belt2_speed = 0.0
+        self._steam.reset()
+        set_steam(self.model, False)
+        self.data.ctrl[self._stroke] = STROKE_OPEN
+        world = (
+            flat_shirt(SPAWN_X, yaw=SKEW_YAW, y=SKEW_Y)
+            if self.skewed
+            else flat_shirt(SPAWN_X)
+        )
+        ids = np.arange(len(world))
+        self._pin(ids, world, None)
+        for name, gid in self._g.items():
+            self.model.geom_rgba[gid] = self._rgba0[name]
+        self.model.geom_rgba[self._g["bag_seam"], 3] = 0.0
+        self.model.geom_rgba[self._g["bag_sticker"], 3] = 0.0
+        # The next bag waits flat on top of the magazine.
+        self._bagger = None
+        self._bag_ready = False
+        self._bag_held = np.array([BAG_X, MAG_Y, MAG_BAG_Z])
+        self._hold_bag()
+        self._shape_bag(BAG_FLAT, 0.0)
+        self._peel_shift = 0.0
+        self._peel_tilt = 0.0
+        self._set_guides(0.0)
+        mujoco.mj_forward(self.model, self.data)
+
+    def _enter(self, stage: str, message: str) -> None:
+        self.stage = stage
+        if message:
+            self.log(f"[line {self.cycles}] {stage:<6} {message}")
+
+    def _hold(self, stage: str, message: str, seconds: float, quiet: bool = False):
+        if not quiet:
+            self._enter(stage, message)
+        for _ in range(self._steps(seconds)):
+            yield
+
+    def _belt_until(self, remaining):
+        """Run the belt until ``remaining(positions)`` metres reach zero.
+
+        The belt brakes on the way in so the shirt stops right there, the way
+        a line stops a part at a station.
+        """
+        while True:
+            left = remaining(self.positions())
+            if left <= 0.002:
+                break
+            self.belt_speed = min(
+                BELT_SPEED,
+                self.belt_speed + BELT_ACCEL * self.dt,
+                max(0.02, math.sqrt(2.0 * BELT_ACCEL * left)),
+            )
+            yield
+        self.belt_speed = 0.0
+
+    def _ramp_stroke(self, target: float, seconds: float):
+        start = float(self.data.ctrl[self._stroke])
+        steps = self._steps(seconds)
+        for index in range(steps):
+            blend = smoothstep((index + 1) / steps)
+            self.data.ctrl[self._stroke] = start + (target - start) * blend
+            yield
+
+    def _steam_for(self, seconds: float):
+        set_steam(self.model, True)
+        for index in range(self._steps(seconds)):
+            self._steam.puff(index * self.dt, seconds)
+            yield
+        self._steam.reset()
+        set_steam(self.model, False)
+
+    def _tween(self, seconds: float):
+        """Blend 0 -> 1 over ``seconds``, eased, one value per step."""
+        steps = self._steps(seconds)
+        for index in range(steps):
+            yield smoothstep((index + 1) / steps)
+
+    # --- the peel ------------------------------------------------------
+
+    def _set_peel(self, shift: float, tilt: float) -> None:
+        """Put the peel ``shift`` metres downstream, nose down by ``tilt``.
+
+        It tips about the bottom of its front edge, so the nose stays on
+        whatever it rests on and the back end rises.
+        """
+        pivot = self._peel_pivot + (shift, 0.0, 0.0)
+        arm = self._peel_home - self._peel_pivot
+        self.data.mocap_pos[self._peel] = pivot + _pitch(arm[None, :], tilt)[0]
+        self.data.mocap_quat[self._peel] = _pitch_quat(tilt)
+        self._peel_shift, self._peel_tilt = shift, tilt
+
+    def _move_peel(self, shift: float, tilt: float, seconds: float, carry: bool):
+        """Slide and tip the peel from where it is to ``shift`` and ``tilt``.
+
+        With ``carry`` the shirt goes with it, rigidly. Without, the peel just
+        goes: nothing in the solver drags the shirt, which is the point.
+        """
+        shift0, tilt0 = self._peel_shift, self._peel_tilt
+        cloth = self.positions()
+        # The shirt in the peel's frame at the start, about its pivot.
+        local = cloth - (self._peel_pivot + (shift0, 0.0, 0.0))
+        everything = np.arange(self.model.nflexvert)
+        previous = cloth
+        for blend in self._tween(seconds):
+            now_shift = shift0 + (shift - shift0) * blend
+            now_tilt = tilt0 + (tilt - tilt0) * blend
+            self._set_peel(now_shift, now_tilt)
+            if carry:
+                # Absolute positions, and the velocity that got them there: an
+                # increment would be counted twice by the step that follows.
+                pivot = self._peel_pivot + (now_shift, 0.0, 0.0)
+                world = pivot + _pitch(local, now_tilt - tilt0)
+                self._pin(everything, world, (world - previous) / self.dt)
+                previous = world
+            yield
+
+    def _set_guides(self, up: float) -> None:
+        """Raise the peel's side guides, 0 down in their slots, 1 up."""
+        self.model.geom_pos[self._guides, 2] = self._guide_z0 + GUIDE_RISE * up
+
+    # --- the bagger ----------------------------------------------------
+
+    def _prepare_bag(self):
+        """The bagger's own sequence, alongside the fold: pick, place, open.
+
+        Leaves ``_bag_ready`` set, with the bag on belt 2 blown open and its
+        mouth held square.
+        """
+        model, data = self.model, self.data
+
+        def log(message: str) -> None:
+            self.log(f"[line {self.cycles}] BAGGER {message}")
+
+        log("picker takes the top bag off the magazine")
+        grip_mag = MAG_BAG_Z + BAG_FLOOR + BAG_FLAT + FILM
+        yield from self._move_picker(MAG_Y, PICKER_PARK_Z, grip_mag, 0.6)
+        yield from self._hold("", "", 0.25, quiet=True)  # vacuum builds
+        grip = BAG_FLOOR + BAG_FLAT + FILM  # cups' lips above the bag's centre
+        yield from self._move_picker(MAG_Y, grip_mag, CARRY_BAG_Z + grip, 0.6, carry=True)
+        log("picker carries it over belt 2 and lays it down, mouth toward the folder")
+        yield from self._move_picker(MAG_Y, CARRY_BAG_Z + grip, CARRY_BAG_Z + grip, 1.2,
+                                     carry=True, to_y=0.0)
+        yield from self._move_picker(0.0, CARRY_BAG_Z + grip, BELT2_BAG_Z + grip, 0.6, carry=True)
+        # Vacuum off: the bag lies on the belt, and the belt's vacuum box holds
+        # its bottom film.
+        self._bag_held = None
+        yield from self._hold("", "", 0.2, quiet=True)
+        yield from self._move_picker(0.0, BELT2_BAG_Z + grip, PICKER_PARK_Z, 0.5)
+
+        log("mouth cup lifts the top lip, air knife blows the bag open")
+        cup = self._mouth_cup
+        bag_z = float(data.qpos[self._bag_qadr + 2])
+        park_back = self._move_picker(0.0, PICKER_PARK_Z, PICKER_PARK_Z, 1.2, to_y=MAG_Y)
+        for blend in self._tween(0.5):
+            data.mocap_pos[cup][2] = MOUTH_CUP_PARK_Z + (self._mouth_cup_z(bag_z) - MOUTH_CUP_PARK_Z) * blend
+            next(park_back, None)
+            yield
+        jet = self._g["air_jet"]
+        for index, blend in enumerate(self._tween(1.4)):
+            self._shape_bag(BAG_FLAT + (BAG_OPEN - BAG_FLAT) * blend, TAIL_FLARE * blend)
+            data.mocap_pos[cup][2] = self._mouth_cup_z(bag_z)
+            model.geom_rgba[jet, 3] = 0.16 + 0.08 * math.sin(0.35 * index)
+            next(park_back, None)
+            yield
+        for _ in park_back:
+            yield
+
+        log("spreader fingers drop into the mouth's corners and hold it square")
+        for blend in self._tween(0.5):
+            self._set_fingers(FINGER_IN_Y, FINGER_PARK_Z + (FINGER_DOWN_Z - FINGER_PARK_Z) * blend)
+            yield
+        for blend in self._tween(0.4):
+            self._set_fingers(FINGER_IN_Y + (FINGER_OUT_Y - FINGER_IN_Y) * blend, FINGER_DOWN_Z)
+            yield
+        model.geom_rgba[jet, 3] = 0.0
+        log("bag open, ready for the pack")
+        self._bag_ready = True
+
+    def _move_picker(self, y: float, z0: float, z1: float, seconds: float,
+                     carry: bool = False, to_y: float | None = None):
+        """Move the picker's head from height ``z0`` to ``z1`` (and along the
+        beam from ``y`` to ``to_y``); with ``carry`` the bag hangs on its cups."""
+        data = self.data
+        y1 = y if to_y is None else to_y
+        grip = BAG_FLOOR + BAG_FLAT + FILM
+        for blend in self._tween(seconds):
+            now_y = y + (y1 - y) * blend
+            now_z = z0 + (z1 - z0) * blend
+            data.mocap_pos[self._picker] = (BAG_X, now_y, now_z)
+            data.mocap_pos[self._carriage] = (BAG_X, now_y, PICKER_CARRIAGE_Z)
+            if carry:
+                self._bag_held = np.array([BAG_X, now_y, now_z - grip])
+            yield
+
+    def _mouth_cup_z(self, bag_z: float) -> float:
+        """Height of the mouth cup's lip on the bag's tail, as the bag is now."""
+        return (
+            bag_z + BAG_FLOOR + self._bag_h + FILM
+            + MOUTH_CUP_ON_TAIL * math.sin(self._bag_tail)
+        )
+
+    def _set_fingers(self, y: float, z: float) -> None:
+        for mocap, side in self._fingers:
+            self.data.mocap_pos[mocap][1:] = (side * y, z)
+
+    def _release_bag(self, settled: float):
+        """Fingers in and up, mouth cup off: the film settles on the pack."""
+        data = self.data
+        for blend in self._tween(0.4):
+            self._set_fingers(FINGER_OUT_Y + (FINGER_IN_Y - FINGER_OUT_Y) * blend, FINGER_DOWN_Z)
+            yield
+        for blend in self._tween(0.5):
+            self._set_fingers(FINGER_IN_Y, FINGER_DOWN_Z + (FINGER_PARK_Z - FINGER_DOWN_Z) * blend)
+            yield
+        cup_z = float(data.mocap_pos[self._mouth_cup][2])
+        h0, tail0 = self._bag_h, self._bag_tail
+        for blend in self._tween(1.0):
+            self._shape_bag(h0 + (settled - h0) * blend, tail0 * (1.0 - blend))
+            data.mocap_pos[self._mouth_cup][2] = cup_z + (MOUTH_CUP_PARK_Z - cup_z) * blend
+            yield
+
+    def _index_bag(self, target: float):
+        """Run belt 2 until the bag's centre is at ``target``, braking in."""
+        while True:
+            left = target - float(self.data.qpos[self._bag_qadr])
+            if left <= 0.002:
+                break
+            self.belt2_speed = min(
+                BELT2_SPEED,
+                self.belt2_speed + BELT_ACCEL * self.dt,
+                max(0.02, math.sqrt(2.0 * BELT_ACCEL * left)),
+            )
+            yield
+        self.belt2_speed = 0.0
+        self.data.qvel[self._bag_dadr : self._bag_dadr + 6] = 0.0
+
+    def _shape_bag(self, height: float, tail: float) -> None:
+        """Shape the bag's films: ``height`` from floor to roof, and the tail
+        ``tail`` radians off the roof's line (up is positive).
+
+        The tail's sides follow it while it is flared or flat; pressed down,
+        the gussets fold in and they go.
+        """
+        g, pos, size, quat = self._g, self.model.geom_pos, self.model.geom_size, self.model.geom_quat
+        half = 0.5 * height
+        roof = BAG_FLOOR + height
+        pos[g["bag_roof"], 2] = roof
+        pos[g["bag_sticker"], 2] = roof + FILM + 0.0006
+        for name in ("bag_side_l", "bag_side_r", "bag_end", "bag_weld_end", "bag_weld_l", "bag_weld_r"):
+            pos[g[name], 2] = BAG_FLOOR + half
+            size[g[name], 2] = max(half, FILM)
+
+        hinge = np.array([TAIL_HINGE_X, 0.0, roof])
+        along = np.array([-math.cos(tail), 0.0, math.sin(tail)])
+        normal = np.array([math.sin(tail), 0.0, math.cos(tail)])
+        middle = hinge + 0.5 * TAIL_LENGTH * along
+        pos[g["bag_tail"]] = middle
+        quat[g["bag_tail"]] = _pitch_quat(tail)
+        # The lip runs on from the seal line: flared with the tail, else flat.
+        lip = max(tail, 0.0)
+        pos[g["bag_lip"]] = hinge + TAIL_LENGTH * along + 0.5 * LIP_LENGTH * np.array(
+            [-math.cos(lip), 0.0, math.sin(lip)]
+        )
+        quat[g["bag_lip"]] = _pitch_quat(lip)
+        depth = max(0.0, min(height, height + TAIL_LENGTH * math.sin(tail))) * math.cos(tail)
+        for name, y in (("bag_tail_side_l", 0.2442), ("bag_tail_side_r", -0.2442)):
+            gid = g[name]
+            pos[gid] = middle - 0.5 * depth * normal
+            pos[gid, 1] = y
+            size[gid, 2] = max(0.5 * depth, 1e-4)
+            quat[gid] = _pitch_quat(tail)
+        self._bag_h, self._bag_tail = height, tail
+
+    def _seal_and_tag(self):
+        """Lower the seal bar and the stamp together, dwell, lift.
+
+        The bar presses the tail down to the floor on its way. On contact the
+        mouth seam shows, and the label moves from the stamp to the bag.
+        """
+        model = self.model
+        g = self._g
+        bag_z = float(self.data.qpos[self._bag_qadr + 2])
+        bar_z = bag_z + BAG_FLOOR + 3.0 * FILM + SEAL_BAR_HALF
+        stamp_z = bag_z + BAG_FLOOR + self._bag_h + FILM + STAMP_UNDER
+        yield from self._move_presses(bar_z, stamp_z, 1.2, press_tail=True)
+
+        model.geom_rgba[g["bag_seam"]] = (0.70, 0.84, 0.95, 0.85)
+        model.geom_rgba[g["stamp_sticker"], 3] = 0.0
+        model.geom_rgba[g["bag_sticker"], 3] = 1.0
+        cold = self._rgba0["seal_bar_head"]
+        hot = np.array([1.0, 0.45, 0.15, 1.0])
+        dwell = 1.6
+        for index in range(self._steps(dwell)):
+            glow = math.sin(math.pi * min(1.0, index * self.dt / dwell))
+            model.geom_rgba[g["seal_bar_head"]] = cold + (hot - cold) * glow
+            yield
+        model.geom_rgba[g["seal_bar_head"]] = cold
+
+        yield from self._move_presses(PRESS_HOVER_Z, PRESS_HOVER_Z, 1.0)
+
+    def _move_presses(self, bar_z: float, stamp_z: float, seconds: float, press_tail: bool = False):
+        bar, stamp = self._seal_bar, self._stamp
+        bar0, stamp0 = float(self.data.mocap_pos[bar][2]), float(self.data.mocap_pos[stamp][2])
+        bag_z = float(self.data.qpos[self._bag_qadr + 2])
+        for blend in self._tween(seconds):
+            self.data.mocap_pos[bar][2] = bar0 + (bar_z - bar0) * blend
+            self.data.mocap_pos[stamp][2] = stamp0 + (stamp_z - stamp0) * blend
+            if press_tail:
+                self._press_tail(float(self.data.mocap_pos[bar][2]) - bag_z)
+            yield
+
+    def _press_tail(self, bar_z: float) -> None:
+        """Push the tail's end down to just under the seal bar at ``bar_z``,
+        in the bag's frame, if the bar is lower than it."""
+        height = self._bag_h
+        closed = -math.asin(min(1.0, (height - 2.0 * FILM) / TAIL_LENGTH))
+        drop = (bar_z - SEAL_BAR_HALF - FILM) - (BAG_FLOOR + height)
+        angle = math.asin(float(np.clip(drop / TAIL_LENGTH, -1.0, 0.0)))
+        angle = max(angle, closed)
+        if angle < self._bag_tail:
+            self._shape_bag(height, angle)
+
+    def _convey(self):
+        """Run belt 2 until the bag is in the carton."""
+        while self.data.qpos[self._bag_qadr + 2] > BOXED_Z:
+            self.belt2_speed = min(BELT2_SPEED, self.belt2_speed + BELT_ACCEL * self.dt)
+            yield
+        self.belt2_speed = 0.0
+        yield from self._hold("BOXED", "", 1.0, quiet=True)
+
+    def _flip(self, flap: Flap):
+        """Swing a flap over, carrying its cloth, let go, swing back.
+
+        The hinge sits under the plates, clear of the cloth. It rides up as the
+        flap swings, so the flap lands on the layers already folded instead of
+        cutting through them.
+        """
+        mocap = self._mocap[flap.body]
+        hinge = self.data.mocap_pos[mocap].copy()
+        axis = np.asarray(flap.axis)
+        up = np.array([0.0, 0.0, 1.0])
+
+        pos = self.positions()
+        ids = np.flatnonzero(flap.carries(pos, hinge))
+        arm = pos[ids] - hinge
+
+        risen = 0.0
+        for angle, rate in self._swing(0.0, math.pi, flap.over):
+            rise = flap.lift * _rise(angle)
+            pivot = hinge + rise * up
+            self._set_flap(mocap, axis, angle, pivot)
+            moved = _rotate(arm, axis, angle)
+            climb = (rise - risen) / self.dt * up
+            self._pin(ids, pivot + moved, rate * np.cross(axis, moved) + climb)
+            risen = rise
+            yield
+        # Set down still, at the top of the swing.
+        self._pin(ids, hinge + flap.lift * up + _rotate(arm, axis, math.pi), None)
+
+        # Swinging back empty, the flap's edge by the hinge would sweep
+        # through the crease it just made and trap it underneath.
+        geom = self._flap_geom[flap.body]
+        affinity = int(self.model.geom_conaffinity[geom])
+        self.model.geom_conaffinity[geom] = 0
+        for angle, _ in self._swing(math.pi, 0.0, flap.back):
+            self._set_flap(mocap, axis, angle, hinge + flap.lift * _rise(angle) * up)
+            yield
+        self._set_flap(mocap, axis, 0.0, hinge)
+        self.model.geom_conaffinity[geom] = affinity
+
+    def _swing(self, start: float, end: float, seconds: float):
+        steps = self._steps(seconds)
+        previous = start
+        for index in range(steps):
+            angle = start + (end - start) * smoothstep((index + 1) / steps)
+            yield angle, (angle - previous) / self.dt
+            previous = angle
+
+    def _set_flap(self, mocap: int, axis: np.ndarray, angle: float, pivot: np.ndarray) -> None:
+        half = 0.5 * angle
+        self.data.mocap_quat[mocap] = [math.cos(half), *(math.sin(half) * axis)]
+        self.data.mocap_pos[mocap] = pivot
+
+    def _steps(self, seconds: float) -> int:
+        return max(1, int(round(seconds / self.dt)))
+
+
+def _rise(angle: float) -> float:
+    """How far up its lift a flap's hinge is, 0 to 1.
+
+    Half of it by upright: the flap's edge by the pin then clears the rail,
+    and the flap moves as if hinged half its lift above the plates.
+    """
+    return 0.5 * (1.0 - math.cos(angle))
+
+
+def _rotate(points: np.ndarray, axis: np.ndarray, angle: float) -> np.ndarray:
+    """Rotate points about a unit axis through the origin (Rodrigues)."""
+    cos, sin = math.cos(angle), math.sin(angle)
+    return (
+        points * cos
+        + np.cross(axis, points) * sin
+        + np.outer(points @ axis, axis) * (1.0 - cos)
+    )
+
+
+def _pitch(points: np.ndarray, angle: float) -> np.ndarray:
+    """Rotate points about +y by ``angle``: positive takes +x down."""
+    cos, sin = math.cos(angle), math.sin(angle)
+    out = points.copy()
+    out[:, 0] = cos * points[:, 0] + sin * points[:, 2]
+    out[:, 2] = -sin * points[:, 0] + cos * points[:, 2]
+    return out
+
+
+def _pitch_quat(angle: float) -> list[float]:
+    return [math.cos(0.5 * angle), 0.0, math.sin(0.5 * angle), 0.0]
+
+
+class FollowCam:
+    """A free camera that drifts along with the shirt.
+
+    Looks at the shirt from the aisle side, high enough to see the platen
+    come down. Only the look-at point moves, and it is smoothed, so the
+    camera glides rather than snapping when the shirt is reloaded at the
+    infeed. Angle and distance are set once, so a window can still orbit and
+    zoom without the follow fighting it.
+    """
+
+    DISTANCE = 2.0
+    AZIMUTH = 82.0  # along +y from the aisle, a little off-axis to clear the near column
+    ELEVATION = -34.0
+    TAU = 0.6  # seconds for the look-at to close ~63% of the gap
+
+    def __init__(self) -> None:
+        import mujoco
+
+        self.lookat = np.array([SPAWN_X, 0.0, SURFACE_Z + 0.08])
+        self.cam = mujoco.MjvCamera()
+        self.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+        self.setup(self.cam)
+        self._started = False
+
+    def setup(self, cam) -> None:
+        """Give ``cam`` this view's angle and distance (once)."""
+        import mujoco
+
+        cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+        cam.distance = self.DISTANCE
+        cam.azimuth = self.AZIMUTH
+        cam.elevation = self.ELEVATION
+        cam.lookat[:] = self.lookat
+
+    def track(self, cloth: np.ndarray, dt: float) -> None:
+        """Move the look-at toward the shirt; ``dt`` is time since the last call."""
+        rest_z = SURFACE_Z + 0.08
+        goal = np.array([cloth[:, 0].mean(), 0.0, 0.65 * rest_z + 0.35 * cloth[:, 2].mean()])
+        if not self._started:
+            self.lookat[:] = goal
+            self._started = True
+        else:
+            self.lookat += (goal - self.lookat) * (1.0 - math.exp(-dt / self.TAU))
+        self.cam.lookat[:] = self.lookat
+
+    def aim(self, cam) -> None:
+        """Point another camera (a window's) at the shirt, leaving its angle alone."""
+        cam.lookat[:] = self.lookat
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="XFOLD line: belt, press, folder")
+    parser.add_argument("--cycles", type=int, default=0, help="0 keeps going")
+    parser.add_argument("--headless", action="store_true", help="no window, as fast as it can")
+    add_garment_arguments(parser)
+    parser.add_argument(
+        "--shots", default="", help="headless: save a frame per stage into this directory"
+    )
+    parser.add_argument(
+        "--camera",
+        default="follow",
+        help="follow (tracks the shirt) or a fixed one: overview, press_cam, fold_cam, "
+        "bagger_cam, bag_cam",
+    )
+    args = parser.parse_args()
+    chosen = garment_from_args(
+        args, interactive=not args.headless, current=shirt_config().garment
+    )
+    if chosen:
+        rewrite_argv_garment(chosen)
+        args.garment = chosen.key
+        args.skewed = chosen.skewed
+
+    try:
+        import mujoco
+    except ImportError:
+        raise SystemExit("MuJoCo is not installed.\nFrom the repo root run:  moon run install-mujoco")
+    if not args.headless:
+        reexec_under_mjpython("xfold.line")
+
+    if args.garment:
+        select_garment(args.garment)
+    cfg = shirt_config()
+    model = build()
+    data = mujoco.MjData(model)
+    line = Line(model, data, repeat=args.cycles == 0, skewed=bool(args.skewed))
+    pose = "skewed" if args.skewed else "square"
+    print(
+        f"XFOLD line  garment={cfg.garment} ({cfg.mesh})  pose={pose}  {LINE_PATH}",
+        flush=True,
+    )
+
+    def done() -> bool:
+        return line.finished or (args.cycles and line.cycles > args.cycles)
+
+    if args.headless:
+        _run_headless(line, args.shots, args.camera, done)
+        return
+
+    import mujoco.viewer
+
+    with mujoco.viewer.launch_passive(model, data) as viewer:
+        follow = FollowCam() if args.camera == "follow" else None
+        if follow is not None:
+            follow.setup(viewer.cam)
+        else:
+            viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
+            viewer.cam.fixedcamid = model.camera(args.camera).id
+        per_frame = max(1, round((1.0 / 60.0) / line.dt))
+        while viewer.is_running() and not done():
+            started = time.perf_counter()
+            for _ in range(per_frame):
+                line.step()
+            if follow is not None:
+                follow.track(line.positions(), per_frame * line.dt)
+                follow.aim(viewer.cam)
+            viewer.sync()
+            time.sleep(max(0.0, per_frame * line.dt - (time.perf_counter() - started)))
+
+
+def _run_headless(line: Line, shots: str, camera: str, done) -> None:
+    renderer = None
+    if shots:
+        import mujoco
+
+        Path(shots).mkdir(parents=True, exist_ok=True)
+        renderer = mujoco.Renderer(line.model, height=720, width=1280)
+
+    follow = FollowCam() if camera == "follow" else None
+    every = 25  # steps between camera updates: 50 ms of sim time
+    frame = 0
+    count = 0
+    previous = None
+    started = time.perf_counter()
+    while not done():
+        line.step()
+        count += 1
+        if follow is not None and count % every == 0:
+            follow.track(line.positions(), every * line.dt)
+        # One frame as each stage ends, plus a few through each flip.
+        label = (line.stage, line.cycles)
+        flipping = line.stage == "FOLD" and line.data.time % 0.4 < line.dt
+        if renderer is not None and (label != previous or flipping):
+            from PIL import Image
+
+            renderer.update_scene(line.data, camera=camera if follow is None else follow.cam)
+            path = Path(shots) / f"{frame:03d}_{line.stage.lower()}.png"
+            Image.fromarray(renderer.render()).save(path)
+            frame += 1
+        previous = label
+    wall = time.perf_counter() - started
+    print(f"{line.data.time:.1f} s simulated in {wall:.1f} s", flush=True)
+
+
+if __name__ == "__main__":
+    main()

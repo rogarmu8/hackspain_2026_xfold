@@ -28,142 +28,132 @@
     <body name="press_origin">
     <!-- Fixed industrial table. The shortened top leaves the +x dump edge clear. -->
     <body name="press_table">
-      <geom name="table_top" type="box" size="0.32 0.40 0.04" pos="-0.14 0 0.46" material="steel"/>
-      <geom name="leg_fl" type="box" size="0.035 0.035 0.21" pos="-0.39 0.32 0.21" material="steel"/>
-      <geom name="leg_fr" type="box" size="0.035 0.035 0.21" pos="-0.39 -0.32 0.21" material="steel"/>
-      <geom name="leg_bl" type="box" size="0.035 0.035 0.21" pos="0.10 0.32 0.21" material="steel"/>
-      <geom name="leg_br" type="box" size="0.035 0.035 0.21" pos="0.10 -0.32 0.21" material="steel"/>
-      <geom name="lower_brace" type="box" size="0.28 0.025 0.025" pos="-0.14 0 0.15" material="steel"/>
-      <geom name="hinge_support_l" type="box" size="0.035 0.025 0.075" pos="0.26 0.375 0.50" material="steel"/>
-      <geom name="hinge_support_r" type="box" size="0.035 0.025 0.075" pos="0.26 -0.375 0.50" material="steel"/>
+      <geom name="table_top" type="box" size="0.44 0.50 0.04" pos="-0.18 0 0.46" material="steel"/>
+      <geom name="leg_fl" type="box" size="0.035 0.035 0.21" pos="-0.50 0.42 0.21" material="steel"/>
+      <geom name="leg_fr" type="box" size="0.035 0.035 0.21" pos="-0.50 -0.42 0.21" material="steel"/>
+      <geom name="leg_bl" type="box" size="0.035 0.035 0.21" pos="0.16 0.42 0.21" material="steel"/>
+      <geom name="leg_br" type="box" size="0.035 0.035 0.21" pos="0.16 -0.42 0.21" material="steel"/>
+      <geom name="lower_brace" type="box" size="0.36 0.025 0.025" pos="-0.16 0 0.15" material="steel"/>
+      <geom name="hinge_support_l" type="box" size="0.035 0.025 0.075" pos="0.36 0.475 0.50" material="steel"/>
+      <geom name="hinge_support_r" type="box" size="0.035 0.025 0.075" pos="0.36 -0.475 0.50" material="steel"/>
 
       <!-- Operator panel on the front corner: start, stop, e-stop mushroom. -->
-      <geom name="ctrl_box" type="box" size="0.060 0.040 0.035" pos="0.10 -0.355 0.535" material="panel_grey" contype="0" conaffinity="0"/>
-      <geom name="ctrl_go" type="cylinder" size="0.011 0.005" pos="0.075 -0.365 0.572" material="button_green" contype="0" conaffinity="0"/>
-      <geom name="ctrl_stop" type="cylinder" size="0.011 0.005" pos="0.115 -0.345 0.572" material="button_red" contype="0" conaffinity="0"/>
-      <geom name="estop_ring" type="cylinder" size="0.020 0.004" pos="0.140 -0.365 0.573" material="button_yellow" contype="0" conaffinity="0"/>
-      <geom name="estop_cap" type="cylinder" size="0.013 0.007" pos="0.140 -0.365 0.580" material="button_red" contype="0" conaffinity="0"/>
+      <geom name="ctrl_box" type="box" size="0.060 0.040 0.035" pos="0.16 -0.455 0.535" material="panel_grey" contype="0" conaffinity="0"/>
+      <geom name="ctrl_go" type="cylinder" size="0.011 0.005" pos="0.135 -0.465 0.572" material="button_green" contype="0" conaffinity="0"/>
+      <geom name="ctrl_stop" type="cylinder" size="0.011 0.005" pos="0.175 -0.445 0.572" material="button_red" contype="0" conaffinity="0"/>
+      <geom name="estop_ring" type="cylinder" size="0.020 0.004" pos="0.200 -0.465 0.573" material="button_yellow" contype="0" conaffinity="0"/>
+      <geom name="estop_cap" type="cylinder" size="0.013 0.007" pos="0.200 -0.465 0.580" material="button_red" contype="0" conaffinity="0"/>
 
       <!-- Leveling feet under the table legs. -->
-      <geom name="foot_fl" type="cylinder" size="0.050 0.008" pos="-0.39 0.32 0.008" material="panel_grey" contype="0" conaffinity="0"/>
-      <geom name="foot_fr" type="cylinder" size="0.050 0.008" pos="-0.39 -0.32 0.008" material="panel_grey" contype="0" conaffinity="0"/>
-      <geom name="foot_bl" type="cylinder" size="0.050 0.008" pos="0.10 0.32 0.008" material="panel_grey" contype="0" conaffinity="0"/>
-      <geom name="foot_br" type="cylinder" size="0.050 0.008" pos="0.10 -0.32 0.008" material="panel_grey" contype="0" conaffinity="0"/>
+      <geom name="foot_fl" type="cylinder" size="0.050 0.008" pos="-0.50 0.42 0.008" material="panel_grey" contype="0" conaffinity="0"/>
+      <geom name="foot_fr" type="cylinder" size="0.050 0.008" pos="-0.50 -0.42 0.008" material="panel_grey" contype="0" conaffinity="0"/>
+      <geom name="foot_bl" type="cylinder" size="0.050 0.008" pos="0.16 0.42 0.008" material="panel_grey" contype="0" conaffinity="0"/>
+      <geom name="foot_br" type="cylinder" size="0.050 0.008" pos="0.16 -0.42 0.008" material="panel_grey" contype="0" conaffinity="0"/>
     </body>
 
     <!-- Only the lower platform tilts. +tilt lifts -x and dumps the shirt over +x. -->
-    <body name="press_bed" pos="0.26 0 0.54">
+    <body name="press_bed" pos="0.36 0 0.54">
       <joint name="press_tilt" type="hinge" axis="0 1 0" range="0 0.9"
              armature="0.4" damping="18"/>
-      <inertial pos="-0.26 0 0.02" mass="18" diaginertia="1.2 1.6 2.0"/>
+      <inertial pos="-0.36 0 0.02" mass="22" diaginertia="1.8 2.4 2.8"/>
 
-      <!-- Heated lower platen. Center is -0.26 from the hinge (bed half-length 0.26). -->
-      <geom name="bed_plate" type="box" size="0.26 0.32 0.016" pos="-0.26 0 0" material="hot"/>
-      <geom name="bed_heater" type="box" size="0.22 0.28 0.004" pos="-0.26 0 0.018"
+      <!-- Heated lower platen. Center is -0.36 from the hinge (bed half-length 0.36). -->
+      <geom name="bed_plate" type="box" size="0.36 0.40 0.016" pos="-0.36 0 0" material="hot"/>
+      <geom name="bed_heater" type="box" size="0.32 0.36 0.004" pos="-0.36 0 0.018"
             material="hot_dark" friction="0.20 0.01 0.001" priority="1"/>
 
       <!-- Canvas-covered pad on the buck; the hot plate stands just proud of it. -->
-      <geom name="bed_pad" type="box" size="0.245 0.29 0.006" pos="-0.26 0 0.014"
+      <geom name="bed_pad" type="box" size="0.345 0.37 0.006" pos="-0.36 0 0.014"
             material="buck_pad" contype="0" conaffinity="0"/>
 
       <!-- Light side rails so the shirt dumps along +x, not off Y. -->
-      <geom name="bed_rail_l" type="box" size="0.25 0.012 0.018" pos="-0.26 0.31 0.02" material="steel"/>
-      <geom name="bed_rail_r" type="box" size="0.25 0.012 0.018" pos="-0.26 -0.31 0.02" material="steel"/>
+      <geom name="bed_rail_l" type="box" size="0.35 0.012 0.018" pos="-0.36 0.39 0.02" material="steel"/>
+      <geom name="bed_rail_r" type="box" size="0.35 0.012 0.018" pos="-0.36 -0.39 0.02" material="steel"/>
 
-      <site name="bed_center" pos="-0.26 0 0.02" size="0.01"/>
+      <site name="bed_center" pos="-0.36 0 0.02" size="0.01"/>
     </body>
 
     <!--
-      Dual-screw steam press. Lead screws carry the head; a ram on the beam
-      pushes it down. Steam comes from a facility line: a rigid riser climbs
-      beside the right column, runs along the beam, and a valve drops to the
-      barb that feeds the head's rubber hose (draped in Python so it slacks
-      when the press is open).
+      Dual-screw steam press. The lead screws carry the head up and down.
+      Steam comes from a facility line: a rigid riser climbs beside the right
+      column, runs along the beam, and a valve drops to the barb that feeds
+      the head's rubber hose (draped in Python so it slacks when the press
+      is open).
     -->
     <body name="press_frame">
-      <geom name="col_l" type="cylinder" size="0.022 0.50" pos="-0.24 0.36 1.01" material="chrome"/>
-      <geom name="col_r" type="cylinder" size="0.022 0.50" pos="-0.24 -0.36 1.01" material="chrome"/>
-      <geom name="col_l_foot" type="cylinder" size="0.045 0.018" pos="-0.24 0.36 0.522" material="steel"/>
-      <geom name="col_r_foot" type="cylinder" size="0.045 0.018" pos="-0.24 -0.36 0.522" material="steel"/>
-      <geom name="col_l_cap" type="cylinder" size="0.034 0.014" pos="-0.24 0.36 1.544" material="steel"/>
-      <geom name="col_r_cap" type="cylinder" size="0.034 0.014" pos="-0.24 -0.36 1.544" material="steel"/>
+      <geom name="col_l" type="cylinder" size="0.022 0.50" pos="-0.24 0.46 1.01" material="chrome"/>
+      <geom name="col_r" type="cylinder" size="0.022 0.50" pos="-0.24 -0.46 1.01" material="chrome"/>
+      <geom name="col_l_foot" type="cylinder" size="0.045 0.018" pos="-0.24 0.46 0.522" material="steel"/>
+      <geom name="col_r_foot" type="cylinder" size="0.045 0.018" pos="-0.24 -0.46 0.522" material="steel"/>
+      <geom name="col_l_cap" type="cylinder" size="0.034 0.014" pos="-0.24 0.46 1.544" material="steel"/>
+      <geom name="col_r_cap" type="cylinder" size="0.034 0.014" pos="-0.24 -0.46 1.544" material="steel"/>
 
-      <geom name="thread_l_00" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 0.560" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_01" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 0.595" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_02" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 0.629" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_03" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 0.664" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_04" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 0.698" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_05" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 0.733" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_06" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 0.768" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_07" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 0.802" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_08" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 0.837" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_09" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 0.872" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_10" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 0.906" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_11" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 0.941" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_12" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 0.975" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_13" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 1.010" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_14" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 1.045" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_15" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 1.079" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_16" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 1.114" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_17" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 1.148" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_18" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 1.183" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_19" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 1.218" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_20" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 1.252" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_21" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 1.287" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_22" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 1.322" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_23" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 1.356" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_24" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 1.391" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_25" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 1.425" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_l_26" type="cylinder" size="0.032 0.006" pos="-0.24 0.36 1.460" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_00" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 0.560" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_01" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 0.595" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_02" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 0.629" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_03" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 0.664" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_04" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 0.698" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_05" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 0.733" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_06" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 0.768" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_07" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 0.802" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_08" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 0.837" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_09" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 0.872" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_10" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 0.906" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_11" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 0.941" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_12" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 0.975" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_13" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 1.010" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_14" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 1.045" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_15" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 1.079" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_16" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 1.114" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_17" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 1.148" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_18" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 1.183" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_19" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 1.218" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_20" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 1.252" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_21" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 1.287" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_22" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 1.322" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_23" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 1.356" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_24" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 1.391" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_25" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 1.425" material="thread" contype="0" conaffinity="0"/>
-      <geom name="thread_r_26" type="cylinder" size="0.032 0.006" pos="-0.24 -0.36 1.460" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_00" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 0.560" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_01" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 0.595" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_02" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 0.629" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_03" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 0.664" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_04" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 0.698" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_05" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 0.733" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_06" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 0.768" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_07" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 0.802" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_08" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 0.837" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_09" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 0.872" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_10" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 0.906" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_11" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 0.941" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_12" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 0.975" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_13" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 1.010" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_14" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 1.045" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_15" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 1.079" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_16" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 1.114" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_17" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 1.148" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_18" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 1.183" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_19" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 1.218" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_20" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 1.252" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_21" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 1.287" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_22" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 1.322" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_23" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 1.356" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_24" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 1.391" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_25" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 1.425" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_l_26" type="cylinder" size="0.032 0.006" pos="-0.24 0.46 1.460" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_00" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 0.560" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_01" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 0.595" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_02" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 0.629" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_03" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 0.664" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_04" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 0.698" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_05" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 0.733" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_06" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 0.768" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_07" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 0.802" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_08" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 0.837" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_09" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 0.872" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_10" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 0.906" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_11" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 0.941" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_12" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 0.975" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_13" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 1.010" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_14" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 1.045" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_15" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 1.079" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_16" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 1.114" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_17" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 1.148" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_18" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 1.183" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_19" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 1.218" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_20" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 1.252" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_21" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 1.287" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_22" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 1.322" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_23" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 1.356" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_24" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 1.391" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_25" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 1.425" material="thread" contype="0" conaffinity="0"/>
+      <geom name="thread_r_26" type="cylinder" size="0.032 0.006" pos="-0.24 -0.46 1.460" material="thread" contype="0" conaffinity="0"/>
 
-      <geom name="beam" type="box" size="0.07 0.44 0.045" pos="-0.24 0 1.49" material="steel"/>
-
-      <!--
-        Drive ram. The barrel hangs off the beam's underside, tucked back
-        against it so the loading hand never crosses it; the rod telescopes
-        inside as the head rises. Decorative - the stroke actuator does the work.
-      -->
-      <geom name="ram_flange" type="cylinder" size="0.062 0.012" pos="-0.22 0 1.445" material="steel" contype="0" conaffinity="0"/>
-      <geom name="ram_barrel" type="cylinder" size="0.048 0.26" pos="-0.22 0 1.18" material="steel" contype="0" conaffinity="0"/>
-      <geom name="ram_barrel_band" type="cylinder" size="0.054 0.018" pos="-0.22 0 1.37" material="steel" contype="0" conaffinity="0"/>
-      <geom name="ram_gland" type="cylinder" size="0.030 0.014" pos="-0.22 0 0.935" material="chrome" contype="0" conaffinity="0"/>
+      <geom name="beam" type="box" size="0.07 0.54 0.045" pos="-0.24 0 1.49" material="steel"/>
 
       <!--
         Facility steam, not a boiler on the machine. The riser stands on the
         floor beside the right column, elbows onto the beam, runs the beam's
         length, and a quarter-turn valve feeds the drop to the hose barb.
       -->
-      <geom name="steam_riser" type="cylinder" size="0.016 0.785" pos="-0.24 0.47 0.795" material="pipe" contype="0" conaffinity="0"/>
-      <geom name="riser_foot" type="cylinder" size="0.034 0.012" pos="-0.24 0.47 0.012" material="pipe" contype="0" conaffinity="0"/>
-      <geom name="riser_elbow" type="sphere" size="0.022" pos="-0.24 0.465 1.578" material="pipe" contype="0" conaffinity="0"/>
-      <geom name="steam_run" type="cylinder" size="0.014 0.45" pos="-0.24 0.01 1.578" euler="1.5708 0 0" material="pipe" contype="0" conaffinity="0"/>
+      <geom name="steam_riser" type="cylinder" size="0.016 0.785" pos="-0.24 0.57 0.795" material="pipe" contype="0" conaffinity="0"/>
+      <geom name="riser_foot" type="cylinder" size="0.034 0.012" pos="-0.24 0.57 0.012" material="pipe" contype="0" conaffinity="0"/>
+      <geom name="riser_elbow" type="sphere" size="0.022" pos="-0.24 0.565 1.578" material="pipe" contype="0" conaffinity="0"/>
+      <geom name="steam_run" type="cylinder" size="0.014 0.55" pos="-0.24 0.01 1.578" euler="1.5708 0 0" material="pipe" contype="0" conaffinity="0"/>
       <geom name="steam_valve" type="cylinder" size="0.024 0.030" pos="-0.24 0.16 1.578" material="pipe" contype="0" conaffinity="0"/>
       <geom name="valve_lever" type="box" size="0.040 0.008 0.006" pos="-0.196 0.16 1.606" material="hot" contype="0" conaffinity="0"/>
       <geom name="steam_drop" type="cylinder" size="0.012 0.075" pos="-0.24 0.16 1.500" material="pipe" contype="0" conaffinity="0"/>
@@ -191,46 +181,44 @@
         <joint name="press_stroke" type="slide" axis="0 0 1" range="-0.78 0"
                armature="0.4" damping="18"/>
         <inertial pos="0 0 0" mass="8" diaginertia="0.4 0.5 0.3"/>
-        <geom name="platen" type="box" size="0.24 0.29 0.016" material="hot"/>
-        <geom name="platen_heater" type="box" size="0.20 0.25 0.004" pos="0 0 -0.018" material="hot_dark"/>
+        <geom name="platen" type="box" size="0.34 0.37 0.016" material="hot"/>
+        <geom name="platen_heater" type="box" size="0.30 0.33 0.004" pos="0 0 -0.018" material="hot_dark"/>
 
-        <geom name="platen_head" type="box" size="0.20 0.24 0.020" pos="-0.02 0 0.038" material="steel" contype="0" conaffinity="0"/>
-        <geom name="ram_boss" type="cylinder" size="0.032 0.016" pos="-0.22 0 0.072" material="steel" contype="0" conaffinity="0"/>
-        <geom name="platen_yoke" type="box" size="0.10 0.30 0.020" pos="-0.13 0 0.050" material="steel" contype="0" conaffinity="0"/>
-        <geom name="nut_l" type="cylinder" size="0.048 0.042" pos="-0.24 0.36 0.062" material="brass" contype="0" conaffinity="0"/>
-        <geom name="nut_l_hex" type="box" size="0.046 0.040 0.036" pos="-0.24 0.36 0.062" material="brass" contype="0" conaffinity="0"/>
-        <geom name="nut_r" type="cylinder" size="0.048 0.042" pos="-0.24 -0.36 0.062" material="brass" contype="0" conaffinity="0"/>
-        <geom name="nut_r_hex" type="box" size="0.046 0.040 0.036" pos="-0.24 -0.36 0.062" material="brass" contype="0" conaffinity="0"/>
-        <geom name="nut_arm_l" type="box" size="0.06 0.040 0.018" pos="-0.18 0.33 0.062" material="steel" contype="0" conaffinity="0"/>
-        <geom name="nut_arm_r" type="box" size="0.06 0.040 0.018" pos="-0.18 -0.33 0.062" material="steel" contype="0" conaffinity="0"/>
-        <geom name="ram_rod" type="cylinder" size="0.018 0.055" pos="-0.22 0 0.12" material="chrome" contype="0" conaffinity="0"/>
+        <geom name="platen_head" type="box" size="0.28 0.32 0.020" pos="-0.02 0 0.038" material="steel" contype="0" conaffinity="0"/>
+        <geom name="platen_yoke" type="box" size="0.10 0.38 0.020" pos="-0.13 0 0.050" material="steel" contype="0" conaffinity="0"/>
+        <geom name="nut_l" type="cylinder" size="0.048 0.042" pos="-0.24 0.46 0.062" material="brass" contype="0" conaffinity="0"/>
+        <geom name="nut_l_hex" type="box" size="0.046 0.040 0.036" pos="-0.24 0.46 0.062" material="brass" contype="0" conaffinity="0"/>
+        <geom name="nut_r" type="cylinder" size="0.048 0.042" pos="-0.24 -0.46 0.062" material="brass" contype="0" conaffinity="0"/>
+        <geom name="nut_r_hex" type="box" size="0.046 0.040 0.036" pos="-0.24 -0.46 0.062" material="brass" contype="0" conaffinity="0"/>
+        <geom name="nut_arm_l" type="box" size="0.06 0.040 0.018" pos="-0.18 0.43 0.062" material="steel" contype="0" conaffinity="0"/>
+        <geom name="nut_arm_r" type="box" size="0.06 0.040 0.018" pos="-0.18 -0.43 0.062" material="steel" contype="0" conaffinity="0"/>
         <geom name="hose_inlet" type="cylinder" size="0.014 0.014" pos="-0.14 0.16 0.088" material="brass" contype="0" conaffinity="0"/>
         <geom name="steam_manifold" type="box" size="0.08 0.050 0.014" pos="-0.12 0.12 0.070" material="steel" contype="0" conaffinity="0"/>
 
-        <geom name="steam_0" type="ellipsoid" size="0.022 0.018 0.012" pos="-0.16 -0.18 -0.032" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_1" type="ellipsoid" size="0.018 0.024 0.011" pos="-0.06 -0.20 -0.030" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_2" type="ellipsoid" size="0.024 0.018 0.013" pos="0.06 -0.18 -0.034" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_3" type="ellipsoid" size="0.019 0.022 0.010" pos="0.16 -0.16 -0.031" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_4" type="ellipsoid" size="0.021 0.017 0.012" pos="-0.18 -0.06 -0.033" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_5" type="ellipsoid" size="0.017 0.021 0.011" pos="-0.05 -0.07 -0.029" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_6" type="ellipsoid" size="0.023 0.018 0.012" pos="0.05 -0.05 -0.032" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_7" type="ellipsoid" size="0.020 0.023 0.011" pos="0.17 -0.06 -0.030" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_8" type="ellipsoid" size="0.019 0.022 0.013" pos="-0.16 0.06 -0.034" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_9" type="ellipsoid" size="0.022 0.017 0.010" pos="-0.04 0.08 -0.031" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_10" type="ellipsoid" size="0.018 0.023 0.012" pos="0.06 0.05 -0.033" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_11" type="ellipsoid" size="0.024 0.019 0.011" pos="0.16 0.07 -0.030" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_12" type="ellipsoid" size="0.021 0.018 0.012" pos="-0.15 0.18 -0.032" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_13" type="ellipsoid" size="0.019 0.024 0.013" pos="-0.05 0.19 -0.029" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_14" type="ellipsoid" size="0.023 0.017 0.011" pos="0.05 0.17 -0.034" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_15" type="ellipsoid" size="0.020 0.022 0.012" pos="0.15 0.18 -0.031" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_16" type="ellipsoid" size="0.016 0.020 0.010" pos="-0.10 -0.12 -0.028" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_17" type="ellipsoid" size="0.020 0.016 0.011" pos="0.10 -0.12 -0.036" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_18" type="ellipsoid" size="0.018 0.018 0.012" pos="-0.10 0.12 -0.030" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_19" type="ellipsoid" size="0.022 0.015 0.010" pos="0.10 0.12 -0.033" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_20" type="ellipsoid" size="0.015 0.021 0.011" pos="0.00 -0.14 -0.031" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_21" type="ellipsoid" size="0.021 0.015 0.012" pos="0.00 0.14 -0.029" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_22" type="ellipsoid" size="0.017 0.019 0.010" pos="-0.12 0.00 -0.035" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
-        <geom name="steam_23" type="ellipsoid" size="0.019 0.017 0.013" pos="0.12 0.00 -0.028" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_0" type="ellipsoid" size="0.022 0.018 0.012" pos="-0.227 -0.230 -0.032" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_1" type="ellipsoid" size="0.018 0.024 0.011" pos="-0.085 -0.255 -0.030" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_2" type="ellipsoid" size="0.024 0.018 0.013" pos="0.085 -0.230 -0.034" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_3" type="ellipsoid" size="0.019 0.022 0.010" pos="0.227 -0.204 -0.031" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_4" type="ellipsoid" size="0.021 0.017 0.012" pos="-0.255 -0.077 -0.033" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_5" type="ellipsoid" size="0.017 0.021 0.011" pos="-0.071 -0.089 -0.029" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_6" type="ellipsoid" size="0.023 0.018 0.012" pos="0.071 -0.064 -0.032" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_7" type="ellipsoid" size="0.020 0.023 0.011" pos="0.241 -0.077 -0.030" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_8" type="ellipsoid" size="0.019 0.022 0.013" pos="-0.227 0.077 -0.034" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_9" type="ellipsoid" size="0.022 0.017 0.010" pos="-0.057 0.102 -0.031" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_10" type="ellipsoid" size="0.018 0.023 0.012" pos="0.085 0.064 -0.033" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_11" type="ellipsoid" size="0.024 0.019 0.011" pos="0.227 0.089 -0.030" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_12" type="ellipsoid" size="0.021 0.018 0.012" pos="-0.212 0.230 -0.032" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_13" type="ellipsoid" size="0.019 0.024 0.013" pos="-0.071 0.242 -0.029" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_14" type="ellipsoid" size="0.023 0.017 0.011" pos="0.071 0.217 -0.034" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_15" type="ellipsoid" size="0.020 0.022 0.012" pos="0.212 0.230 -0.031" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_16" type="ellipsoid" size="0.016 0.020 0.010" pos="-0.142 -0.153 -0.028" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_17" type="ellipsoid" size="0.020 0.016 0.011" pos="0.142 -0.153 -0.036" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_18" type="ellipsoid" size="0.018 0.018 0.012" pos="-0.142 0.153 -0.030" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_19" type="ellipsoid" size="0.022 0.015 0.010" pos="0.142 0.153 -0.033" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_20" type="ellipsoid" size="0.015 0.021 0.011" pos="0.000 -0.179 -0.031" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_21" type="ellipsoid" size="0.021 0.015 0.012" pos="0.000 0.179 -0.029" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_22" type="ellipsoid" size="0.017 0.019 0.010" pos="-0.170 0.000 -0.035" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
+        <geom name="steam_23" type="ellipsoid" size="0.019 0.017 0.013" pos="0.170 0.000 -0.028" rgba="0.90 0.93 0.97 0" contype="0" conaffinity="0"/>
         <site name="platen_center" pos="0 0 -0.02" size="0.01"/>
       </body>
     </body>

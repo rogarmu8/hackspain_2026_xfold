@@ -1,0 +1,61 @@
+# XFOLD shirt — edit this file, then re-run the playground / viewer.
+#   moon run sim:shirt-play
+#   moon run sim:view
+#
+# Inextensible cloth: edge equality carries stretch, bend FEM carries drape.
+# Stretch FEM (elastic2d=both) + two spring claws is what made a spike.
+# Sweep one group at a time (mass, then young, then damping, then friction).
+#
+# Override path:  XFOLD_SHIRT_CONFIG=/path/to/other.toml
+# Garment (CLI wins over env over this file):
+#   moon run sim:run                 # type, then good / damaged / notGood / skewed
+#   moon run sim:run -- -g tee --skewed
+#   moon run sim:run -- -g dress     # skip the list
+#   moon run sim:run -- --pick
+#   moon run sim:run -- --list-garments
+#   XFOLD_GARMENT=jersey moon run sim:run
+
+[garment]
+# Foldable 2D sheets (same three FlipFold creases):
+#   tee / tee_damaged / tee_notgood1..3
+#   (same pattern for work_tee, jersey, tank, polo, dress)
+#   notGood1 coffee  notGood2 grease  notGood3 mud
+type = "tee"
+
+[cloth]
+# Dry T-shirt weight (kg). Adult cotton tee is typically 0.15–0.22.
+mass = 0.18
+
+# Bend stiffness (Pa). Issue #1433 / poncho drop tests: 1e3–5e3.
+# Stretch is the edge-equality constraint, not this number.
+young = 3.0e3
+
+# Keep 0 with edge equality (nonzero Poisson fights the constraint).
+poisson = 0.0
+
+# Mechanical shell thickness (m), not the collision radius. ~1 mm cotton.
+thickness = 0.001
+
+# Rayleigh damping on the bend FEM (seconds).
+damping = 0.02
+
+# Edge-equality damping. Above ~0.5 the constraints pump energy.
+edge_damping = 0.1
+
+# Collision radius (m). Visual slab is this thick. 2–4 mm is the search band.
+radius = 0.003
+
+# First friction number (shirt–floor, shirt–self, shirt–body).
+# Identify later with a tilt test. 0.8 keeps a released packet still.
+friction = 0.8
+
+[solver]
+# 2 ms × ~410 verts stays near 60 fps. Edge equality wants more CG iters
+# than stretch FEM; 80 is the fold floor, drape.xml uses 400 on contacts.
+timestep = 0.002
+iterations = 80
+
+[fold]
+# Unused by the mocap-connect claws; kept as a documented pinch scale.
+claw_force = 12.0
+claw_hz = 5.0
