@@ -11,7 +11,7 @@ directly. It appends **facts** to an append-only **journal**. A small HTTP
 process exposes that journal over **SSE** and accepts **REST** commands.
 
 ```text
-MockDriver / PressBridgeDriver   Runtime              Journal           Browser
+LineDriver / PressBridgeDriver / MockDriver   Runtime      Journal       Browser
      │                          │                    │                  │
      │  emit_state / finish     │                    │                  │
      │─────────────────────────►│  append(event)     │                  │
@@ -23,9 +23,28 @@ MockDriver / PressBridgeDriver   Runtime              Journal           Browser
      │                          │───────────────────►│─────────────────►│
 ```
 
-Live physics uses a shared **`SimSession`** (`MjModel`/`MjData`). `PressBridgeDriver`
-advances PressCycle + cloth; the viewport only **renders**. Trajectory NPZ under
+Live physics uses a shared **`SimSession`** (`MjModel`/`MjData`). The Driver
+advances it; the viewport only **renders**. Trajectory NPZ under
 `data/trajectories/` powers replay seek (`recording/frame?t=`) — never JPEG in the journal.
+
+`SimSession` picks the best scene that compiles, and the driver follows it
+(`GET /capabilities` reports both as `scene` and `driver`):
+
+| `scene` | what it is | driver |
+|---|---|---|
+| `line` | `line.xml` — belt, press, flap folder, bagger | `LineDriver` |
+| `press_cell` | the older arm cell | `PressBridgeDriver` |
+| `stub` | `cell.xml`; renders, nothing drives it | `MockDriver` |
+| *(none)* | MuJoCo missing | `MockDriver` |
+
+Offscreen GL is probed once at startup. Without it the bridge keeps serving the
+journal with `viewportStream: false` — the dashboard shows the FSM and the live
+console, just no video — instead of taking the process down with it.
+
+The line's input garment is fixed when the scene compiles, because a different
+SKU is a different mesh: `XFOLD_GARMENT` (or `[garment] type` in
+`models/shirt.toml`) chooses it, and `XFOLD_SKEWED=1` drops it off square.
+`LineDriver` logs which input a cycle got as its first console line.
 ## Why this shape (and not WS / gRPC)
 
 | Need | Choice |

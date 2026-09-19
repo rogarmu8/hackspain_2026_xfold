@@ -4,6 +4,12 @@ One MjModel/MjData owned by the bridge process. The physics driver advances
 it; the viewport only renders; recording seek temporarily restores qpos under
 the same lock.
 
+Scene preference, best first (``kind`` says which one won):
+
+  ``line``        line.xml -- belt, press, flap folder, bagger. LineDriver.
+  ``press_cell``  the older arm cell. PressBridgeDriver.
+  ``stub``        cell.xml. Renders, but nothing drives it.
+
 Integration contract: docs/INTEGRATION_CONTRACT.md §4b
 """
 
@@ -31,12 +37,24 @@ class SimSession:
         self.model: Any = None
         self.data: Any = None
         self.cell: Any = None
-        self.camera = "overview"
+        self.kind = "none"
+        # May be a camera name or an MjvCamera. The line uses a FollowCam so
+        # the shirt does not shrink to a dot as it travels the 3 m of belt;
+        # seek renders use `static_camera` instead, since the follow camera
+        # tracks the live run, not the replayed one.
+        self.camera: Any = "overview"
+        self.static_camera = "overview"
+        self.follow: Any = None
         # One Renderer per thread — MuJoCo GL contexts are not cross-thread safe.
         self._renderers: dict[int, Any] = {}
         self._mujoco: Any = None
         self._ok = False
         self._source = "none"
+        # Offscreen GL is not always there (headless box, no EGL/OSMesa). MuJoCo
+        # aborts the process if we keep poking a context that failed to make,
+        # so one failure disables rendering for good and the bridge keeps
+        # serving the journal without pixels.
+        self._render_broken = False
 
     @property
     def ok(self) -> bool:
@@ -61,7 +79,7 @@ class SimSession:
 
                 load_mujoco_plugins()
                 self._mujoco = mujoco
-                self.model, self.data, self.cell, self.camera = self._compile(mujoco)
+                self._compile(mujoco)
                 self.model.vis.global_.offwidth = max(
                     self.model.vis.global_.offwidth, self.width
                 )
@@ -71,7 +89,7 @@ class SimSession:
                 self._ok = True
                 self._source = "mujoco"
                 print(
-                    f"[sim-session] ready camera={self.camera} "
+                    f"[sim-session] ready kind={self.kind} camera={self.static_camera} "
                     f"nq={self.model.nq} timestep={self.model.opt.timestep}",
                     flush=True,
                 )
@@ -95,6 +113,9 @@ class SimSession:
         self.model = None
         self.data = None
         self.cell = None
+        self.kind = "none"
+        self.follow = None
+        self.camera = "overview"
         self._mujoco = None
         self._ok = False
         self._source = "none"
@@ -110,7 +131,34 @@ class SimSession:
             self._renderers[tid] = renderer
         return renderer
 
-    def _compile(self, mujoco):
+    def _compile(self, mujoco) -> None:
+        """Pick the best scene available and set model/data/cell/camera/kind."""
+        if self._compile_line(mujoco):
+            return
+        if self._compile_press_cell(mujoco):
+            return
+        self._compile_stub(mujoco)
+
+    def _compile_line(self, mujoco) -> bool:
+        """line.xml — the belt/press/folder/bagger cycle LineDriver runs."""
+        try:
+            from xfold.line import FollowCam, build
+
+            model = build()
+            data = mujoco.MjData(model)
+            mujoco.mj_forward(model, data)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[sim-session] line compile failed ({exc}); trying press_cell", flush=True)
+            return False
+        self.model, self.data, self.cell, self.kind = model, data, None, "line"
+        self.static_camera = "overview"
+        self.follow = FollowCam()
+        self.camera = self.follow.cam
+        print("[sim-session] line.xml (belt, press, folder, bagger)", flush=True)
+        return True
+
+    def _compile_press_cell(self, mujoco) -> bool:
+        """The older arm cell, kept as a fallback for the press track."""
         try:
             from xfold.scene import build, spawn_shirt_in_bin
 
@@ -118,24 +166,35 @@ class SimSession:
             data = mujoco.MjData(cell.model)
             spawn_shirt_in_bin(cell, data, np.random.default_rng(7))
             mujoco.mj_forward(cell.model, data)
-            camera = "overview"
-            try:
-                cell.model.camera(camera)
-            except KeyError:
-                camera = "cell_cam"
-            print("[sim-session] press_cell (flex shirt + UR5e)", flush=True)
-            return cell.model, data, cell, camera
-        except Exception as exc:
-            print(
-                f"[sim-session] press_cell compile failed ({exc}); using cell.xml",
-                flush=True,
-            )
-            if not _CELL_FALLBACK.is_file():
-                raise
-            model = mujoco.MjModel.from_xml_path(_CELL_FALLBACK.as_posix())
-            data = mujoco.MjData(model)
-            mujoco.mj_forward(model, data)
-            return model, data, None, "overview"
+        except Exception as exc:  # noqa: BLE001
+            print(f"[sim-session] press_cell compile failed ({exc}); using cell.xml", flush=True)
+            return False
+        camera = "overview"
+        try:
+            cell.model.camera(camera)
+        except KeyError:
+            camera = "cell_cam"
+        self.model, self.data, self.cell, self.kind = cell.model, data, cell, "press_cell"
+        self.camera = self.static_camera = camera
+        self.follow = None
+        print("[sim-session] press_cell (flex shirt + UR5e)", flush=True)
+        return True
+
+    def _compile_stub(self, mujoco) -> None:
+        """cell.xml — renders, but no driver advances it."""
+        if not _CELL_FALLBACK.is_file():
+            raise RuntimeError("no scene compiles and models/cell.xml is missing")
+        model = mujoco.MjModel.from_xml_path(_CELL_FALLBACK.as_posix())
+        data = mujoco.MjData(model)
+        mujoco.mj_forward(model, data)
+        self.model, self.data, self.cell, self.kind = model, data, None, "stub"
+        self.camera = self.static_camera = "overview"
+        self.follow = None
+
+    def track_camera(self, cloth: np.ndarray, dt: float) -> None:
+        """Move the follow camera's look-at toward the cloth. No-op if fixed."""
+        if self.follow is not None:
+            self.follow.track(cloth, dt)
 
     def reset_shirt(self, seed: int) -> None:
         """Respawn cloth in the bin for a new run."""
@@ -223,7 +282,7 @@ class SimSession:
                 self.data.qpos[:] = np.asarray(qpos, dtype=np.float64)
                 self.data.qvel[:] = 0.0
                 self._mujoco.mj_forward(self.model, self.data)
-                return self.render_jpeg_unlocked()
+                return self.render_jpeg_unlocked(camera=self.static_camera)
             finally:
                 self.data.qpos[:] = saved_qpos
                 self.data.qvel[:] = saved_qvel
@@ -234,14 +293,38 @@ class SimSession:
         with self.lock:
             return self.render_jpeg_unlocked()
 
-    def render_jpeg_unlocked(self) -> tuple[bytes, str] | None:
-        if not self._ok or self._mujoco is None:
+    def render_jpeg_unlocked(self, camera: Any = None) -> tuple[bytes, str] | None:
+        if not self._ok or self._mujoco is None or self._render_broken:
             return None
         try:
             renderer = self._renderer_for_current_thread()
-            renderer.update_scene(self.data, camera=self.camera)
+            renderer.update_scene(
+                self.data, camera=self.camera if camera is None else camera
+            )
             rgb = renderer.render()
             return encode_frame(np.asarray(rgb))
         except Exception as exc:  # noqa: BLE001
-            print(f"[sim-session] render failed: {exc}", flush=True)
+            self._render_broken = True
+            self._renderers.pop(threading.get_ident(), None)
+            print(
+                f"[sim-session] offscreen render unavailable ({exc}); "
+                "continuing without a viewport",
+                flush=True,
+            )
             return None
+
+    @property
+    def can_render(self) -> bool:
+        return self._ok and not self._render_broken
+
+    def probe_render(self) -> bool:
+        """Render one throwaway frame to find out if this box has offscreen GL.
+
+        Called once at startup, before the viewport producer thread exists:
+        a GL context that cannot be made must fail here, on one thread, not
+        under a running producer where MuJoCo aborts the process.
+        """
+        with self.lock:
+            if not self._ok:
+                return False
+            return self.render_jpeg_unlocked(camera=self.static_camera) is not None

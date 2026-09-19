@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from xfold.bridge.journal import Journal
+from xfold.bridge.line_driver import LineDriver
 from xfold.bridge.mock_driver import MockDriver
 from xfold.bridge.press_driver import PressBridgeDriver
 from xfold.bridge.runtime import Runtime
@@ -50,7 +51,7 @@ def create_app(*, persist: bool = True) -> FastAPI:
     viewport_producer = MujocoViewportProducer(session, viewport_hub)
 
     # Driver chosen at startup once SimSession tries to load MuJoCo.
-    driver: PressBridgeDriver | MockDriver | None = None
+    driver: LineDriver | PressBridgeDriver | MockDriver | None = None
 
     app = FastAPI(
         title="XFOLD bridge",
@@ -83,43 +84,66 @@ def create_app(*, persist: bool = True) -> FastAPI:
     @app.on_event("startup")
     def _startup() -> None:
         nonlocal driver
-        # TODO(press): prefer a LineDriver (xfold.line.Line stepped inside the
-        # driver, logging via runtime.emit_log) when line.xml compiles.
-        # Checklist: docs/TODO_PRESS_INTEGRATION.md
-        if session.start() and session.cell is not None:
-            driver = PressBridgeDriver(runtime, session)
+        # Driver follows whichever scene SimSession managed to compile:
+        #   line       -> LineDriver       (belt, press, folder, bagger)
+        #   press_cell -> PressBridgeDriver (older arm cell)
+        #   anything else -> MockDriver
+        started = session.start()
+        kind = session.kind if started else "none"
+
+        if kind in ("line", "press_cell"):
+            driver = (
+                LineDriver(runtime, session)
+                if kind == "line"
+                else PressBridgeDriver(runtime, session)
+            )
             driver.start()
             app.state.driver = driver
-            runtime.capabilities.recordingSeek = True
-            if viewport_producer.start():
+            # Probe offscreen GL before the producer thread exists: on a box
+            # without it, MuJoCo aborts the process rather than raising.
+            if session.probe_render() and viewport_producer.start():
                 runtime.capabilities.viewportStream = True
                 print(
                     "[viewport] long-poll JPEG at /viewport/frame "
                     "(MJPEG legacy at /viewport/stream)",
                     flush=True,
                 )
-            print("[bridge] PressBridgeDriver active (real PressCycle)", flush=True)
-        else:
-            if session.ok and session.cell is None:
-                # cell.xml fallback: render OK, no press actuators → mock FSM
-                if viewport_producer.start():
-                    runtime.capabilities.viewportStream = True
-                runtime.capabilities.recordingSeek = False
-                print(
-                    "[bridge] press_cell unavailable — MockDriver + viewport only",
-                    flush=True,
-                )
             else:
                 runtime.capabilities.viewportStream = False
-                runtime.capabilities.recordingSeek = False
                 print(
-                    "[bridge] MockDriver fallback — install MuJoCo via "
-                    "moon run install-mujoco / moon run sim:bridge",
+                    "[viewport] no offscreen GL — bridge runs headless, "
+                    "dashboard shows FSM + console without video",
                     flush=True,
                 )
-            driver = MockDriver(runtime)
-            driver.start()
-            app.state.driver = driver
+            runtime.capabilities.recordingSeek = session.can_render
+            runtime.driver_label = (
+                "LineDriver (belt, press, flap folder, bagger + SimSession)"
+                if kind == "line"
+                else "PressBridgeDriver (PressCycle + SimSession)"
+            )
+            print(f"[bridge] {runtime.driver_label} active", flush=True)
+            return
+
+        if started:
+            # cell.xml stub: renders, but has nothing to drive → mock FSM.
+            if session.probe_render() and viewport_producer.start():
+                runtime.capabilities.viewportStream = True
+            runtime.capabilities.recordingSeek = False
+            print(
+                "[bridge] no line and no press_cell — MockDriver + viewport only",
+                flush=True,
+            )
+        else:
+            runtime.capabilities.viewportStream = False
+            runtime.capabilities.recordingSeek = False
+            print(
+                "[bridge] MockDriver fallback — install MuJoCo via "
+                "moon run install-mujoco / moon run sim:bridge",
+                flush=True,
+            )
+        driver = MockDriver(runtime)
+        driver.start()
+        app.state.driver = driver
 
     @app.on_event("shutdown")
     def _shutdown() -> None:
@@ -142,10 +166,13 @@ def create_app(*, persist: bool = True) -> FastAPI:
         caps["viewportSource"] = viewport_hub.source
         caps["viewportTransport"] = "long-poll"
         caps["recordingSeek"] = bool(runtime.capabilities.recordingSeek)
+        active = getattr(app.state, "driver", None)
         caps["driver"] = (
-            "press" if isinstance(getattr(app.state, "driver", None), PressBridgeDriver)
+            "line" if isinstance(active, LineDriver)
+            else "press" if isinstance(active, PressBridgeDriver)
             else "mock"
         )
+        caps["scene"] = session.kind
         return caps
 
     @app.get("/snapshot")

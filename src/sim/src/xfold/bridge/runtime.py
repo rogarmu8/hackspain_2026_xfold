@@ -51,6 +51,7 @@ class RunRecord:
     events: list[dict[str, Any]] = field(default_factory=list)
     paused: bool = False
     cancel_requested: bool = False
+    driverLabel: str = "Bridge mock driver"
 
     def telemetry(self) -> dict[str, Any] | None:
         if self.currentState is None and self.lifecycle == "queued":
@@ -86,11 +87,7 @@ class RunRecord:
                 "name": self.name,
                 "seed": self.seed,
                 "scenario": self.scenario,
-                "notes": (
-                    "Bridge mock driver"
-                    if self.scenario == "mock"
-                    else "PressBridgeDriver (PressCycle + SimSession)"
-                ),
+                "notes": self.driverLabel,
             },
             "stages": [
                 {
@@ -173,6 +170,8 @@ class Runtime:
         self._batch_counter = 0
         self._seen_commands: dict[str, str] = {}  # clientCommandId -> status
         self._wake = threading.Event()
+        # Set by app.py once a driver is chosen; shown as a run's `notes`.
+        self.driver_label = "Bridge mock driver"
 
     def wake_driver(self) -> None:
         self._wake.set()
@@ -325,6 +324,7 @@ class Runtime:
             name=name,
             scenario=scenario,
             stages=self._fresh_stages(),
+            driverLabel=self.driver_label,
         )
         self.runs[run.id] = run
         return run
