@@ -19,7 +19,8 @@ real flap's friction does, and lets go at the top of the swing. The cloth
 does not collide with itself in MuJoCo, so ClothLayers keeps the folded
 layers apart from then on.
 
-With a window:  moon run sim:run              # arrow-key list
+With a window:  moon run sim:run              # type, then good / damaged / notGood / skewed
+                moon run sim:run -- -g tee --skewed
                 moon run sim:run -- -g dress  # skip the list
 Headless:       pixi run -e mujoco python -P -m xfold.line --headless --cycles 1 -g jersey
 Catalogue:      moon run sim:run -- --list-garments
@@ -67,6 +68,9 @@ BELT_ACCEL = 0.6  # m/s^2, both speeding up and braking
 # Cloth this close above the belt top rides with it.
 ON_BELT = 0.03
 
+# How far a "not square on the belt" drop is rotated / shifted.
+SKEW_YAW = math.radians(35.0)
+SKEW_Y = 0.09
 # The shirt's centre when it is put on the belt, and where the press is.
 SPAWN_X = -1.55
 PRESS_X = -0.75
@@ -137,13 +141,28 @@ def build():
     return spec.compile()
 
 
-def flat_shirt(center_x: float) -> np.ndarray:
-    """World vertices of the shirt lying flat on the belt, collar toward +x."""
+def flat_shirt(center_x: float, *, yaw: float = 0.0, y: float = 0.0) -> np.ndarray:
+    """World vertices of the shirt lying flat on the belt, collar toward +x.
+
+    ``yaw`` is rotation about +Z (radians). ``y`` is a lateral shift. A
+    square drop is yaw=0, y=0; a bad belt place uses SKEW_YAW / SKEW_Y.
+    """
     mesh = load_shirt_mesh()[0]  # OBJ frame: sleeves along x, collar at +y
     world = np.empty_like(mesh)
     world[:, 0] = mesh[:, 1] - 0.5 * (mesh[:, 1].min() + mesh[:, 1].max()) + center_x
     world[:, 1] = -mesh[:, 0]
     world[:, 2] = SURFACE_Z + SHIRT_RADIUS
+    if yaw or y:
+        mid = world.mean(axis=0)
+        rel = world - mid
+        cos, sin = math.cos(yaw), math.sin(yaw)
+        rot = np.empty_like(rel)
+        rot[:, 0] = rel[:, 0] * cos - rel[:, 1] * sin
+        rot[:, 1] = rel[:, 0] * sin + rel[:, 1] * cos
+        rot[:, 2] = rel[:, 2]
+        world = rot + mid
+        world[:, 1] += y
+        world[:, 2] = SURFACE_Z + SHIRT_RADIUS
     return world
 
 
@@ -154,7 +173,7 @@ class Line:
     viewer, a headless run and the dashboard viewport all just call step().
     """
 
-    def __init__(self, model, data, repeat: bool = True, log=print) -> None:
+    def __init__(self, model, data, repeat: bool = True, log=print, *, skewed: bool = False) -> None:
         import mujoco
 
         self._mujoco = mujoco
@@ -162,6 +181,7 @@ class Line:
         self.data = data
         self.repeat = repeat
         self.log = log
+        self.skewed = skewed
         self.dt = float(model.opt.timestep)
 
         self._qadr = shirt_vertex_qposadr(model)
@@ -246,7 +266,10 @@ class Line:
 
     def _cycle(self):
         self._load()
-        yield from self._hold("LOAD", "flat shirt on the belt", 0.6)
+        load_msg = (
+            "skewed shirt on the belt" if self.skewed else "flat shirt on the belt"
+        )
+        yield from self._hold("LOAD", load_msg, 0.6)
 
         self._enter("BELT", "carry the shirt under the press")
         yield from self._belt_until(lambda pos: PRESS_X - float(pos[:, 0].mean()))
@@ -287,7 +310,11 @@ class Line:
         self._steam.reset()
         set_steam(self.model, False)
         self.data.ctrl[self._stroke] = STROKE_OPEN
-        world = flat_shirt(SPAWN_X)
+        world = (
+            flat_shirt(SPAWN_X, yaw=SKEW_YAW, y=SKEW_Y)
+            if self.skewed
+            else flat_shirt(SPAWN_X)
+        )
         ids = np.arange(len(world))
         self._pin(ids, world, None)
         mujoco.mj_forward(self.model, self.data)
@@ -406,7 +433,8 @@ def main() -> None:
     )
     if chosen:
         rewrite_argv_garment(chosen)
-        args.garment = chosen
+        args.garment = chosen.key
+        args.skewed = chosen.skewed
 
     try:
         import mujoco
@@ -420,9 +448,10 @@ def main() -> None:
     cfg = shirt_config()
     model = build()
     data = mujoco.MjData(model)
-    line = Line(model, data, repeat=args.cycles == 0)
+    line = Line(model, data, repeat=args.cycles == 0, skewed=bool(args.skewed))
+    pose = "skewed" if args.skewed else "square"
     print(
-        f"XFOLD line  garment={cfg.garment} ({cfg.mesh})  {LINE_PATH}",
+        f"XFOLD line  garment={cfg.garment} ({cfg.mesh})  pose={pose}  {LINE_PATH}",
         flush=True,
     )
 

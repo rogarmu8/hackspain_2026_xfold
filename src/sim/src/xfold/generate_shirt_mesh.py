@@ -41,6 +41,39 @@ RIGHT_CREASE_X = BODY_W / 6.0
 
 _HEM, _NECK, _LCUFF, _RCUFF, _SEAM = "hem", "neck", "lcuff", "rcuff", "seam"
 
+# Ellipses (cx, cy, rx, ry) in the OBJ frame. Interior holes + bites that
+# chew the hem / sleeve so the damaged twin is not just a dirty print.
+_DAMAGE_CUTS: dict[str, tuple[tuple[float, float, float, float], ...]] = {
+    "tee_damaged": (
+        (0.08, 0.05, 0.050, 0.042),
+        (0.14, -0.32, 0.080, 0.058),
+    ),
+    "work_tee_damaged": (
+        (0.16, 0.00, 0.044, 0.038),
+        (-0.18, -0.32, 0.075, 0.055),
+    ),
+    "jersey_damaged": (
+        (0.00, 0.02, 0.060, 0.052),
+        (-0.52, 0.20, 0.085, 0.055),
+    ),
+    "tank_damaged": (
+        (0.05, 0.00, 0.055, 0.048),
+        (-0.12, -0.32, 0.070, 0.052),
+    ),
+    "polo_damaged": (
+        (0.04, 0.02, 0.045, 0.038),
+        (0.10, -0.27, 0.072, 0.050),
+    ),
+    "dress_damaged": (
+        (0.12, -0.22, 0.070, 0.062),
+        (0.34, -0.54, 0.090, 0.070),
+    ),
+}
+
+
+def damage_cuts(garment_key: str) -> tuple[tuple[float, float, float, float], ...]:
+    return _DAMAGE_CUTS.get(garment_key, ())
+
 
 def _arc(cx: float, cy: float, rx: float, ry: float, a0: float, a1: float, n: int) -> np.ndarray:
     t = np.linspace(a0, a1, n, dtype=np.float64)
@@ -416,6 +449,13 @@ def _point_in_poly(x: float, y: float, poly: np.ndarray) -> bool:
     return inside
 
 
+def _in_cut(x: float, y: float, cuts: tuple[tuple[float, float, float, float], ...]) -> bool:
+    for cx, cy, rx, ry in cuts:
+        if ((x - cx) / max(rx, 1e-6)) ** 2 + ((y - cy) / max(ry, 1e-6)) ** 2 <= 1.0:
+            return True
+    return False
+
+
 def _axis(lo: float, hi: float, spacing: float) -> np.ndarray:
     n = int(np.floor((hi - lo) / spacing)) + 1
     span = (n - 1) * spacing
@@ -457,14 +497,21 @@ def _remap_used(verts: np.ndarray, faces: np.ndarray) -> tuple[np.ndarray, np.nd
 
 
 def _fit_boundary(
-    verts: np.ndarray, faces: np.ndarray, poly: np.ndarray
+    verts: np.ndarray,
+    faces: np.ndarray,
+    poly: np.ndarray,
+    *,
+    cuts: tuple[tuple[float, float, float, float], ...] = (),
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Project the grid silhouette onto the nearest T-outline point."""
+    """Project the outer grid silhouette onto the sewing outline."""
     loops = boundary_loops(faces)
-    if len(loops) != 1:
+    if not loops:
         return verts, faces
+    if not cuts and len(loops) != 1:
+        return verts, faces
+    outer = max(loops, key=len)
     out = verts.copy()
-    for index in loops[0]:
+    for index in outer:
         out[index, :2] = _closest_on_poly(out[index, :2], poly)
 
     keep: list[tuple[int, int, int]] = []
@@ -473,19 +520,29 @@ def _fit_boundary(
         if _signed_area(tri[:, :2]) < 1e-10:
             continue
         c = tri.mean(axis=0)
-        if _point_in_poly(float(c[0]), float(c[1]), poly):
-            keep.append((int(face[0]), int(face[1]), int(face[2])))
+        if not _point_in_poly(float(c[0]), float(c[1]), poly):
+            continue
+        if cuts and _in_cut(float(c[0]), float(c[1]), cuts):
+            continue
+        keep.append((int(face[0]), int(face[1]), int(face[2])))
     if not keep:
         return verts, faces
     faces2 = np.asarray(keep, dtype=np.int32)
     fitted_v, fitted_f = _remap_used(out, faces2)
-    if len(boundary_loops(fitted_f)) == 1:
+    nloop = len(boundary_loops(fitted_f))
+    if cuts:
+        return (fitted_v, fitted_f) if nloop >= 1 else (out, faces)
+    if nloop == 1:
         return fitted_v, fitted_f
-    # Projection without culling still hugs the sleeves / hem.
     return out, faces
 
 
-def build_panel(spacing: float, style: str = "tee") -> tuple[np.ndarray, np.ndarray]:
+def build_panel(
+    spacing: float,
+    style: str = "tee",
+    *,
+    cuts: tuple[tuple[float, float, float, float], ...] = (),
+) -> tuple[np.ndarray, np.ndarray]:
     """One foldable 2D panel (z = 0) from the sewing pattern."""
     poly = shirt_outline(style)
     pad = 0.5 * spacing
@@ -495,9 +552,12 @@ def build_panel(spacing: float, style: str = "tee") -> tuple[np.ndarray, np.ndar
     verts: list[tuple[float, float, float]] = []
     for j, y in enumerate(ys):
         for i, x in enumerate(xs):
-            if _point_in_poly(float(x), float(y), poly):
-                idx[j, i] = len(verts)
-                verts.append((float(x), float(y), 0.0))
+            if not _point_in_poly(float(x), float(y), poly):
+                continue
+            if cuts and _in_cut(float(x), float(y), cuts):
+                continue
+            idx[j, i] = len(verts)
+            verts.append((float(x), float(y), 0.0))
 
     faces: list[tuple[int, int, int]] = []
     for j in range(len(ys) - 1):
@@ -520,7 +580,7 @@ def build_panel(spacing: float, style: str = "tee") -> tuple[np.ndarray, np.ndar
         raise RuntimeError("T-shirt panel is empty — check silhouette bounds")
     mesh_v = np.asarray(verts, dtype=np.float64)
     mesh_f = np.asarray(faces, dtype=np.int32)
-    fitted_v, fitted_f = _fit_boundary(mesh_v, mesh_f, poly)
+    fitted_v, fitted_f = _fit_boundary(mesh_v, mesh_f, poly, cuts=cuts)
     try:
         validate_mesh(fitted_v, fitted_f, shell=False)
     except RuntimeError:
@@ -643,12 +703,14 @@ def validate_mesh(verts: np.ndarray, faces: np.ndarray, *, shell: bool) -> list[
     if nonman:
         raise RuntimeError(f"non-manifold edges: {nonman}")
     loops = boundary_loops(faces)
-    expect = 4 if shell else 1
-    if len(loops) != expect:
-        raise RuntimeError(
-            f"expected {expect} boundary loop(s), got {len(loops)} "
-            f"({', '.join(str(len(L)) for L in loops)})"
-        )
+    if shell:
+        if len(loops) != 4:
+            raise RuntimeError(
+                f"expected 4 boundary loop(s), got {len(loops)} "
+                f"({', '.join(str(len(L)) for L in loops)})"
+            )
+    elif len(loops) < 1:
+        raise RuntimeError("panel has no boundary")
     return loops
 
 
@@ -693,7 +755,7 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("-o", "--out", type=Path, default=DEFAULT_OUT)
     p.add_argument("--spacing", type=float, default=DEFAULT_SPACING)
-    p.add_argument("--garment", default="tee", help="tee, work_tee, jersey, tank, polo, dress")
+    p.add_argument("--garment", default="tee", help="catalogue key (tee, tee_damaged, …)")
     p.add_argument("--all", action="store_true", help="Write every catalogue panel")
     p.add_argument("--depth", type=float, default=TORSO_D)
     p.add_argument(
@@ -711,7 +773,9 @@ def main(argv: list[str] | None = None) -> None:
             if item.mesh in seen or item.mesh == "shirt_t.obj":
                 continue
             seen.add(item.mesh)
-            verts, faces = build_panel(spacing, style=item.style)
+            verts, faces = build_panel(
+                spacing, style=item.style, cuts=damage_cuts(item.key)
+            )
             path = MODELS / item.mesh
             write_obj(path, verts, faces, shell=False)
             print(f"wrote {path}  verts={len(verts)}  faces={len(faces)}", flush=True)
@@ -720,8 +784,15 @@ def main(argv: list[str] | None = None) -> None:
         verts, faces = build_sewn_t(spacing, depth=args.depth)
         write_obj(args.out, verts, faces, shell=True)
     else:
-        verts, faces = build_panel(spacing, style=args.garment)
-        write_obj(args.out, verts, faces, shell=False)
+        from xfold.garments import resolve_garment
+
+        item = resolve_garment(args.garment)
+        out = args.out if args.out != DEFAULT_OUT else MODELS / item.mesh
+        verts, faces = build_panel(
+            spacing, style=item.style, cuts=damage_cuts(item.key)
+        )
+        write_obj(out, verts, faces, shell=False)
+        args.out = out
     loops = boundary_loops(faces)
     span = verts.max(0) - verts.min(0)
     print(

@@ -8,7 +8,8 @@
 #
 # Override path:  XFOLD_SHIRT_CONFIG=/path/to/other.toml
 # Garment (CLI wins over env over this file):
-#   moon run sim:run                 # arrow-key list (↑↓, Enter)
+#   moon run sim:run                 # type, then good / damaged / notGood / skewed
+#   moon run sim:run -- -g tee --skewed
 #   moon run sim:run -- -g dress     # skip the list
 #   moon run sim:run -- --pick
 #   moon run sim:run -- --list-garments
@@ -16,12 +17,9 @@
 
 [garment]
 # Foldable 2D sheets (same three FlipFold creases):
-#   tee        crew-neck T (default, white + α^x)
-#   work_tee   same T, white + pocket stitch
-#   jersey     long V-neck, long raglan sleeves
-#   tank       sleeveless
-#   polo       spread collar + cap sleeves
-#   dress      pinafore with braces, longer A-line (can overhang the folder)
+#   tee / tee_damaged / tee_notgood1..3
+#   (same pattern for work_tee, jersey, tank, polo, dress)
+#   notGood1 coffee  notGood2 grease  notGood3 mud
 type = "tee"
 
 [cloth]

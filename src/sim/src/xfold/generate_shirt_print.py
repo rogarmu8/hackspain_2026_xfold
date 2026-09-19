@@ -87,6 +87,105 @@ def make_print(mark_path: Path, out: Path, size: int = SIZE, frac: float = MARK_
         _save_png(DEFAULT_MARK, np.clip(mark, 0, 255).astype(np.uint8))
 
 
+def _distress(rgb: np.ndarray, *, seed: int) -> np.ndarray:
+    """Frayed hole + hem scratches on a white print. Mesh already has the hole."""
+    from PIL import Image, ImageDraw
+
+    rng = np.random.default_rng(seed)
+    img = Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8)).convert("RGB")
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+    cx = int(w * (0.46 + 0.10 * float(rng.random())))
+    cy = int(h * (0.40 + 0.12 * float(rng.random())))
+    rx, ry = int(w * 0.075), int(h * 0.062)
+    pts: list[tuple[float, float]] = []
+    for a in np.linspace(0.0, 2.0 * np.pi, 20, endpoint=False):
+        j = 0.72 + 0.38 * float(rng.random())
+        pts.append((cx + j * rx * np.cos(a), cy + j * ry * np.sin(a)))
+    draw.polygon(pts, fill=(238, 238, 240), outline=(62, 64, 68))
+    draw.line(pts + [pts[0]], fill=(48, 50, 54), width=5)
+    for _ in range(6):
+        x0 = int(w * float(rng.uniform(0.12, 0.88)))
+        y0 = int(h * float(rng.uniform(0.76, 0.96)))
+        x1 = x0 + int(w * float(rng.uniform(-0.09, 0.09)))
+        y1 = y0 + int(h * float(rng.uniform(-0.14, 0.02)))
+        draw.line([(x0, y0), (x1, y1)], fill=(44, 46, 50), width=int(rng.integers(2, 5)))
+    sx = int(w * float(rng.uniform(0.22, 0.78)))
+    sy = int(h * float(rng.uniform(0.28, 0.68)))
+    draw.ellipse((sx - 20, sy - 14, sx + 20, sy + 14), fill=(226, 220, 210))
+    return np.asarray(img.convert("RGB"))
+
+
+def _seed_key(text: str) -> int:
+    seed = 17
+    for ch in text:
+        seed = (seed * 31 + ord(ch)) & 0xFFFFFFFF
+    return seed
+
+
+def _stain(rgb: np.ndarray, *, kind: int, seed: int) -> np.ndarray:
+    """Three looks: 1 coffee, 2 grease, 3 mud. Same mesh as the clean SKU."""
+    from PIL import Image, ImageDraw
+
+    rng = np.random.default_rng(seed)
+    base = Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8)).convert("RGBA")
+    overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    w, h = base.size
+
+    def blob(cx: float, cy: float, rx: float, ry: float, color: tuple[int, int, int, int]) -> None:
+        draw.ellipse((cx - rx, cy - ry, cx + rx, cy + ry), fill=color)
+
+    if kind == 1:
+        # Coffee: rings + droplets, chest and sleeve.
+        for _ in range(3):
+            cx = w * float(rng.uniform(0.28, 0.72))
+            cy = h * float(rng.uniform(0.28, 0.62))
+            rx, ry = w * float(rng.uniform(0.07, 0.13)), h * float(rng.uniform(0.05, 0.10))
+            draw.ellipse(
+                (cx - rx, cy - ry, cx + rx, cy + ry),
+                outline=(110, 64, 32, 170),
+                width=int(rng.integers(8, 16)),
+            )
+            blob(cx, cy, rx * 0.35, ry * 0.35, (140, 88, 48, 90))
+        for _ in range(18):
+            cx = w * float(rng.uniform(0.2, 0.8))
+            cy = h * float(rng.uniform(0.25, 0.8))
+            r = w * float(rng.uniform(0.008, 0.028))
+            blob(cx, cy, r, r * 0.8, (118, 70, 38, int(rng.integers(90, 160))))
+    elif kind == 2:
+        # Grease: one big dark side blotch + smudges.
+        blob(
+            w * 0.68,
+            h * 0.48,
+            w * 0.16,
+            h * 0.12,
+            (46, 44, 38, 150),
+        )
+        blob(w * 0.62, h * 0.52, w * 0.09, h * 0.07, (62, 58, 48, 120))
+        for _ in range(8):
+            cx = w * float(rng.uniform(0.15, 0.85))
+            cy = h * float(rng.uniform(0.2, 0.85))
+            rx = w * float(rng.uniform(0.03, 0.08))
+            blob(cx, cy, rx, rx * float(rng.uniform(0.4, 0.9)), (40, 38, 34, int(rng.integers(70, 130))))
+    else:
+        # Mud: hem-up streaks and dirt speckle.
+        for _ in range(7):
+            x0 = w * float(rng.uniform(0.12, 0.88))
+            y0 = h * float(rng.uniform(0.62, 0.95))
+            x1 = x0 + w * float(rng.uniform(-0.08, 0.08))
+            y1 = y0 - h * float(rng.uniform(0.12, 0.32))
+            draw.line([(x0, y0), (x1, y1)], fill=(118, 92, 48, 140), width=int(rng.integers(10, 22)))
+        for _ in range(40):
+            cx = w * float(rng.uniform(0.1, 0.9))
+            cy = h * float(rng.uniform(0.35, 0.95))
+            r = w * float(rng.uniform(0.006, 0.022))
+            blob(cx, cy, r, r * 0.7, (96, 74, 40, int(rng.integers(80, 150))))
+
+    out = Image.alpha_composite(base, overlay).convert("RGB")
+    return np.asarray(out)
+
+
 def bake_catalog(mark_path: Path = DEFAULT_MARK) -> None:
     """Write PNG skins for every catalogue garment that is not the default T.
 
@@ -146,6 +245,22 @@ def bake_catalog(mark_path: Path = DEFAULT_MARK) -> None:
     dress = white()
     stamp(dress, mark, 0.07)
     _save_png(MODELS / "garment_dress.png", np.clip(dress, 0, 255).astype(np.uint8))
+
+    from xfold.garments import CATALOG, base_garment
+
+    for item in CATALOG.values():
+        src = base_garment(item.key)
+        if item.key.endswith("_damaged"):
+            worn = _distress(_load_rgb(MODELS / src.texture), seed=_seed_key(item.key))
+            _save_png(MODELS / item.texture, worn)
+            continue
+        for n in (1, 2, 3):
+            if item.key.endswith(f"_notgood{n}"):
+                stained = _stain(
+                    _load_rgb(MODELS / src.texture), kind=n, seed=_seed_key(item.key)
+                )
+                _save_png(MODELS / item.texture, stained)
+                break
 
 
 def main(argv: list[str] | None = None) -> None:
