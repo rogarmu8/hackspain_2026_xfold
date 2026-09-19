@@ -21,3 +21,20 @@ tasks:
     options:
       cache: false
       runFromWorkspaceRoot: true
+  # Day-to-day local stack: bridge (:8765) + dashboard (:3000) together.
+  # Prefer: moon run sim:bridge dashboard:dev  (same effect, explicit targets)
+  dev:
+    script: |
+      echo "XFOLD local stack"
+      echo "  Bridge    http://127.0.0.1:8765  (OpenAPI /docs · viewport /viewport/stream)"
+      echo "  Dashboard http://localhost:3000"
+      echo "Ctrl+C stops both."
+      # Keep parent alive so moon does not tear down persistent deps.
+      while true; do sleep 3600; done
+    deps:
+      - sim:bridge
+      - dashboard:dev
+    options:
+      cache: false
+      persistent: true
+      runFromWorkspaceRoot: true

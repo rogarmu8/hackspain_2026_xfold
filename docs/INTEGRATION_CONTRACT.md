@@ -194,10 +194,13 @@ Env (optional): `NEXT_PUBLIC_XFOLD_BRIDGE_URL` (default `http://127.0.0.1:8765`)
 ## 8. Quick commands
 
 ```bash
+moon run dev                 # bridge + dashboard together
+# or:
 moon run sim:bridge
-curl -s http://127.0.0.1:8765/health
-bash scripts/check-bridge-contract.sh
 moon run dashboard:dev
+curl -s http://127.0.0.1:8765/health
+curl -sI http://127.0.0.1:8765/viewport/frame
+bash scripts/check-bridge-contract.sh
 ```
 
-OpenAPI: http://127.0.0.1:8765/docs
+OpenAPI: http://127.0.0.1:8765/docs · Viewport: `/viewport/stream`

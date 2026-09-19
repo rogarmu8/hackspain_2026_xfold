@@ -40,7 +40,9 @@ WebSocket remains reserved for denser viewport protocols later; **today** the li
 From the repo root (Pixi + moon already set up):
 
 ```bash
-moon run sim:bridge          # http://127.0.0.1:8765  · OpenAPI /docs
+moon run dev                 # bridge :8765 + dashboard :3000 together
+# or separately:
+moon run sim:bridge          # http://127.0.0.1:8765  · OpenAPI /docs · MJPEG /viewport/stream
 moon run dashboard:dev       # probes the bridge; fixtures if offline
 ```
 

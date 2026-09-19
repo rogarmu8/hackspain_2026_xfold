@@ -93,19 +93,34 @@ moon run install-mujoco
 
 Always from the repo root.
 
-| What | Command |
-|------|---------|
-| Dashboard at [localhost:3000](http://localhost:3000) | `moon run dashboard:dev` |
-| **Bridge** (journal + REST/SSE on :8765) | `moon run sim:bridge` |
-| **MuJoCo window (the actual scene)** | `moon run sim:view` |
-| Mock cell cycle (JSON lines to stdout) | `moon run sim:mock` |
-| Dashboard lint | `moon run dashboard:lint` |
-| Production dashboard build | `moon run dashboard:build` |
+**Day-to-day (bridge + dashboard together):**
+
+```bash
+moon run setup          # first time only
+moon run install-mujoco # once, for 3D viewport
+moon run dev            # bridge :8765 + dashboard :3000
+```
+
+Same thing, explicit targets: `moon run sim:bridge dashboard:dev`.
+
+| What | URL / notes |
+|------|-------------|
+| Dashboard | [localhost:3000](http://localhost:3000) |
+| Bridge (REST + SSE + MJPEG) | [127.0.0.1:8765](http://127.0.0.1:8765/docs) · `/docs` · `/viewport/stream` |
+
+The UI probes the bridge automatically (retries if either starts first). Override with `NEXT_PUBLIC_XFOLD_BRIDGE_URL`. If the bridge is down, the dashboard keeps honest **fixtures**.
+
+| Other tasks | Command |
+|-------------|---------|
+| Bridge only | `moon run sim:bridge` |
+| Dashboard only | `moon run dashboard:dev` |
+| **MuJoCo window** | `moon run sim:view` |
+| Mock cycle (stdout JSON) | `moon run sim:mock` |
+| Bridge smoke | `moon run sim:bridge-smoke` |
+| Dashboard lint / build | `moon run dashboard:lint` · `moon run dashboard:build` |
 | List projects / tasks | `moon query projects` · `moon query tasks` |
 
 On macOS, `sim:view` runs under `mjpython` (Cocoa main thread). Elsewhere it uses `python -m xfold.view`.
-
-**Live monitor:** start `sim:bridge`, then `dashboard:dev`. The UI probes `http://127.0.0.1:8765` (override with `NEXT_PUBLIC_XFOLD_BRIDGE_URL`). If the bridge is down, the dashboard keeps honest **fixtures**.
 
 - **Binding contract (teammates & agents):** [docs/INTEGRATION_CONTRACT.md](docs/INTEGRATION_CONTRACT.md)
 - Transport detail: [docs/BRIDGE.md](docs/BRIDGE.md) · OpenAPI: http://127.0.0.1:8765/docs
