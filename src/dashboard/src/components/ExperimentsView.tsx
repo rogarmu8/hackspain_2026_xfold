@@ -26,7 +26,7 @@ export function ExperimentsView() {
   return (
     <AppShell
       title="Experimentos"
-      description="Individuales y batches lanzados desde el centro de control"
+      eyebrow="individuales · batches"
       actions={
         <>
           <ConnectionBadge

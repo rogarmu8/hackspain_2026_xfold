@@ -1,10 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import {
+  ArrowUpRight,
+  Camera,
+  CameraOff,
+  FlaskConical,
+  Maximize2,
+  Minimize2,
+  Radio,
+} from "lucide-react";
 import { CellSchematic } from "./CellSchematic";
-import type { ReactNode } from "react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { formatFlatness, formatSeconds, stageLabel } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { STAGE_ICONS } from "@/lib/stage-icons";
+import { formatFlatness, formatSeconds, lifecycleLabel, stageLabel } from "@/lib/format";
 import type { DataProvenance, RunDetail } from "@/lib/types";
 
 export function SimulationViewport({
@@ -19,184 +30,147 @@ export function SimulationViewport({
   /** Base URL of the Python bridge (for MJPEG <img src>). */
   bridgeUrl?: string;
 }) {
-  const live = Boolean(run && run.lifecycle === "running" && streamAvailable);
-  const showMjpeg =
-    streamAvailable && Boolean(bridgeUrl) && provenance !== "fixture";
-  const title = run
-    ? `${run.id}${run.seed != null ? ` · Semilla ${run.seed}` : ""}`
-    : "Sin ejecución activa";
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    const sync = () => setFullscreen(document.fullscreenElement === stageRef.current);
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void stageRef.current?.requestFullscreen();
+  };
+
+  const running = run?.lifecycle === "running";
+  const showMjpeg = streamAvailable && Boolean(bridgeUrl) && provenance !== "fixture";
+  const live = running && showMjpeg;
+  const stage = run?.currentState ?? null;
+  const StageIcon = stage ? STAGE_ICONS[stage] : null;
 
   return (
-    <section className="flex min-h-0 flex-col border border-divider bg-surface">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-divider px-4 py-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="font-mono text-sm font-semibold tabular">{title}</h2>
-          {live ? (
-            <StatusBadge tone="active">En directo</StatusBadge>
-          ) : showMjpeg ? (
-            <StatusBadge tone="neutral">Vista MuJoCo</StatusBadge>
-          ) : run?.lifecycle === "running" ? (
-            <StatusBadge tone="neutral">Telemetría sin imagen</StatusBadge>
-          ) : run ? (
-            <StatusBadge tone="neutral">Revisión</StatusBadge>
+    <section className="flex min-h-0 flex-1 flex-col border border-divider bg-surface">
+      <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-divider px-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <h2 className="truncate font-mono text-[13px] font-semibold tabular">
+            {run ? run.id : "Sin ejecución"}
+          </h2>
+          {run?.seed != null ? (
+            <span className="eyebrow hidden sm:inline">seed {run.seed}</span>
+          ) : null}
+          {run && !running ? (
+            <StatusBadge tone={run.lifecycle === "failed" ? "danger" : "neutral"}>
+              {lifecycleLabel(run.lifecycle)}
+            </StatusBadge>
+          ) : null}
+          {provenance === "fixture" ? (
+            <StatusBadge tone="neutral" icon={<FlaskConical className="size-3" aria-hidden />}>
+              Ejemplo
+            </StatusBadge>
           ) : null}
         </div>
-        {provenance === "fixture" ? (
-          <span className="text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">
-            Datos de ejemplo
-          </span>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-1">
+          {run ? (
+            <Button asChild variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-xs">
+              <Link href={`/historial/${run.id}`}>
+                Detalle <ArrowUpRight className="size-3.5" aria-hidden />
+              </Link>
+            </Button>
+          ) : null}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="size-8"
+            onClick={toggleFullscreen}
+            aria-label={fullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+            title={fullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+          >
+            {fullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+          </Button>
+        </div>
       </div>
 
-      <div className="relative min-h-[220px] bg-viewport text-surface viewport-focus">
-        {!run && !showMjpeg ? (
-          <Placeholder
-            title="Sin ejecución activa"
-            body="Lanza un experimento para supervisar la celda OpenArm. La vista 3D aparece cuando el bridge publica /viewport/stream."
+      <div
+        ref={stageRef}
+        className="hud-corners viewport-focus relative min-h-[200px] flex-1 overflow-hidden bg-viewport text-hud"
+      >
+        <span className="hud-corner" aria-hidden />
+        {live ? <div className="scanline" aria-hidden /> : null}
+
+        {showMjpeg ? (
+          // MJPEG: native <img> multipart stream — no WebSocket required
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`${bridgeUrl}/viewport/stream`}
+            alt="Vista MuJoCo de la celda XFOLD"
+            className="absolute inset-0 h-full w-full object-contain"
           />
-        ) : showMjpeg ? (
-          <div className="relative aspect-video w-full overflow-hidden bg-black">
-            {/* MJPEG: native <img> multipart stream — no WebSocket required */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`${bridgeUrl}/viewport/stream`}
-              alt="Vista MuJoCo de la celda XFOLD"
-              className="h-full w-full object-contain"
-            />
-            {run?.telemetry ? (
-              <dl className="pointer-events-none absolute inset-x-0 bottom-0 grid grid-cols-2 gap-x-4 gap-y-1 bg-black/55 px-3 py-2 text-left sm:grid-cols-5">
-                <Metric label="Fase" value={stageLabel(run.telemetry.state)} />
-                <Metric label="Ciclo" value={String(run.telemetry.cycle)} mono />
-                <Metric
-                  label="Planitud"
-                  value={formatFlatness(run.telemetry.flatness)}
-                  mono
-                />
-                <Metric
-                  label="En bolsa"
-                  value={run.telemetry.shirt_in_bag ? "sí" : "no"}
-                />
-                <Metric
-                  label="t sim"
-                  value={formatSeconds(run.telemetry.t)}
-                  mono
-                />
-              </dl>
-            ) : null}
-          </div>
         ) : (
-          <Placeholder
-            title="Celda OpenArm"
-            body="Esquema ilustrativo · sin señal de cámara (viewportStream off)"
-          >
-            <CellSchematic stage={run?.currentState ?? null} />
-            {run?.telemetry ? (
-              <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-3 text-left sm:grid-cols-5">
-                <Metric label="Fase" value={stageLabel(run.telemetry.state)} />
-                <Metric label="Ciclo" value={String(run.telemetry.cycle)} mono />
-                <Metric
-                  label="Planitud"
-                  value={formatFlatness(run.telemetry.flatness)}
-                  mono
-                  title={
-                    run.telemetry.flatness == null
-                      ? "Planitud aún no medida en esta fase"
-                      : undefined
-                  }
-                />
-                <Metric
-                  label="En bolsa"
-                  value={run.telemetry.shirt_in_bag ? "sí" : "no"}
-                />
-                <Metric
-                  label="t sim"
-                  value={formatSeconds(run.telemetry.t)}
-                  mono
-                />
-              </dl>
-            ) : (
-              <p className="mt-4 text-[13px] text-surface/70">
-                Sin muestra de telemetría para esta ejecución.
-              </p>
-            )}
-          </Placeholder>
+          <div className="absolute inset-0 flex items-center justify-center p-6">
+            <CellSchematic stage={stage} />
+          </div>
         )}
 
-        <div className="pointer-events-none flex justify-between gap-3 bg-viewport/90 px-4 py-2 text-[12px] text-surface/80">
-          <span>
-            {showMjpeg
-              ? "MuJoCo · cámara overview · MJPEG"
-              : "OpenArm v2 · 7-DOF × 2"}
-          </span>
-          <span className="tabular">
-            {run?.currentState ? stageLabel(run.currentState) : "—"}
-          </span>
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between px-6 py-5">
+          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em]">
+            {StageIcon ? (
+              <span
+                key={stage}
+                className="hud-flash flex items-center gap-2 border border-hud/40 bg-black/50 px-2 py-1"
+              >
+                <StageIcon className="size-3.5" strokeWidth={1.75} aria-hidden />
+                {stage ? stageLabel(stage) : null}
+              </span>
+            ) : (
+              <span className="text-hud-dim">standby</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em]">
+            {live ? (
+              <>
+                <span className="pulse-dot size-2 rounded-full bg-danger text-danger" aria-hidden />
+                <span>live</span>
+              </>
+            ) : showMjpeg ? (
+              <>
+                <Camera className="size-3.5" strokeWidth={1.75} aria-hidden />
+                <span>mujoco · overview</span>
+              </>
+            ) : (
+              <>
+                <CameraOff className="size-3.5 text-hud-dim" strokeWidth={1.75} aria-hidden />
+                <span className="text-hud-dim">esquema</span>
+              </>
+            )}
+          </div>
         </div>
-      </div>
 
-      {run ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-divider px-4 py-3 text-sm">
-          <p className="text-muted-foreground">
-            {run.lifecycle === "running"
-              ? `Fase actual: ${run.currentState ? stageLabel(run.currentState) : "—"}`
-              : lifecycleCopy(run)}
+        {run?.telemetry ? (
+          <dl className="pointer-events-none absolute inset-x-0 bottom-0 grid grid-cols-5 gap-x-3 border-t border-hud/15 bg-black/60 px-6 py-2.5 text-left backdrop-blur-[2px]">
+            <Metric label="fase" value={stageLabel(run.telemetry.state)} />
+            <Metric label="ciclo" value={String(run.telemetry.cycle)} />
+            <Metric label="planitud" value={formatFlatness(run.telemetry.flatness)} />
+            <Metric label="en bolsa" value={run.telemetry.shirt_in_bag ? "sí" : "no"} />
+            <Metric label="t sim" value={formatSeconds(run.telemetry.t)} />
+          </dl>
+        ) : !run && !showMjpeg ? (
+          <p className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-2 px-6 py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-hud-dim">
+            <Radio className="size-3.5" strokeWidth={1.75} aria-hidden />
+            Lanza un experimento para ver la celda
           </p>
-          <Link
-            href={`/historial/${run.id}`}
-            className="font-semibold text-ink underline-offset-2 hover:underline"
-          >
-            Ver detalle de ejecución
-          </Link>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </section>
   );
 }
 
-function lifecycleCopy(run: RunDetail): string {
-  if (run.lifecycle === "succeeded") return "Ejecución finalizada correctamente";
-  if (run.lifecycle === "failed")
-    return run.failReason ?? "Ejecución fallida";
-  if (run.lifecycle === "cancelled") return "Ejecución cancelada";
-  if (run.lifecycle === "paused") return "Ejecución en pausa";
-  return "Ejecución en cola";
-}
-
-function Placeholder({
-  title,
-  body,
-  children,
-}: {
-  title: string;
-  body: string;
-  children?: ReactNode;
-}) {
+function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col items-start justify-center px-5 py-5">
-      <p className="text-base font-semibold text-surface">{title}</p>
-      <p className="mt-2 max-w-md text-sm text-surface/70">{body}</p>
-      {children}
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  mono,
-  title,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-  title?: string;
-}) {
-  return (
-    <div title={title}>
-      <dt className="text-[11px] tracking-wide text-surface/70 uppercase">
-        {label}
-      </dt>
-      <dd className={`mt-0.5 text-sm text-surface ${mono ? "font-mono tabular" : ""}`}>
+    <div className="min-w-0">
+      <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-hud-dim">{label}</dt>
+      <dd key={value} className="value-tick truncate font-mono text-[13px] tabular text-hud">
         {value}
       </dd>
     </div>

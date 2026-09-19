@@ -45,7 +45,7 @@ export function RunDetailView({ runId }: { runId: string }) {
   return (
     <AppShell
       title={run.id}
-      description={
+      eyebrow={
         run.name
           ? `${run.name} · semilla ${run.seed}`
           : `Semilla ${run.seed}${run.batchId ? ` · ${run.batchId}` : ""}`

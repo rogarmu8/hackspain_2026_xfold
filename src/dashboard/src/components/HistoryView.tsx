@@ -32,7 +32,7 @@ export function HistoryView() {
   return (
     <AppShell
       title="Historial"
-      description="Ejecuciones terminadas y en curso con trazabilidad"
+      eyebrow="trazabilidad · ejecuciones"
       actions={
         <ConnectionBadge
           connection={snapshot.connection}
