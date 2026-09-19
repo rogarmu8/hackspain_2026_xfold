@@ -563,6 +563,39 @@ class Runtime:
                 state=state.value,
             )
 
+    def emit_log(
+        self,
+        run_id: str | None,
+        message: str,
+        level: str = "info",
+        source: str = "sim",
+        t: float | None = None,
+    ) -> None:
+        """Append a free-form simulator log line (journal ``log`` + run events).
+
+        AGENT (arm/cloth/press): route your driver's ``print``/``log`` here so the
+        dashboard console sees it live — e.g. ``Line(log=lambda m: runtime.emit_log(run_id, m, source="line"))``.
+        Never log per-step; keep it to stage changes, warnings and failures.
+        """
+        with self._lock:
+            run = self.runs.get(run_id) if run_id else None
+            if run_id is not None and run is None:
+                return
+            if run is not None:
+                if t is not None and run.lifecycle in {"running", "paused"}:
+                    run.t = float(t)
+                self._ui_event(run, message, level if level in {"info", "warning", "error"} else "info")
+            at = float(t) if t is not None else (run.t if run else None)
+            self.journal.append(
+                "log",
+                run_id=run.id if run else None,
+                batch_id=run.batchId if run else None,
+                level=level,
+                message=message,
+                source=source,
+                t=round(at, 3) if at is not None else None,
+            )
+
     def bump_sim_time(self, run_id: str, t: float) -> None:
         """Update live telemetry clock without a journal event (substep ticks)."""
         with self._lock:

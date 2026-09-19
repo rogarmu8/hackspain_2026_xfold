@@ -11,7 +11,11 @@ When MuJoCo + press_cell load, the bridge uses ``PressBridgeDriver`` instead.
 
   1. Keep calling the same Runtime API — do NOT invent a new bus.
        runtime.emit_state(run_id, CellState.<STAGE>, t=float(data.time))
+       runtime.emit_log(run_id, "platen closed", level="info", source="press", t=float(data.time))
        runtime.finish_success(run_id, t=float(data.time))
+     ``emit_log`` replaces ``print`` — it shows up live in the dashboard console
+     (e.g. ``Line(log=lambda m: runtime.emit_log(run_id, m, source="line"))``).
+     Log stage changes / warnings / failures, never per physics step.
   2. Respect pause/cancel via runtime.driver_active_run().
   3. Prefer extending ``press_driver.py`` for real cycles; keep MockDriver as
      offline / no-MuJoCo fallback.

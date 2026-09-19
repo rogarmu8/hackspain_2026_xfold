@@ -83,6 +83,9 @@ def create_app(*, persist: bool = True) -> FastAPI:
     @app.on_event("startup")
     def _startup() -> None:
         nonlocal driver
+        # TODO(press): prefer a LineDriver (xfold.line.Line stepped inside the
+        # driver, logging via runtime.emit_log) when line.xml compiles.
+        # Checklist: docs/TODO_PRESS_INTEGRATION.md
         if session.start() and session.cell is not None:
             driver = PressBridgeDriver(runtime, session)
             driver.start()

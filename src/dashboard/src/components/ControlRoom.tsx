@@ -1,15 +1,17 @@
 "use client";
 
-import { useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { CellState } from "@xfold/protocol";
 import { AppShell } from "@/components/AppShell";
 import { BatchContextPanel } from "@/components/BatchContextPanel";
+import { ConsolePanel } from "@/components/ConsolePanel";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
 import { RunSummaryPanel } from "@/components/RunSummaryPanel";
 import { SimulationViewport } from "@/components/SimulationViewport";
 import { StageStepper } from "@/components/StageStepper";
 import { useDashboard } from "@/lib/dashboard-context";
 import type { FixtureScenario } from "@/lib/adapter";
+import { consoleLines } from "@/lib/console";
 import { formatSeconds, stageLabel } from "@/lib/format";
 import type { RunLifecycle } from "@/lib/types";
 import { useRunReplay } from "@/lib/use-run-replay";
@@ -112,12 +114,15 @@ export function ControlRoom({ runId }: { runId: string }) {
     source,
     bridgeUrl,
     getRun,
+    getJournal,
   } = useDashboard();
   const [selectedStage, setSelectedStage] = useState<CellState | null>(null);
   const stageTrigger = useRef<HTMLElement | null>(null);
   const inspector = useInspectorWidth();
 
   const run = getRun(runId);
+  const journal = getJournal(runId);
+  const consoleRows = useMemo(() => consoleLines(run, journal), [run, journal]);
   const finished = Boolean(run && FINISHED.has(run.lifecycle));
   const replay = useRunReplay({ run, enabled: finished, bridgeUrl });
   const isActive = Boolean(run && run.id === snapshot.activeRun?.id);
@@ -249,19 +254,26 @@ export function ControlRoom({ runId }: { runId: string }) {
           <span className="h-10 w-1 rounded-full bg-border opacity-70 transition-[background,opacity] duration-[var(--motion-feedback)]" />
         </div>
 
-        <div className="min-h-0 min-w-0 xl:overflow-y-auto">
-          {run && finished ? (
-            <RunSummaryPanel run={run} selectedStage={selectedStage} />
-          ) : (
-            <BatchContextPanel
-              batch={isActive ? snapshot.activeBatch : null}
-              run={run}
-              capabilities={snapshot.capabilities}
-              pendingCommand={pendingCommand}
-              disconnected={snapshot.connection === "disconnected"}
-              onCommand={requestCommand}
-            />
-          )}
+        <div className="flex min-h-0 min-w-0 flex-col gap-3">
+          <div className="shrink-0 xl:max-h-[45%] xl:overflow-y-auto">
+            {run && finished ? (
+              <RunSummaryPanel run={run} />
+            ) : (
+              <BatchContextPanel
+                batch={isActive ? snapshot.activeBatch : null}
+                run={run}
+                capabilities={snapshot.capabilities}
+                pendingCommand={pendingCommand}
+                disconnected={snapshot.connection === "disconnected"}
+                onCommand={requestCommand}
+              />
+            )}
+          </div>
+          <ConsolePanel
+            lines={consoleRows}
+            running={run?.lifecycle === "running"}
+            className="min-h-[220px] flex-1"
+          />
         </div>
       </div>
 

@@ -54,6 +54,7 @@ Driver ──emit_*──► Runtime ──append──► Journal ──SSE─�
 | `run_finished` | Terminal lifecycle |
 | `command_accepted` / `command_rejected` / `command_applied` | Command pipeline |
 | `batch_updated` | Batch counters / active child |
+| `log` | Simulator log line for the live console (`level` debug/info/warning/error, `message`, `source`, `t`). Via `runtime.emit_log` |
 
 Every event has: `seq`, `tsIso`, `type`, `runId`, `batchId`.
 
@@ -109,6 +110,8 @@ Dashboard reaches the media plane via same-origin Next proxy `/api/bridge/*` →
    from xfold.fsm import CellState
    # run_id from Runtime after launch / active run
    runtime.emit_state(run_id, CellState.PRESS, t=float(data.time))
+   # anything an operator should see live (replaces print):
+   runtime.emit_log(run_id, "platen closed", level="info", source="press", t=float(data.time))
    # when cycle completes:
    runtime.finish_success(run_id, t=float(data.time))
    ```
@@ -133,10 +136,12 @@ Bridge/dashboard owners ship the **bus + Control UI + MJPEG viewport**. Other tr
 
   ```python
   runtime.emit_state(run_id, CellState.FOLD, t=float(data.time))
+  runtime.emit_log(run_id, "peel under collar", source="arm", t=float(data.time))
   # … later …
   runtime.finish_success(run_id, t=float(data.time))
   ```
 
+- **Do:** route your `print`/`log` callback into `emit_log` so the dashboard console sees it (e.g. `Line(log=lambda m: runtime.emit_log(run_id, m, source="line"))`). Stage-level granularity; warnings/errors with the right `level`.
 - **Do:** poll `runtime.driver_active_run()` — if `paused` / cancelled, do not advance.
 - **Do not:** import FastAPI, open sockets from the physics thread, or change `@xfold/protocol` event names without syncing Python schema + this doc.
 - **Reference:** replace `MockDriver` gradually; keep the same `emit_*` surface.
@@ -159,7 +164,7 @@ Bridge/dashboard owners ship the **bus + Control UI + MJPEG viewport**. Other tr
 
 | Channel | Carries | Owner concern |
 |---------|---------|----------------|
-| Journal + SSE | FSM stage, metrics, commands | Arm emits stages; cloth may later emit flatness |
+| Journal + SSE | FSM stage, metrics, commands, **log lines** | Arm emits stages + logs; cloth may later emit flatness |
 | `GET /viewport/frame` (long-poll) | Live JPEG from shared `SimSession` | Primary UI path; Next `/api/bridge` proxy |
 | `GET /viewport/stream` | Legacy multipart MJPEG | curl/VLC only |
 | `GET /runs/{id}/recording/frame?t=` | Replay seek JPEG + FSM state | NPZ trajectory; badge must say **Replay**, never live |

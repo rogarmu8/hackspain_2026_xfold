@@ -29,7 +29,10 @@ JournalEventType = Literal[
     "command_rejected",
     "command_applied",
     "batch_updated",
+    "log",
 ]
+
+LogLevel = Literal["debug", "info", "warning", "error"]
 
 RunLifecycle = Literal[
     "queued",

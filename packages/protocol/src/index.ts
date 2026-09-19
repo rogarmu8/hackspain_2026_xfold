@@ -80,7 +80,12 @@ export const JOURNAL_EVENT_TYPES = [
   "command_rejected",
   "command_applied",
   "batch_updated",
+  "log",
 ] as const;
+
+export const LOG_LEVELS = ["debug", "info", "warning", "error"] as const;
+
+export type LogLevel = (typeof LOG_LEVELS)[number];
 
 export type JournalEventType = (typeof JOURNAL_EVENT_TYPES)[number];
 
@@ -177,6 +182,15 @@ export type JournalEvent =
       failed: number;
       pending: number;
       activeRunId: string | null;
+    })
+  | (JournalEnvelope & {
+      /** Free-form simulator log line for the live console (never pixels / verts). */
+      type: "log";
+      level: LogLevel;
+      message: string;
+      /** Emitter, e.g. "press-driver", "line", "sim-session". */
+      source: string;
+      t: number | null;
     });
 
 export type BridgeHealth = {

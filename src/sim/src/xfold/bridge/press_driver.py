@@ -146,12 +146,23 @@ class PressBridgeDriver:
                 continue
             self._run_cycle(run.id, run.seed)
 
+    def _log(self, run_id: str, message: str, level: str = "info") -> None:
+        """stdout for the operator terminal + journal ``log`` for the dashboard console."""
+        print(f"[press-driver] {message}", flush=True)
+        self.runtime.emit_log(
+            run_id, message, level=level, source="press-driver", t=self.session.sim_time()
+        )
+
     def _run_cycle(self, run_id: str, seed: int) -> None:
         recorder = TrajectoryRecorder(run_id, sample_hz=10.0)
         self._recorders[run_id] = recorder
         try:
             self.session.reset_time()
             self.session.reset_shirt(seed)
+            self._log(
+                run_id,
+                f"ciclo iniciado · seed {seed} · timestep {self.session.model.opt.timestep:g}s · nq={self.session.model.nq}",
+            )
 
             press = PressCycle(self.session.model, self.session.data)
             with self.session.lock:
@@ -214,7 +225,7 @@ class PressBridgeDriver:
                     )
                 self.runtime.finish_success(run_id, t)
         except Exception as exc:  # noqa: BLE001
-            print(f"[press-driver] cycle failed: {exc}", flush=True)
+            self._log(run_id, f"cycle failed: {exc}", level="error")
             final = self.runtime.driver_active_run()
             if final and final.id == run_id and final.lifecycle == "running":
                 self.runtime.finish_failed(
@@ -223,7 +234,7 @@ class PressBridgeDriver:
         finally:
             path = recorder.finalize()
             if path:
-                print(f"[press-driver] trajectory → {path}", flush=True)
+                self._log(run_id, f"trajectory → {path}", level="debug")
             self._recorders.pop(run_id, None)
 
     def _emit(self, run_id: str, state: CellState) -> bool:
@@ -262,6 +273,11 @@ class PressBridgeDriver:
         if run.cancel_requested or run.lifecycle == "cancelled":
             return
         if run.lifecycle == "running":
+            self._log(
+                run_id,
+                f"ciclo interrumpido en {run.currentState or '?'} · t={self.session.sim_time():.2f}s",
+                level="warning",
+            )
             self.runtime.finish_failed(
                 run_id, self.session.sim_time(), reason="cycle interrupted"
             )

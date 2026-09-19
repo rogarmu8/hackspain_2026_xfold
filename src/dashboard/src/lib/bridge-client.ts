@@ -48,6 +48,8 @@ export async function probeBridge(baseUrl: string = bridgeBaseUrl()): Promise<bo
 
 type SnapshotListener = () => void;
 
+const JOURNAL_BUFFER = 2000;
+
 export class BridgeClient {
   readonly baseUrl: string;
   private es: EventSource | null = null;
@@ -58,6 +60,8 @@ export class BridgeClient {
   private _runs = new Map<string, RunDetail>();
   private _batches = new Map<string, BatchSummary>();
   private _experiments: ExperimentListItem[] = [];
+  /** Ring buffer of journal facts (SSE replays from seq 0, so history is included). */
+  private _journal: JournalEvent[] = [];
   private _pendingCommandId: string | null = null;
   private _pendingKind: CommandKind | null = null;
   private _capabilities: BridgeCapabilities | null = null;
@@ -124,6 +128,7 @@ export class BridgeClient {
         const event = JSON.parse(msg.data) as JournalEvent;
         this.lastSeq = Math.max(this.lastSeq, event.seq);
         this.applyEvent(event);
+        this.notify();
         void this.refreshSnapshot();
       } catch {
         /* ignore malformed frames */
@@ -132,6 +137,10 @@ export class BridgeClient {
   }
 
   private applyEvent(event: JournalEvent) {
+    if (this._journal.at(-1)?.seq !== event.seq) {
+      this._journal.push(event);
+      if (this._journal.length > JOURNAL_BUFFER) this._journal.splice(0, this._journal.length - JOURNAL_BUFFER);
+    }
     if (
       event.type === "command_applied" ||
       event.type === "command_rejected"
@@ -231,6 +240,11 @@ export class BridgeClient {
 
   listExperiments(): ExperimentListItem[] {
     return this._experiments;
+  }
+
+  /** Journal facts for one run (plus run-less bridge notes), oldest first. */
+  listJournal(runId: string): JournalEvent[] {
+    return this._journal.filter((e) => e.runId === runId || (e.runId == null && e.type === "log"));
   }
 
   listHistory(): RunSummary[] {
