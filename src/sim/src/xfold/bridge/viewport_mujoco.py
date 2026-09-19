@@ -37,7 +37,7 @@ from xfold.bridge.viewport import ViewportHub, encode_frame
 if TYPE_CHECKING:
     from xfold.bridge.runtime import Runtime
 
-# Fallback stub if the loading cell fails to compile. Prefer press_cell via scene.build.
+# Fallback stub if the line fails to compile. Prefer line.xml via xfold.line.
 MODEL_PATH = Path(__file__).resolve().parents[3] / "models" / "cell.xml"
 
 
@@ -100,7 +100,7 @@ class MujocoViewportProducer:
             from xfold.shirt import load_mujoco_plugins
 
             load_mujoco_plugins()
-            model, data, camera = self._compile_scene(mujoco)
+            model, data, camera, step = self._compile_scene(mujoco)
             model.vis.global_.offwidth = max(model.vis.global_.offwidth, self.width)
             model.vis.global_.offheight = max(model.vis.global_.offheight, self.height)
             renderer = mujoco.Renderer(model, height=self.height, width=self.width)
@@ -113,13 +113,15 @@ class MujocoViewportProducer:
             return
 
         interval = 1.0 / max(self.fps, 1.0)
+        # One frame's worth of sim time per frame, so the line runs near real time.
+        steps = max(1, round(interval / model.opt.timestep))
         try:
             while not self._stop.is_set():
                 t0 = time.monotonic()
                 run = self.runtime.driver_active_run()
                 if run and run.lifecycle == "running" and not run.paused:
-                    for _ in range(3):
-                        mujoco.mj_step(model, data)
+                    for _ in range(steps):
+                        step()
                 else:
                     mujoco.mj_forward(model, data)
 
@@ -139,24 +141,24 @@ class MujocoViewportProducer:
             self.hub.set_source("none")
 
     def _compile_scene(self, mujoco):
-        """Prefer the loading cell (flex T + press); fall back to cell.xml."""
-        try:
-            from xfold.scene import build, spawn_shirt_in_bin
+        """Prefer the line (belt, press, folder); fall back to cell.xml.
 
-            cell = build()
-            data = mujoco.MjData(cell.model)
-            spawn_shirt_in_bin(cell, data, np.random.default_rng(7))
-            mujoco.mj_forward(cell.model, data)
-            camera = "overview"
-            try:
-                cell.model.camera(camera)
-            except KeyError:
-                camera = "cell_cam"
-            print("[viewport] rendering press_cell (flex shirt + UR5e)", flush=True)
-            return cell.model, data, camera
-        except Exception as exc:
-            print(f"[viewport] press_cell compile failed ({exc}); using cell.xml", flush=True)
-            model = mujoco.MjModel.from_xml_path(MODEL_PATH.as_posix())
+        Returns the model, its data, the camera, and the function that
+        advances it one physics step.
+        """
+        try:
+            from xfold.line import Line, build
+
+            model = build()
             data = mujoco.MjData(model)
+            line = Line(model, data, log=lambda message: print(f"[viewport] {message}", flush=True))
+            line.step()
+            print("[viewport] rendering the line (belt, press, folder)", flush=True)
+            return model, data, "overview", line.step
+        except Exception as exc:
+            print(f"[viewport] line compile failed ({exc}); using cell.xml", flush=True)
+            from xfold.shirt import load_mjcf
+
+            model, data = load_mjcf(MODEL_PATH, claws=False)
             mujoco.mj_forward(model, data)
-            return model, data, "overview"
+            return model, data, "overview", lambda: mujoco.mj_step(model, data)

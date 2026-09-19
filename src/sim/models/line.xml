@@ -1,0 +1,134 @@
+<!--
+  The line, no robots: infeed belt -> press -> flap folder.
+
+  A shirt arrives on the belt already flat, collar leading (+x). The belt
+  stops it under the press, the platen comes down on the belt itself (the
+  press's own bed and table are removed in xfold.line), then the belt runs
+  the shirt off its end onto the folder. The folder is a FlipFold on legs:
+  a fixed plate under the collar, a flap on each side and one under the hem.
+
+  Flaps are mocap bodies driven by xfold.line; their hinge line is the body
+  origin, lifted a few millimetres above the plates so each flip lands its
+  layer on top of the cloth already there.
+
+  Belt top and plate tops are all at z = 0.562, the height the press stroke
+  was tuned for.
+-->
+<mujoco model="xfold-line">
+  <compiler angle="radian" autolimits="true"/>
+  <!-- Before the joint default: cloth vertices must not inherit armature. -->
+  <include file="shirt.xml"/>
+  <option gravity="0 0 -9.81" timestep="0.002" solver="CG"/>
+
+  <visual>
+    <headlight diffuse="0.55 0.55 0.55" ambient="0.25 0.22 0.2"/>
+    <rgba haze="0.15 0.15 0.16 1"/>
+    <global offwidth="1280" offheight="960"/>
+  </visual>
+
+  <default>
+    <geom condim="3" friction="0.8 0.02 0.001"/>
+    <position ctrllimited="true" dampratio="1.5"/>
+    <default class="deco">
+      <geom contype="0" conaffinity="0"/>
+    </default>
+    <!-- Flaps touch the cloth only, never the plates they swing past. -->
+    <default class="flap">
+      <geom type="box" contype="0" conaffinity="2" material="flap"/>
+    </default>
+  </default>
+
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" rgb1="0.16 0.16 0.18" rgb2="0.22 0.22 0.24" width="256" height="256"/>
+    <material name="floor" texture="grid" texrepeat="8 6" reflectance="0.05"/>
+    <material name="belt" rgba="0.10 0.10 0.11 1"/>
+    <material name="slat" rgba="0.24 0.24 0.26 1"/>
+    <material name="roller" rgba="0.55 0.57 0.60 1"/>
+    <material name="plate" rgba="0.80 0.82 0.84 1"/>
+    <material name="flap" rgba="0.93 0.62 0.16 1"/>
+  </asset>
+
+  <include file="press_rig.xml"/>
+
+  <worldbody>
+    <light name="key" pos="-0.4 -1.2 2.2" dir="0.1 0.5 -1" diffuse="0.8 0.75 0.7"/>
+    <light name="fill" pos="0.6 1.0 1.8" dir="-0.2 -0.4 -1" diffuse="0.35 0.4 0.45"/>
+    <light name="fold_light" pos="0.64 -0.3 1.5" dir="0 0.2 -1" diffuse="0.35 0.35 0.38"/>
+    <geom name="floor" type="plane" size="3.0 2.0 0.05" material="floor"/>
+
+    <!-- Aim points for the cameras; no geometry. -->
+    <body name="line_center" pos="-0.55 0 0.56"/>
+    <body name="fold_center" pos="0.635 0 0.56"/>
+
+    <camera name="overview" pos="-0.55 -3.00 2.10" mode="targetbody" target="line_center"/>
+    <camera name="press_cam" pos="-1.35 -1.55 1.35" mode="targetbody" target="press_platen"/>
+    <camera name="fold_cam" pos="0.635 -1.05 1.65" mode="targetbody" target="fold_center"/>
+
+    <!--
+      Infeed belt, x = -2.00 .. 0.30. Only the top face touches cloth; the
+      belt's motion is applied to the cloth in xfold.line. Slats are visual
+      and slide along with the belt so it reads as moving.
+    -->
+    <body name="belt">
+      <geom name="belt_top" type="box" size="1.15 0.437 0.003" pos="-0.85 0 0.559" material="belt"/>
+      <geom name="belt_bed" class="deco" type="box" size="1.13 0.40 0.025" pos="-0.85 0 0.531" material="steel"/>
+      <geom name="roller_in" class="deco" type="cylinder" size="0.032 0.437" pos="-2.00 0 0.530" euler="1.5708 0 0" material="roller"/>
+      <geom name="roller_out" class="deco" type="cylinder" size="0.032 0.437" pos="0.30 0 0.530" euler="1.5708 0 0" material="roller"/>
+      <geom name="belt_leg_0" class="deco" type="box" size="0.03 0.03 0.25" pos="-1.90 0.36 0.25" material="steel"/>
+      <geom name="belt_leg_1" class="deco" type="box" size="0.03 0.03 0.25" pos="-1.90 -0.36 0.25" material="steel"/>
+      <geom name="belt_leg_2" class="deco" type="box" size="0.03 0.03 0.25" pos="0.20 0.36 0.25" material="steel"/>
+      <geom name="belt_leg_3" class="deco" type="box" size="0.03 0.03 0.25" pos="0.20 -0.36 0.25" material="steel"/>
+      <!-- The press columns stand on these, where the press table used to be. -->
+      <geom name="press_post_l" class="deco" type="box" size="0.04 0.04 0.252" pos="-0.99 0.46 0.252" material="steel"/>
+      <geom name="press_post_r" class="deco" type="box" size="0.04 0.04 0.252" pos="-0.99 -0.46 0.252" material="steel"/>
+
+      <geom name="belt_slat_0" class="deco" type="box" size="0.010 0.432 0.0006" pos="-2.00 0 0.5626" material="slat"/>
+      <geom name="belt_slat_1" class="deco" type="box" size="0.010 0.432 0.0006" pos="-1.85 0 0.5626" material="slat"/>
+      <geom name="belt_slat_2" class="deco" type="box" size="0.010 0.432 0.0006" pos="-1.70 0 0.5626" material="slat"/>
+      <geom name="belt_slat_3" class="deco" type="box" size="0.010 0.432 0.0006" pos="-1.55 0 0.5626" material="slat"/>
+      <geom name="belt_slat_4" class="deco" type="box" size="0.010 0.432 0.0006" pos="-1.40 0 0.5626" material="slat"/>
+      <geom name="belt_slat_5" class="deco" type="box" size="0.010 0.432 0.0006" pos="-1.25 0 0.5626" material="slat"/>
+      <geom name="belt_slat_6" class="deco" type="box" size="0.010 0.432 0.0006" pos="-1.10 0 0.5626" material="slat"/>
+      <geom name="belt_slat_7" class="deco" type="box" size="0.010 0.432 0.0006" pos="-0.95 0 0.5626" material="slat"/>
+      <geom name="belt_slat_8" class="deco" type="box" size="0.010 0.432 0.0006" pos="-0.80 0 0.5626" material="slat"/>
+      <geom name="belt_slat_9" class="deco" type="box" size="0.010 0.432 0.0006" pos="-0.65 0 0.5626" material="slat"/>
+      <geom name="belt_slat_10" class="deco" type="box" size="0.010 0.432 0.0006" pos="-0.50 0 0.5626" material="slat"/>
+      <geom name="belt_slat_11" class="deco" type="box" size="0.010 0.432 0.0006" pos="-0.35 0 0.5626" material="slat"/>
+      <geom name="belt_slat_12" class="deco" type="box" size="0.010 0.432 0.0006" pos="-0.20 0 0.5626" material="slat"/>
+      <geom name="belt_slat_13" class="deco" type="box" size="0.010 0.432 0.0006" pos="-0.05 0 0.5626" material="slat"/>
+      <geom name="belt_slat_14" class="deco" type="box" size="0.010 0.432 0.0006" pos="0.10 0 0.5626" material="slat"/>
+      <geom name="belt_slat_15" class="deco" type="box" size="0.010 0.432 0.0006" pos="0.25 0 0.5626" material="slat"/>
+    </body>
+
+    <!--
+      Folder, x = 0.305 .. 0.965. The shirt stops with its hem just inside
+      the upstream edge, so the hem flap's hinge (x = 0.605) sits at about
+      half the shirt's 0.61 m length, and the side hinges (y = +/-0.15)
+      leave a 0.30 m wide pack. The fixed plate reaches 2 cm past each
+      hinge line and the flaps start there, so the rounded crease a flip
+      leaves behind still lies on the plate. Boards are thick so folded
+      layers pressed down onto them cannot tunnel through.
+    -->
+    <body name="folder">
+      <geom name="fold_plate" type="box" size="0.19 0.17 0.02" pos="0.775 0 0.542" material="plate"/>
+      <geom name="fold_frame" class="deco" type="box" size="0.33 0.40 0.020" pos="0.635 0 0.500" material="steel"/>
+      <geom name="fold_leg_0" class="deco" type="box" size="0.03 0.03 0.25" pos="0.34 0.36 0.25" material="steel"/>
+      <geom name="fold_leg_1" class="deco" type="box" size="0.03 0.03 0.25" pos="0.34 -0.36 0.25" material="steel"/>
+      <geom name="fold_leg_2" class="deco" type="box" size="0.03 0.03 0.25" pos="0.93 0.36 0.25" material="steel"/>
+      <geom name="fold_leg_3" class="deco" type="box" size="0.03 0.03 0.25" pos="0.93 -0.36 0.25" material="steel"/>
+    </body>
+
+    <!-- Left of the collar looking downstream (+y). Swings over about +x. -->
+    <body name="flap_left" mocap="true" pos="0.635 0.15 0.569">
+      <geom name="flap_left" class="flap" size="0.33 0.145 0.012" pos="0 0.165 -0.019"/>
+    </body>
+    <!-- Right (-y), second: its hinge is one layer higher. -->
+    <body name="flap_right" mocap="true" pos="0.635 -0.15 0.573">
+      <geom name="flap_right" class="flap" size="0.33 0.145 0.012" pos="0 -0.165 -0.023"/>
+    </body>
+    <!-- Hem flap, last: lifts the lower half over three layers. -->
+    <body name="flap_bottom" mocap="true" pos="0.605 0 0.585">
+      <geom name="flap_bottom" class="flap" size="0.14 0.17 0.012" pos="-0.16 0 -0.035"/>
+    </body>
+  </worldbody>
+</mujoco>

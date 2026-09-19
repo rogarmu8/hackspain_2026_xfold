@@ -42,14 +42,14 @@ tasks:
       cache: false
       persistent: true
       runFromWorkspaceRoot: true
-  # The cell: pick from the crate, place, camera check, press, dump.
+  # The line: belt carries a flat shirt under the press, then onto the folder.
   run:
     script: |
       . ./scripts/pixi-path.sh
       if [ "$(uname -s)" = Darwin ]; then
-        pixi run --environment mujoco mjpython -P -m xfold.load_press
+        pixi run --environment mujoco mjpython -P -m xfold.line
       else
-        pixi run --environment mujoco python -P -m xfold.load_press
+        pixi run --environment mujoco python -P -m xfold.line
       fi
     options:
       cache: false

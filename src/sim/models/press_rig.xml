@@ -74,11 +74,11 @@
     </body>
 
     <!--
-      Dual-screw steam press. Lead screws carry the head; a ram on the beam
-      pushes it down. Steam comes from a facility line: a rigid riser climbs
-      beside the right column, runs along the beam, and a valve drops to the
-      barb that feeds the head's rubber hose (draped in Python so it slacks
-      when the press is open).
+      Dual-screw steam press. The lead screws carry the head up and down.
+      Steam comes from a facility line: a rigid riser climbs beside the right
+      column, runs along the beam, and a valve drops to the barb that feeds
+      the head's rubber hose (draped in Python so it slacks when the press
+      is open).
     -->
     <body name="press_frame">
       <geom name="col_l" type="cylinder" size="0.022 0.50" pos="-0.24 0.46 1.01" material="chrome"/>
@@ -146,16 +146,6 @@
       <geom name="beam" type="box" size="0.07 0.54 0.045" pos="-0.24 0 1.49" material="steel"/>
 
       <!--
-        Drive ram. The barrel hangs off the beam's underside, tucked back
-        against it so the loading hand never crosses it; the rod telescopes
-        inside as the head rises. Decorative - the stroke actuator does the work.
-      -->
-      <geom name="ram_flange" type="cylinder" size="0.062 0.012" pos="-0.22 0 1.445" material="steel" contype="0" conaffinity="0"/>
-      <geom name="ram_barrel" type="cylinder" size="0.048 0.26" pos="-0.22 0 1.18" material="steel" contype="0" conaffinity="0"/>
-      <geom name="ram_barrel_band" type="cylinder" size="0.054 0.018" pos="-0.22 0 1.37" material="steel" contype="0" conaffinity="0"/>
-      <geom name="ram_gland" type="cylinder" size="0.030 0.014" pos="-0.22 0 0.935" material="chrome" contype="0" conaffinity="0"/>
-
-      <!--
         Facility steam, not a boiler on the machine. The riser stands on the
         floor beside the right column, elbows onto the beam, runs the beam's
         length, and a quarter-turn valve feeds the drop to the hose barb.
@@ -195,7 +185,6 @@
         <geom name="platen_heater" type="box" size="0.30 0.33 0.004" pos="0 0 -0.018" material="hot_dark"/>
 
         <geom name="platen_head" type="box" size="0.28 0.32 0.020" pos="-0.02 0 0.038" material="steel" contype="0" conaffinity="0"/>
-        <geom name="ram_boss" type="cylinder" size="0.032 0.016" pos="-0.22 0 0.072" material="steel" contype="0" conaffinity="0"/>
         <geom name="platen_yoke" type="box" size="0.10 0.38 0.020" pos="-0.13 0 0.050" material="steel" contype="0" conaffinity="0"/>
         <geom name="nut_l" type="cylinder" size="0.048 0.042" pos="-0.24 0.46 0.062" material="brass" contype="0" conaffinity="0"/>
         <geom name="nut_l_hex" type="box" size="0.046 0.040 0.036" pos="-0.24 0.46 0.062" material="brass" contype="0" conaffinity="0"/>
@@ -203,7 +192,6 @@
         <geom name="nut_r_hex" type="box" size="0.046 0.040 0.036" pos="-0.24 -0.46 0.062" material="brass" contype="0" conaffinity="0"/>
         <geom name="nut_arm_l" type="box" size="0.06 0.040 0.018" pos="-0.18 0.43 0.062" material="steel" contype="0" conaffinity="0"/>
         <geom name="nut_arm_r" type="box" size="0.06 0.040 0.018" pos="-0.18 -0.43 0.062" material="steel" contype="0" conaffinity="0"/>
-        <geom name="ram_rod" type="cylinder" size="0.018 0.055" pos="-0.22 0 0.12" material="chrome" contype="0" conaffinity="0"/>
         <geom name="hose_inlet" type="cylinder" size="0.014 0.014" pos="-0.14 0.16 0.088" material="brass" contype="0" conaffinity="0"/>
         <geom name="steam_manifold" type="box" size="0.08 0.050 0.014" pos="-0.12 0.12 0.070" material="steel" contype="0" conaffinity="0"/>
 
