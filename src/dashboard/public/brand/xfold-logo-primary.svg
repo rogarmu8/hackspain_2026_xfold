@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="320" height="96" viewBox="0 0 320 96" role="img" aria-label="XFold"><g fill="none" stroke-width="4" stroke-linejoin="miter" stroke-linecap="square">
-    <path stroke="#2a170f" d="M72 42V76H32V42L23 49 12 36 30 20H40L45 28H55L60 20H70"/>
-    <path stroke="#d96b2a" d="M70 20 48 38 59 51 80 34 70 20Z"/>
-  </g><g transform="translate(112 22)"><g fill="#2a170f">
-    <path d="M0 0H9L22 20 35 0H44L27 26 45 54H36L22 32 8 54H-1L17 26Z"/>
-    <path d="M55 0H89V7H63V23H86V30H63V54H55Z"/>
-    <path fill-rule="evenodd" d="M112 14C100 14 94 22 94 34S100 55 112 55 130 46 130 34 124 14 112 14ZM112 21C119 21 122 26 122 34S119 48 112 48 102 42 102 34 105 21 112 21Z"/>
-    <path d="M139 0H147V43Q147 48 152 48H155V54H150Q139 54 139 43Z"/>
-    <path fill-rule="evenodd" d="M184 0H192V54H185V49Q181 55 173 55C162 55 157 46 157 35S163 14 174 14Q180 14 184 19ZM175 21C168 21 165 27 165 35S168 48 175 48 185 43 185 35 182 21 175 21Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="96" viewBox="0 0 320 96" role="img" aria-label="XFOLD"><g fill="none" stroke-width="4" stroke-linejoin="miter" stroke-linecap="square">
+    <path stroke="#2a170f" d="M72 76H32V44L26 50 14 38 32 20H40L45 28H55L60 20H72V76Z"/>
+    <path fill="#d96b2a" fill-rule="evenodd" d="M71.17157287525382 18H74V44.82842712474619L66 52.82842712474619L51.17157287525381 38Z M70 24.82842712474619L56.82842712474619 38L66 47.17157287525381L70 43.17157287525381Z"/>
+  </g><g transform="translate(112 29)"><g fill="#2a170f">
+    <path d="M0 0H12L19 11 26 0H38L25 19 38 38H26L19 27 12 38H0L13 19Z"/>
+    <path d="M44 0H89V8H54V16H73V24H54V38H44Z"/>
+    <path fill-rule="evenodd" d="M87 0H109L117 8V30L109 38H87L79 30V8ZM91 8 89 10V28L91 30H105L107 28V10L105 8Z"/>
+    <path d="M123 0H133V30H152V38H123Z"/>
+    <path fill-rule="evenodd" d="M157 0H183L193 10V28L183 38H157ZM167 8V30H178L183 25V13L178 8Z"/>
   </g></g></svg>

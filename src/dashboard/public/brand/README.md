@@ -1,6 +1,8 @@
-# XFold · assets de marca
+# XFOLD · assets de marca
 
-Camiseta de contorno angular con la manga derecha plegada sobre el pecho.
+Camiseta de contorno angular con la manga derecha plegada hacia dentro sobre el
+pecho, sin sobresalir del lateral del torso. Las dos mangas comparten diagonales
+de 45° y la misma longitud de puño, con esquinas en pico sin biseles.
 El naranja destaca el gesto de plegado; el símbolo también funciona en monocromo.
 Paleta tomada de `src/dashboard/src/app/globals.css`.
 
@@ -20,7 +22,10 @@ Paleta tomada de `src/dashboard/src/app/globals.css`.
 | Lámina de presentación | `xfold-brand-preview.png` |
 
 Los SVG tienen fondo transparente, sin imágenes incrustadas ni fuentes externas.
-El lettering «XFold» está dibujado con trazados propios. Las variantes de logo
+El lettering «XFOLD» es propio, en mayúsculas anchas, gruesas y achatadas.
+La F y la O comparten la barra superior como ligadura. Mantiene el estilo
+tecnológico con formas cuadradas y terminales rectos. No utiliza una fuente de terceros.
+Las variantes de logo
 horizontal usan un lienzo 320 × 96; los símbolos, 96 × 96.
 
 ## Consumo en el dashboard
@@ -30,7 +35,7 @@ Los archivos de esta carpeta se sirven desde `/brand/`:
 ```tsx
 <img
   src="/brand/xfold-logo-primary.svg"
-  alt="XFold"
+  alt="XFOLD"
   width={160}
   height={48}
 />
@@ -42,7 +47,7 @@ dashboard cuando el contenido del SVG se inserta inline; un `<img>` es aislado.
 
 ## Reglas de uso
 
-- Nombre visible: **XFold**, respetando mayúsculas y minúsculas.
+- Nombre visible en el logo: **XFOLD**, todo en mayúsculas.
 - Tinta: `#2A170F`; naranja: `#D96B2A`; crema: `#FAF6EC`.
 - Tamaño recomendado del símbolo: 32 px; mínimo: 24 px. Para 16 px, preferir
   el favicon sobre fondo sólido y comprobar su lectura en el navegador final.

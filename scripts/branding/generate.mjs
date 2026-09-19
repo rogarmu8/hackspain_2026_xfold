@@ -8,26 +8,30 @@ const out = path.join(root, 'src/dashboard/public/brand');
 await fs.mkdir(out, { recursive: true });
 const ink = '#2a170f', cream = '#faf6ec', orange = '#d96b2a';
 
-// One extended sleeve and one reflected across the chest. No hidden geometry
-// or background-coloured masks: the mark is genuinely transparent.
+// Both sleeves share the same 18-unit shoulder diagonal and 12-unit cuff.
+// Reflect the right sleeve inward about x=72. Outline the fold explicitly:
+// its top/right edges meet the silhouette at y=18/x=74, without stroke-cap
+// gaps or the protruding miter of an acute closed stroke.
 function mark(color, fold = color) {
+  const diagonal = 2 * Math.SQRT2;
   return `<g fill="none" stroke-width="4" stroke-linejoin="miter" stroke-linecap="square">
-    <path stroke="${color}" d="M72 42V76H32V42L23 49 12 36 30 20H40L45 28H55L60 20H70"/>
-    <path stroke="${fold}" d="M70 20 48 38 59 51 80 34 70 20Z"/>
+    <path stroke="${color}" d="M72 76H32V44L26 50 14 38 32 20H40L45 28H55L60 20H72V76Z"/>
+    <path fill="${fold}" fill-rule="evenodd" d="M${74 - diagonal} 18H74V${44 + diagonal - 2}L66 ${50 + diagonal}L${54 - diagonal} 38Z M70 ${22 + diagonal}L${54 + diagonal} 38L66 ${50 - diagonal}L70 ${46 - diagonal}Z"/>
   </g>`;
 }
 
-// Custom outlined lettering; SVG consumers do not need an installed font.
+// Wide, heavy uppercase lettering, 38 units high. F and O share their top
+// rail while the open lower F stays legible. Original font-free outlines.
 function lettering(color) {
   return `<g fill="${color}">
-    <path d="M0 0H9L22 20 35 0H44L27 26 45 54H36L22 32 8 54H-1L17 26Z"/>
-    <path d="M55 0H89V7H63V23H86V30H63V54H55Z"/>
-    <path fill-rule="evenodd" d="M112 14C100 14 94 22 94 34S100 55 112 55 130 46 130 34 124 14 112 14ZM112 21C119 21 122 26 122 34S119 48 112 48 102 42 102 34 105 21 112 21Z"/>
-    <path d="M139 0H147V43Q147 48 152 48H155V54H150Q139 54 139 43Z"/>
-    <path fill-rule="evenodd" d="M184 0H192V54H185V49Q181 55 173 55C162 55 157 46 157 35S163 14 174 14Q180 14 184 19ZM175 21C168 21 165 27 165 35S168 48 175 48 185 43 185 35 182 21 175 21Z"/>
+    <path d="M0 0H12L19 11 26 0H38L25 19 38 38H26L19 27 12 38H0L13 19Z"/>
+    <path d="M44 0H89V8H54V16H73V24H54V38H44Z"/>
+    <path fill-rule="evenodd" d="M87 0H109L117 8V30L109 38H87L79 30V8ZM91 8 89 10V28L91 30H105L107 28V10L105 8Z"/>
+    <path d="M123 0H133V30H152V38H123Z"/>
+    <path fill-rule="evenodd" d="M157 0H183L193 10V28L183 38H157ZM167 8V30H178L183 25V13L178 8Z"/>
   </g>`;
 }
-function svg(w, h, body, label = 'XFold') {
+function svg(w, h, body, label = 'XFOLD') {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${label}">${body}</svg>\n`;
 }
 const variants = {
@@ -38,8 +42,8 @@ const variants = {
   reverse: [cream, orange],
 };
 for (const [name, [color, fold]] of Object.entries(variants)) {
-  const icon = svg(96, 96, mark(color, fold), 'XFold · camiseta con manga plegada');
-  const logo = svg(320, 96, `${mark(color, fold)}<g transform="translate(112 22)">${lettering(color)}</g>`);
+  const icon = svg(96, 96, mark(color, fold), 'XFOLD · camiseta con manga plegada');
+  const logo = svg(320, 96, `${mark(color, fold)}<g transform="translate(112 29)">${lettering(color)}</g>`);
   await fs.writeFile(path.join(out, `xfold-mark-${name}.svg`), icon);
   await fs.writeFile(path.join(out, `xfold-logo-${name}.svg`), logo);
   await sharp(Buffer.from(icon)).resize(512, 512).png().toFile(path.join(out, `xfold-mark-${name}-512.png`));
@@ -58,7 +62,7 @@ const board = svg(1440, 1040, `
     <text x="72" y="68" font-size="17" letter-spacing="3">XFOLD / BRAND ASSETS</text>
     <text x="1368" y="68" text-anchor="end" font-size="15">HackSpain ’26</text>
     <path d="M72 96H1368" stroke="#d3c5ae"/>
-    <g transform="translate(284 146) scale(2.7)">${mark(ink, orange)}<g transform="translate(112 22)">${lettering(ink)}</g></g>
+    <g transform="translate(284 146) scale(2.7)">${mark(ink, orange)}<g transform="translate(112 29)">${lettering(ink)}</g></g>
     <text x="720" y="454" text-anchor="middle" font-size="18" fill="#6b5a4d">Una manga plegada. Un gesto reconocible.</text>
     <rect x="72" y="510" width="414" height="298" rx="8" fill="${cream}"/>
     <g transform="translate(183 548) scale(2)">${mark(ink)}</g>
