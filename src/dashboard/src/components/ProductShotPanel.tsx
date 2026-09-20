@@ -105,7 +105,7 @@ export function ProductShotPanel({ run, embed = false }: { run: RunDetail; embed
 
       <Button
         variant="outline"
-        className="h-10 rounded-[var(--radius-sm)] px-3 text-sm font-semibold"
+        className="h-10 rounded-[var(--radius-sm)] border-divider bg-white px-3 text-sm font-semibold text-ink hover:bg-white hover:text-ink"
         onClick={generate}
         disabled={busy}
       >
@@ -187,7 +187,7 @@ function HoverPhoto({
             type="button"
             variant="outline"
             size="icon-xs"
-            className="size-7 bg-surface/95"
+            className="size-7 border-divider bg-white text-ink hover:bg-white hover:text-ink"
             aria-label={`Download ${filename}`}
             title="Download"
             onClick={(event) => {
@@ -201,7 +201,7 @@ function HoverPhoto({
             type="button"
             variant="outline"
             size="icon-xs"
-            className="size-7 bg-surface/95"
+            className="size-7 border-divider bg-white text-ink hover:bg-white hover:text-ink"
             aria-label={`Maximize ${alt}`}
             title="Maximize"
             onClick={(event) => {
