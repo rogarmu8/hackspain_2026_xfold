@@ -1,17 +1,22 @@
-"""The line: dual-belt turner -> belt -> press -> flap folder -> bagger -> carton.
+"""The line: dual-arm align -> belt -> press -> flap folder -> bagger -> carton.
 
 1. A garment is laid on the infeed. If the selector's "skewed" place is
-   on, any cloth type is dropped at a random heading and a bit crumpled. A dual conveyor
-   product turner yaws it until the collar leads downstream (one belt speeds
-   up, the other slows, then they resync). Wrinkles stay until the press.
+   on, any cloth type is dropped at a random heading and a bit crumpled. Two
+   robot arms, one each side of the infeed belt, put a suction wrist on each
+   half of it, lift it off the belt, swing it round until the collar leads
+   downstream and lay it back down. They correct the position, not the
+   creases: the wrinkles stay until the press.
 2. The belt carries it under the press and stops. The platen comes down on
    the belt itself, steams the wrinkles out, and lifts.
-3. The belt runs on to the QC camera. After the product shot, a pedestal
-   arm with a suction cup carries stained shirts into a stained tote and torn
-   shirts into a broken tote and drops them, then the cycle ends. Clean and rotated garments
-   continue to the folder.
+3. The belt runs on to the QC camera. After the product shot, an arm
+   mounted on the camera's own post — which stands at the x-midpoint of the
+   two totes, so both are the same reach away — carries stained shirts into a
+   stained tote and torn shirts into a broken tote and drops them, then the
+   cycle ends. Clean and rotated garments continue to the folder.
 4. The folder flips its flaps, FlipFold style: left side, right side, then
-   the hem half up over the collar half.
+   the hem half up over the collar half. It is the quickest station on the
+   line: each flap carries its cloth rigidly and sets the layer down still,
+   so the swings run at machine speed rather than at the solver's.
 5. Meanwhile the bagger gets a bag ready. A vacuum picker takes the top one
    off a magazine of flat, pre-made bags (three sides welded) and lays it on
    belt 2, mouth toward the folder. A suction cup lifts the top lip, an air
@@ -36,6 +41,9 @@ bag. The cloth is not simulated as touching the bag's films.
 
 The belt is not a moving body. Cloth lying on it is given the belt's speed
 each step, which is what a belt does to something that does not slip. The
+align arms work the same way: what the pair holds is written onto the cloth
+every step, so the sheet rides between the cups without the solver having to
+resolve two grippers gripping. The
 folder's infeed runs with the belt while it takes the shirt over: cloth
 cannot be pushed, so a folder that only let the belt shove the shirt onto
 it would get a heap, not a shirt.
@@ -58,6 +66,7 @@ from __future__ import annotations
 import argparse
 import math
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -72,7 +81,7 @@ from .garments import (
 )
 from .platform import reexec_under_mjpython
 from .self_collide import ClothLayers
-from .spread import SpreadStation, _heading
+from .align import AlignStation, _heading, _quat_z_to, two_link_ik
 from .shirt import (
     SHIRT_RADIUS,
     apply_shirt_config,
@@ -111,8 +120,9 @@ _PHASES = {phase["state"]: phase for phase in LINE_PHASES}
 # Belt top and folder plates, from line.xml.
 SURFACE_Z = 0.562
 BELT_X = (-2.00, 0.30)
-# Visual slats ride only the linear deck (belt_top), not the dual-belt turner.
-BELT_SLAT_X = (-1.02, 0.30)
+# One slat run over both decks: the infeed is a plain belt now, so the slats
+# scroll from the infeed roller to belt 1's out roller.
+BELT_SLAT_X = (-2.10, 0.30)
 # The folder's boards, hem edge to collar edge.
 FOLDER_X = (0.305, 0.98)
 # The hem stops this far onto the folder, not hanging off its edge.
@@ -133,8 +143,8 @@ CARRIED_PHASES = frozenset(
 )
 
 # Operator place (selector "skewed"): a T on the belt, pose drawn each cycle.
-# Yaw is any heading, plus visible crumple. Dual belts square the heading;
-# the press irons the wrinkles out.
+# Yaw is any heading, plus visible crumple. The align arms square the
+# heading; the press irons the wrinkles out.
 SKEW_X_MAX = 0.05
 SKEW_Y_MAX = 0.05
 BELT_HALF_Y = 0.475
@@ -142,38 +152,50 @@ BELT_HALF_Y = 0.475
 # Downstream of the press and far enough from the belt's end (0.30) that the
 # whole 0.65 m of shirt stays on the belt.
 QC_X = -0.20
-# Pedestal arm on the operator side of QC. Scripted 2-link IK poses the
-# mocap links so the cup is never a free-floating pad. Both reject totes
-# sit on that same side so one arm can reach them.
-QC_ARM_S = np.array([-0.52, 0.80, 0.76])
-QC_ARM_L1 = 0.75
-QC_ARM_L2 = 0.90
+# The reject arm hangs off the QC camera's own post, on a collar at z = 1.05.
+# The post stands at x = QC_X, which is the midpoint of the two totes
+# (x = -0.70 and x = +0.30), so both are the same 0.99 m reach from the
+# shoulder and so is the belt under the camera. Scripted 2-link IK poses the
+# mocap links so the cup is never a free-floating pad; because the shoulder
+# is on the post, no pose can foul it and there is no detour to plan.
+QC_ARM_S = np.array([QC_X, 0.66, 1.05])
+QC_ARM_L1 = 0.55
+QC_ARM_L2 = 0.58
 QC_ARM_WRIST = 0.10
-# Park beside the pedestal, not on the camera post (x=-0.20, y=0.66).
-QC_CUP_HOME = np.array([-0.44, 0.98, 1.08])
-QC_CUP_LIFT_Z = 1.10
+# Park tucked back behind the post, outside qc_cam's cone (half-width there
+# is ~0.27 m), so the arm is not in the product shot.
+QC_CUP_HOME = np.array([QC_X, 0.92, 0.98])
+QC_CUP_LIFT_Z = 1.05
 QC_CUP_GRAB_Z = SURFACE_Z + 0.045
 QC_BIN_XY = {"stained": np.array([-0.70, 1.50]), "broken": np.array([0.30, 1.50])}
 # Hover above the tote mouth so the sheet hangs into the opening; release
 # still clear of the walls (top ~0.34 m) so the fabric falls in, not stuffed.
 QC_BIN_HOVER_Z = 0.92
 QC_BIN_DROP_Z = 0.70
-# Cup paths stay this far upstream of the camera post so links do not
-# sweep through it.
-QC_CLEAR_X = -0.48
 QC_SUCTION_R = 0.07
-QC_POLE_XY = np.array([-0.20, 0.66])
-QC_POLE_CLEAR_XY = 0.38
 QC_DROP_WATCH_S = 1.8
 FLASH_RISE = 0.12  # seconds, dark -> full
 FLASH_HOLD = 0.10  # seconds at full; the shot is taken in here
 FLASH_FALL = 0.35  # seconds, full -> dark
-# The station works like a photo booth: the line's own lights dip, then the
-# flash fires. The dip is what makes the stop read as "a picture is being
-# taken", and without it the shot is useless — the overview lighting is tuned
-# for a wide shot and blows a white garment to pure white from 1 m up, taking
-# the print and any stain with it.
-QC_DIP = 0.22  # scene lights during the shot, as a fraction of normal
+# The station works like a photo booth: the line's own lamps dip, then the
+# flash fires. Two different dips, because they are for two different eyes.
+#
+# QC_DIP is what anybody watching sees: the station's own lamps come down a
+# little as the flash rises, enough to read as "a picture is being taken".
+# It leaves the headlight — which is MuJoCo's camera-mounted lamp, and so
+# most of what lights the hall in any view — completely alone, so the rest of
+# the screen keeps its brightness. Dipping everything to a fifth, which is
+# what this used to do, blacked the whole plant out for half a second.
+#
+# QC_PHOTO_DIP is the exposure the product shot itself is taken at, and it is
+# held for exactly one capture (``_photo_exposure``). The wide-shot lighting
+# is far too hot for a white garment seen from 1 m straight up — measured on
+# the QC frame, 28% of it clips to pure white, taking the print and any stain
+# with it — so the shot needs its own stop. Because the capture is synchronous
+# and runs under the session lock, no viewport frame is ever rendered while it
+# is applied: the picture gets the dip, the screen does not.
+QC_DIP = 0.80  # station lamps while the flash is up, as a fraction of normal
+QC_PHOTO_DIP = 0.45  # lamps and headlight for the capture alone
 FLASH_DIFFUSE = (0.34, 0.34, 0.33)
 # The shirt's centre when it is put on the belt, and where the press is.
 SPAWN_X = -1.55
@@ -217,6 +239,20 @@ FILM = 0.0008
 BAG_FLAT = 0.002
 BAG_OPEN = 0.11
 BAG_SETTLED_MIN = 0.02
+# The roof and the gussets are BAG_PANELS rings across the bag's length
+# (line.xml), so the film can take one height per ring instead of one height
+# for the whole bag. BAG_ROOF_X is where the roof starts and ends, in the
+# bag's frame: the mouth-end edge is the tail's hinge.
+BAG_PANELS = 7
+BAG_ROOF_X = (-0.19, 0.30)
+# Film clears the cloth under it by this much, and bridges a dip between two
+# high points rather than following the cloth down into it — it is a sheet,
+# not shrink wrap. BAG_FILM_SAG is how far into such a dip it does fall.
+BAG_FILM_LIFT = 0.004
+BAG_FILM_SAG = 0.006
+# Film alpha (line.xml's "film" material) blown open and settled on a pack:
+# pulled down on the product it reads denser than it does standing empty.
+BAG_FILM_ALPHA = (0.26, 0.46)
 # The roof ends at the tail's hinge. The tail runs to the seal line and a lip
 # runs on from there to the mouth. Open, the mouth cup holds the tail flared
 # up by TAIL_FLARE; closed, the seal bar has pressed it down to the floor.
@@ -284,11 +320,15 @@ class Flap:
         return side * (pos[:, 1] - hinge[1]) > 0.0
 
 
-# In folding order.
+# In folding order. The folder is the fastest machine on the line: a flap
+# carries its cloth rigidly, so the swing is not waiting on the solver to
+# resolve anything, and it sets its layer down still at the top. Roughly half
+# the times these started at; the hem flap keeps the longest swing because it
+# lifts the most (lift=0.060) and lands on two layers.
 FLAPS = (
-    Flap("flap_left", (1.0, 0.0, 0.0), over=1.2, back=0.8, lift=0.028),
-    Flap("flap_right", (-1.0, 0.0, 0.0), over=1.2, back=0.8, lift=0.036),
-    Flap("flap_bottom", (0.0, 1.0, 0.0), over=1.4, back=0.9, lift=0.060),
+    Flap("flap_left", (1.0, 0.0, 0.0), over=0.55, back=0.32, lift=0.028),
+    Flap("flap_right", (-1.0, 0.0, 0.0), over=0.55, back=0.32, lift=0.036),
+    Flap("flap_bottom", (0.0, 1.0, 0.0), over=0.65, back=0.36, lift=0.060),
 )
 
 
@@ -553,6 +593,7 @@ class Line:
         # None (the windowed run) still fires the flash; nothing records it.
         self.on_photo = on_photo
         self._flash = [int(model.light(n).id) for n in ("qc_flash_l", "qc_flash_r")]
+        self._flash_level = 0.0
         self._bulb = [int(model.geom(n).id) for n in ("qc_bulb_l", "qc_bulb_r")]
         self._bulb_rgba = model.geom_rgba[self._bulb].copy()
         self._scene_lights = [i for i in range(model.nlight) if i not in self._flash]
@@ -582,7 +623,7 @@ class Line:
         self._slat_x0 = model.geom_pos[self._slats, 0].copy()
         self._mocap = {f.body: int(model.body(f.body).mocapid[0]) for f in FLAPS}
         self._flap_geom = {f.body: model.geom(f.body).id for f in FLAPS}
-        self._spread = SpreadStation(
+        self._align = AlignStation(
             model, data, qadr=self._qadr, rest=self._rest, dadr=self._dadr
         )
 
@@ -633,13 +674,15 @@ class Line:
         self._g = {
             name: model.geom(name).id
             for name in (
-                "bag_roof",
-                "bag_side_l",
-                "bag_side_r",
+                *(f"bag_roof_{i}" for i in range(BAG_PANELS)),
+                *(f"bag_side_l_{i}" for i in range(BAG_PANELS)),
+                *(f"bag_side_r_{i}" for i in range(BAG_PANELS)),
+                *(f"bag_crimp_{i}" for i in range(4)),
+                "bag_floor",
                 "bag_end",
                 "bag_weld_end",
-                "bag_weld_l",
-                "bag_weld_r",
+                "bag_hang_patch",
+                "bag_hang_hole",
                 "bag_tail",
                 "bag_lip",
                 "bag_tail_side_l",
@@ -651,10 +694,38 @@ class Line:
                 "air_jet",
             )
         }
+        # Roof and gusset rings, mouth end first, and their x edges.
+        self._panels = [
+            (
+                self._g[f"bag_roof_{i}"],
+                self._g[f"bag_side_l_{i}"],
+                self._g[f"bag_side_r_{i}"],
+            )
+            for i in range(BAG_PANELS)
+        ]
+        self._panel_edges = np.linspace(*BAG_ROOF_X, BAG_PANELS + 1)
+        # Every geom made of the plain film, so the whole bag tightens
+        # together. Writing rgba would otherwise drop these geoms off their
+        # material and render them MuJoCo's default grey, so the material's
+        # own colour is carried over and only the alpha is driven.
+        self._film_alpha = [self._g[f"bag_roof_{i}"] for i in range(BAG_PANELS)]
+        self._film_alpha += [self._g[f"bag_side_l_{i}"] for i in range(BAG_PANELS)]
+        self._film_alpha += [self._g[f"bag_side_r_{i}"] for i in range(BAG_PANELS)]
+        self._film_alpha += [
+            self._g[n] for n in
+            ("bag_floor", "bag_end", "bag_tail", "bag_lip",
+             "bag_tail_side_l", "bag_tail_side_r")
+        ]
+        self._film_rgb = np.array(
+            model.mat_rgba[int(model.geom_matid[self._g["bag_roof_0"]])][:3], dtype=float
+        )
         self._rgba0 = {name: model.geom_rgba[gid].copy() for name, gid in self._g.items()}
         self._bag_local: np.ndarray | None = None  # shirt vertices in the bag's frame
         # Where the bag's centre is held while it is not on the belt, or None.
         self._bag_held: np.ndarray | None = None
+        # Film height per panel; _bag_h is the height at the mouth, which is
+        # what the tail hinges off and what the seal bar has to close.
+        self._bag_film = np.full(BAG_PANELS, BAG_FLAT)
         self._bag_h = BAG_FLAT
         self._bag_tail = 0.0
         self._bagger = None  # the bagger's own sequence, run alongside the cycle
@@ -700,11 +771,11 @@ class Line:
                 next(self._bagger)
             except StopIteration:
                 self._bagger = None
-        if self.belt_speed != 0.0 and self._spread._world is not None:
+        if self.belt_speed != 0.0 and self._align._world is not None:
             dx = self.belt_speed * self.dt
-            self._spread._world[:, 0] += dx
-            self._spread._center[0] += dx
-        self._spread.apply()
+            self._align._world[:, 0] += dx
+            self._align._center[0] += dx
+        self._align.apply()
         self._drive_belt()
         self._drive_belt2()
         self._steam.follow(self.data)
@@ -732,7 +803,7 @@ class Line:
         self.model.geom_pos[self._slats, 0] = (
             BELT_SLAT_X[0] + (self._slat_x0 - BELT_SLAT_X[0] + self._belt_travel) % span
         )
-        if self._spread._world is not None:
+        if self._align._world is not None or self._align.holding:
             return
         pos = self.positions()
         riding = (
@@ -791,10 +862,39 @@ class Line:
         self._mujoco.mju_quat2Mat(rotation, qpos[3:])
         self._bag_local = (self.positions() - qpos[:3]) @ rotation.reshape(3, 3)
 
-    def _settled_height(self) -> float:
-        """How tall the bag stands once its film lies on the pack."""
-        top = float(self._bag_local[:, 2].max()) + SHIRT_RADIUS
-        return float(np.clip(top - BAG_FLOOR + 0.004, BAG_SETTLED_MIN, BAG_OPEN))
+    def _settled_profile(self) -> np.ndarray:
+        """Film height per roof ring once it lies on the pack.
+
+        The pack's own top under each ring, plus a clearance, is where the
+        film would sit if it followed the cloth exactly. It does not: a sheet
+        bridges a dip between two high points rather than dropping into it,
+        so every ring is pulled back up to within BAG_FILM_SAG of the lower
+        of its two neighbours, and the result is smoothed once — film creases
+        over a fold, it does not step.
+        """
+        local = self._bag_local
+        top = np.full(BAG_PANELS, BAG_SETTLED_MIN)
+        for index in range(BAG_PANELS):
+            lo, hi = self._panel_edges[index], self._panel_edges[index + 1]
+            band = (local[:, 0] >= lo) & (local[:, 0] < hi)
+            if band.any():
+                height = float(local[band, 2].max()) + SHIRT_RADIUS - BAG_FLOOR
+                top[index] = height + BAG_FILM_LIFT
+        top = np.clip(top, BAG_SETTLED_MIN, BAG_OPEN)
+        for _ in range(BAG_PANELS):
+            bridge = np.minimum(
+                np.concatenate([top[:1], top[:-1]]),
+                np.concatenate([top[1:], top[-1:]]),
+            )
+            top = np.maximum(top, bridge - BAG_FILM_SAG)
+        smooth = top.copy()
+        smooth[1:-1] = 0.25 * top[:-2] + 0.5 * top[1:-1] + 0.25 * top[2:]
+        return np.clip(smooth, BAG_SETTLED_MIN, BAG_OPEN)
+
+    def _film_at(self, x: float) -> float:
+        """Film height above the bag's floor at local ``x``."""
+        index = int(np.clip(np.searchsorted(self._panel_edges, x) - 1, 0, BAG_PANELS - 1))
+        return float(self._bag_film[index])
 
     # --- the cycle ----------------------------------------------------
 
@@ -832,14 +932,14 @@ class Line:
             )
             self._enter(
                 "ORIENT",
-                "dual belts square the heading",
+                "two arms pick the garment up and square its heading",
                 phase="ORIENT",
             )
-            yield from self._spread.cycle(self)
+            yield from self._align.cycle(self)
             pos = self.positions()
             span = pos.max(axis=0) - pos.min(axis=0)
             z_span = float(span[2])
-            heading = math.degrees(_heading(pos, self._spread._rest_local))
+            heading = math.degrees(_heading(pos, self._align._rest_local))
             self._enter(
                 "ORIENT",
                 f"collar downstream ({heading:+.0f} deg), still wrinkled "
@@ -866,7 +966,7 @@ class Line:
             )
             yield from self._hold(
                 "ORIENT",
-                "turner idle, heading already square",
+                "align arms idle, heading already square",
                 0.3,
                 phase="ORIENT",
             )
@@ -881,7 +981,7 @@ class Line:
         yield from self._iron_to_flat(3.0)
         self._enter("LIFT", "platen up")
         yield from self._ramp_stroke(STROKE_OPEN, 2.0)
-        self._spread.release()
+        self._align.release()
 
         self._enter("BELT", "carry the pressed shirt to the inspection station", phase="TO_QC",
                     measurements={"flatnessPostM": float(np.std(self.positions()[:, 2]))})
@@ -909,14 +1009,14 @@ class Line:
         self._drive_to = BELT_X[1]
         # The bagger gets a bag ready while the folder works.
         self._bagger = self._prepare_bag()
-        yield from self._hold("SETTLE", "shirt on the folder", 0.5, phase="FOLD")
+        yield from self._hold("SETTLE", "shirt on the folder", 0.3, phase="FOLD")
 
         self._layers = _Layers(self.model, self.data, thickness=0.5 * LAYER_GAP)
         for flap in FLAPS:
             self._enter("FOLD", flap.body.replace("flap_", "") + " flap over",
                         operation=flap.body.upper())
             yield from self._flip(flap)
-            yield from self._hold("FOLD", "", 0.3, quiet=True)
+            yield from self._hold("FOLD", "", 0.12, quiet=True)
 
         pos = self.positions()
         size = pos.max(axis=0) - pos.min(axis=0)
@@ -927,7 +1027,7 @@ class Line:
             operation="PACK_MEASURED",
             measurements={"packLengthM": float(size[0]), "packWidthM": float(size[1]), "packHeightM": float(size[2])},
         )
-        yield from self._hold("FOLD", "", 0.6, quiet=True)
+        yield from self._hold("FOLD", "", 0.3, quiet=True)
 
         if not self._bag_ready:
             self._enter("WAIT", "the pack waits for the bagger to open a bag")
@@ -952,7 +1052,7 @@ class Line:
         self._seal_in()
 
         self._enter("RELEASE", "fingers and mouth cup let go, the film settles on the pack")
-        yield from self._release_bag(self._settled_height())
+        yield from self._release_bag(self._settled_profile())
         self._enter("INDEX", "belt 2 moves the bag on to the seal station", phase="TO_SEAL")
         yield from self._index_bag(SEAL_X)
         self._enter("SEAL", "seal bar presses the mouth flat and welds it, stamp puts the label on", phase="SEAL")
@@ -964,17 +1064,39 @@ class Line:
         yield from self._hold("DONE", "sequence complete; packaging quality not validated", 2.5, phase="DONE")
 
     def _set_flash(self, level: float) -> None:
-        """0 dark, 1 full. Lamps, bulbs and the scene dip move together."""
+        """0 dark, 1 full. Lamps, bulbs and the station's dip move together."""
         model = self.model
         model.light_diffuse[self._flash] = np.array(FLASH_DIFFUSE) * level
         rgba = self._bulb_rgba.copy()
         rgba[:, :3] += (1.0 - rgba[:, :3]) * level
         model.geom_rgba[self._bulb] = rgba
-        # Everything else fades toward QC_DIP as the flash comes up.
-        dip = 1.0 - (1.0 - QC_DIP) * level
-        model.light_diffuse[self._scene_lights] = self._light0[self._scene_lights] * dip
-        model.vis.headlight.diffuse[:] = self._head0[0] * dip
-        model.vis.headlight.ambient[:] = self._head0[1] * dip
+        self._flash_level = float(level)
+        # The station's lamps ease toward QC_DIP as the flash comes up; the
+        # headlight is left alone, so the rest of the picture does not go out.
+        self._set_lighting(1.0 - (1.0 - QC_DIP) * level, 1.0)
+
+    def _set_lighting(self, scene: float, headlight: float) -> None:
+        """Scale the named lights and the headlight off their normal levels."""
+        model = self.model
+        model.light_diffuse[self._scene_lights] = self._light0[self._scene_lights] * scene
+        model.vis.headlight.diffuse[:] = self._head0[0] * headlight
+        model.vis.headlight.ambient[:] = self._head0[1] * headlight
+
+    @contextmanager
+    def _photo_exposure(self):
+        """Stop the lights down for one capture, then put them back.
+
+        The product shot needs a much deeper dip than the screen should ever
+        see. Both the MuJoCo bridge and the Isaac run take the shot inside
+        ``on_photo``, synchronously and holding whatever lock the renderer
+        needs, so the stopped-down state exists only between these two lines
+        and no live frame is composed while it does.
+        """
+        self._set_lighting(QC_PHOTO_DIP, QC_PHOTO_DIP)
+        try:
+            yield
+        finally:
+            self._set_flash(self._flash_level)
 
     def _shoot(self):
         """Stop, let the cloth settle, fire the flash, take the product shot.
@@ -997,7 +1119,8 @@ class Line:
                 taken = True
                 if self.on_photo is not None:
                     try:
-                        self.on_photo()
+                        with self._photo_exposure():
+                            self.on_photo()
                     except Exception as exc:  # noqa: BLE001 — a bad shot is not a bad cycle
                         self._observe("PHOTO_FAILED", f"camera failed: {exc}", level="warning")
                         self.log(f"[line {self.cycles}] PHOTO  camera failed: {exc}")
@@ -1030,17 +1153,13 @@ class Line:
         return np.asarray(ids, dtype=int)
 
     def _move_cup(self, xyz, seconds: float, *, carry: bool = False):
-        """Lerp the cup around the camera post. With ``carry`` only the patch is held."""
-        start = np.array(self.data.mocap_pos[self._qc_cup], dtype=float)
-        path = _cup_path(start, xyz)
-        lengths = []
-        prev = start
-        for point in path:
-            lengths.append(float(np.linalg.norm(point - prev)) + 1e-6)
-            prev = point
-        total = sum(lengths)
-        for point, length in zip(path, lengths):
-            yield from self._lerp_cup(point, seconds * length / total, carry=carry)
+        """Lerp the cup to ``xyz``. With ``carry`` only the held patch goes with it.
+
+        The shoulder is on the camera post itself, so a straight line from
+        anywhere the arm works to anywhere else stays clear of the plant: no
+        waypoints, no keep-out to respect.
+        """
+        yield from self._lerp_cup(xyz, seconds, carry=carry)
 
     def _lerp_cup(self, xyz, seconds: float, *, carry: bool):
         start = np.array(self.data.mocap_pos[self._qc_cup], dtype=float)
@@ -1116,7 +1235,7 @@ class Line:
         self._steam.reset()
         set_steam(self.model, False)
         self.data.ctrl[self._stroke] = STROKE_OPEN
-        self._spread.reset()
+        self._align.reset()
         self._place = None
         if self.skewed:
             place = operator_shirt(SPAWN_X, self._rng)
@@ -1131,8 +1250,8 @@ class Line:
         world = place.world
         self._skew_yaw = place.yaw
         self._skew_y = place.dy
-        self._spread._world = world.copy()
-        self._spread._prev = world.copy()
+        self._align._world = world.copy()
+        self._align._prev = world.copy()
         ids = np.arange(len(world))
         self._pin(ids, world, None)
         for name, gid in self._g.items():
@@ -1193,8 +1312,8 @@ class Line:
         """
         while True:
             pos = (
-                self._spread._world
-                if self._spread._world is not None
+                self._align._world
+                if self._align._world is not None
                 else self.positions()
             )
             left = remaining(pos)
@@ -1224,7 +1343,7 @@ class Line:
         z0 = SURFACE_Z + SHIRT_RADIUS
         start_stroke = float(self.data.ctrl[self._stroke])
         steps = self._steps(seconds)
-        pin = self._spread._world is not None or self.skewed
+        pin = self._align._world is not None or self.skewed
         for index in range(steps):
             blend = smoothstep((index + 1) / steps)
             self.data.ctrl[self._stroke] = start_stroke + (
@@ -1233,7 +1352,7 @@ class Line:
             if pin:
                 world = start.copy()
                 world[:, 2] = start[:, 2] + blend * (z0 - start[:, 2])
-                self._spread._world = world
+                self._align._world = world
             yield
 
     def _iron_to_flat(self, seconds: float):
@@ -1246,12 +1365,12 @@ class Line:
         for index in range(steps):
             blend = smoothstep((index + 1) / steps)
             world = start + blend * (target - start)
-            self._spread._world = world
+            self._align._world = world
             vel = (target - start) / max(seconds, self.dt)
             self._pin(ids, world, vel)
             self._steam.puff(index * self.dt, seconds)
             yield
-        self._spread._world = target.copy()
+        self._align._world = target.copy()
         self._pin(ids, target, None)
         z_span = float(target[:, 2].max() - target[:, 2].min())
         self._enter(
@@ -1428,8 +1547,12 @@ class Line:
         for mocap, side in self._fingers:
             self.data.mocap_pos[mocap][1:] = (side * y, z)
 
-    def _release_bag(self, settled: float):
-        """Fingers in and up, mouth cup off: the film settles on the pack."""
+    def _release_bag(self, settled: np.ndarray):
+        """Fingers in and up, mouth cup off: the film settles on the pack.
+
+        ``settled`` is one height per roof ring, so the film comes down onto
+        the pack's own shape rather than to one flat lid height.
+        """
         data = self.data
         for blend in self._tween(0.4):
             self._set_fingers(FINGER_OUT_Y + (FINGER_IN_Y - FINGER_OUT_Y) * blend, FINGER_DOWN_Z)
@@ -1438,9 +1561,10 @@ class Line:
             self._set_fingers(FINGER_IN_Y, FINGER_DOWN_Z + (FINGER_PARK_Z - FINGER_DOWN_Z) * blend)
             yield
         cup_z = float(data.mocap_pos[self._mouth_cup][2])
-        h0, tail0 = self._bag_h, self._bag_tail
+        film0, tail0 = self._bag_film.copy(), self._bag_tail
+        settled = np.asarray(settled, dtype=float)
         for blend in self._tween(1.0):
-            self._shape_bag(h0 + (settled - h0) * blend, tail0 * (1.0 - blend))
+            self._shape_bag(film0 + (settled - film0) * blend, tail0 * (1.0 - blend))
             data.mocap_pos[self._mouth_cup][2] = cup_z + (MOUTH_CUP_PARK_Z - cup_z) * blend
             yield
 
@@ -1461,23 +1585,45 @@ class Line:
         self.belt2_speed = 0.0
         self.data.qvel[self._bag_dadr : self._bag_dadr + 6] = 0.0
 
-    def _shape_bag(self, height: float, tail: float) -> None:
-        """Shape the bag's films: ``height`` from floor to roof, and the tail
+    def _shape_bag(self, height, tail: float) -> None:
+        """Shape the bag's films: ``height`` floor to roof, and the tail
         ``tail`` radians off the roof's line (up is positive).
 
-        The tail's sides follow it while it is flared or flat; pressed down,
-        the gussets fold in and they go.
+        ``height`` is one number while the bag is flat, being blown open or
+        being closed — every ring the same. Once the film settles it is one
+        height per ring (``_settled_profile``), and the roof and both gussets
+        step down over the pack's shoulders instead of staying a flat lid.
+
+        The tail hinges off the ring at the mouth, so it follows that ring,
+        not the tallest one. The tail's sides follow it while it is flared or
+        flat; pressed down, the gussets fold in and they go.
         """
         g, pos, size, quat = self._g, self.model.geom_pos, self.model.geom_size, self.model.geom_quat
-        half = 0.5 * height
-        roof = BAG_FLOOR + height
-        pos[g["bag_roof"], 2] = roof
-        pos[g["bag_sticker"], 2] = roof + FILM + 0.0006
-        for name in ("bag_side_l", "bag_side_r", "bag_end", "bag_weld_end", "bag_weld_l", "bag_weld_r"):
-            pos[g[name], 2] = BAG_FLOOR + half
-            size[g[name], 2] = max(half, FILM)
+        film = np.broadcast_to(np.asarray(height, dtype=float), (BAG_PANELS,)).copy()
+        self._bag_film = film
+        for (roof_id, left_id, right_id), panel in zip(self._panels, film):
+            pos[roof_id, 2] = BAG_FLOOR + panel
+            for gid in (left_id, right_id):
+                pos[gid, 2] = BAG_FLOOR + 0.5 * panel
+                size[gid, 2] = max(0.5 * panel, FILM)
+        far = float(film[-1])
+        for name in ("bag_end", "bag_weld_end"):
+            pos[g[name], 2] = BAG_FLOOR + 0.5 * far
+            size[g[name], 2] = max(0.5 * far, FILM)
+        for name, dz in (("bag_hang_patch", FILM + 0.0004), ("bag_hang_hole", FILM + 0.0008)):
+            pos[g[name], 2] = BAG_FLOOR + far + dz
+        pos[g["bag_sticker"], 2] = (
+            BAG_FLOOR + self._film_at(float(pos[g["bag_sticker"], 0])) + FILM + 0.0006
+        )
+        # Film pulled onto a product reads denser than film standing empty.
+        span = max(BAG_OPEN - BAG_SETTLED_MIN, 1e-6)
+        tight = float(np.clip((BAG_OPEN - film.mean()) / span, 0.0, 1.0))
+        lo, hi = BAG_FILM_ALPHA
+        self.model.geom_rgba[self._film_alpha, :3] = self._film_rgb
+        self.model.geom_rgba[self._film_alpha, 3] = lo + (hi - lo) * tight
 
-        hinge = np.array([TAIL_HINGE_X, 0.0, roof])
+        mouth = float(film[0])
+        hinge = np.array([TAIL_HINGE_X, 0.0, BAG_FLOOR + mouth])
         along = np.array([-math.cos(tail), 0.0, math.sin(tail)])
         normal = np.array([math.sin(tail), 0.0, math.cos(tail)])
         middle = hinge + 0.5 * TAIL_LENGTH * along
@@ -1489,14 +1635,14 @@ class Line:
             [-math.cos(lip), 0.0, math.sin(lip)]
         )
         quat[g["bag_lip"]] = _pitch_quat(lip)
-        depth = max(0.0, min(height, height + TAIL_LENGTH * math.sin(tail))) * math.cos(tail)
+        depth = max(0.0, min(mouth, mouth + TAIL_LENGTH * math.sin(tail))) * math.cos(tail)
         for name, y in (("bag_tail_side_l", 0.2442), ("bag_tail_side_r", -0.2442)):
             gid = g[name]
             pos[gid] = middle - 0.5 * depth * normal
             pos[gid, 1] = y
             size[gid, 2] = max(0.5 * depth, 1e-4)
             quat[gid] = _pitch_quat(tail)
-        self._bag_h, self._bag_tail = height, tail
+        self._bag_h, self._bag_tail = mouth, tail
 
     def _seal_and_tag(self):
         """Lower the seal bar and the stamp together, dwell, lift.
@@ -1508,10 +1654,13 @@ class Line:
         g = self._g
         bag_z = float(self.data.qpos[self._bag_qadr + 2])
         bar_z = bag_z + BAG_FLOOR + 3.0 * FILM + SEAL_BAR_HALF
-        stamp_z = bag_z + BAG_FLOOR + self._bag_h + FILM + STAMP_UNDER
+        label_x = float(model.geom_pos[g["bag_sticker"], 0])
+        stamp_z = bag_z + BAG_FLOOR + self._film_at(label_x) + FILM + STAMP_UNDER
         yield from self._move_presses(bar_z, stamp_z, 1.2, press_tail=True)
 
         model.geom_rgba[g["bag_seam"]] = (0.70, 0.84, 0.95, 0.85)
+        for index in range(4):
+            model.geom_rgba[g[f"bag_crimp_{index}"], 3] = 0.9
         model.geom_rgba[g["stamp_sticker"], 3] = 0.0
         model.geom_rgba[g["bag_sticker"], 3] = 1.0
         cold = self._rgba0["seal_bar_head"]
@@ -1545,7 +1694,8 @@ class Line:
         angle = math.asin(float(np.clip(drop / TAIL_LENGTH, -1.0, 0.0)))
         angle = max(angle, closed)
         if angle < self._bag_tail:
-            self._shape_bag(height, angle)
+            # Only the tail moves: the film over the pack keeps its shape.
+            self._shape_bag(self._bag_film, angle)
 
     def _convey(self):
         """Run belt 2 until the bag is in the carton."""
@@ -1653,134 +1803,30 @@ def _pitch_quat(angle: float) -> list[float]:
     return [math.cos(0.5 * angle), 0.0, math.sin(0.5 * angle), 0.0]
 
 
-def _polar(yaw: float, elev: float) -> np.ndarray:
-    return np.array(
-        [math.cos(yaw) * math.cos(elev), math.sin(yaw) * math.cos(elev), math.sin(elev)]
-    )
-
-
-def _in_qc_keepout(point, radius: float = 0.0) -> bool:
-    """True if ``point`` intersects the QC camera post or its boom.
-
-    The grab pose sits under the camera at (QC_X, 0), so this is a cylinder
-    around the operator-side post — not a box that swallows the shirt.
-    """
-    x, y, z = float(point[0]), float(point[1]), float(point[2])
-    if 0.48 < z < 1.68 and math.hypot(x - QC_POLE_XY[0], y - QC_POLE_XY[1]) < 0.10 + radius:
-        return True
-    if (
-        abs(x - QC_POLE_XY[0]) < 0.05 + radius
-        and abs(z - 1.62) < 0.05 + radius
-        and -0.52 < y < 0.70
-    ):
-        return True
-    return False
-
-
-def _seg_hits_keepout(a, b, radius: float = 0.07) -> bool:
-    a = np.asarray(a, dtype=float)
-    b = np.asarray(b, dtype=float)
-    for blend in np.linspace(0.0, 1.0, 10):
-        if _in_qc_keepout(a + blend * (b - a), radius):
-            return True
-    return False
-
-
-def _arm_hits_pole(shoulder, elbow, wrist) -> bool:
-    return _seg_hits_keepout(shoulder, elbow) or _seg_hits_keepout(elbow, wrist)
-
-
-def _xy_near_pole(a, b, clearance: float = QC_POLE_CLEAR_XY) -> bool:
-    a = np.asarray(a, dtype=float)
-    b = np.asarray(b, dtype=float)
-    for blend in np.linspace(0.0, 1.0, 10):
-        p = a + blend * (b - a)
-        if math.hypot(p[0] - QC_POLE_XY[0], p[1] - QC_POLE_XY[1]) < clearance:
-            return True
-    return False
-
-
 def _qc_ik(cup_xyz):
-    """2-link IK for the QC pedestal. Prefers the elbow that misses the post."""
+    """2-link IK for the QC reject arm: cup, shoulder, elbow, wrist and yaw.
+
+    The shoulder is a collar on the camera post, above everything the arm
+    reaches over, so the elbow is always taken up and there is no second
+    solution to pick between.
+    """
     cup = np.asarray(cup_xyz, dtype=float)
-    wrist = cup + np.array([0.0, 0.0, QC_ARM_WRIST])
-    s = QC_ARM_S
-    delta = wrist - s
-    yaw = math.atan2(delta[1], delta[0])
-    reach = math.hypot(delta[0], delta[1])
-    height = float(delta[2])
-    dist = math.hypot(reach, height)
-    lo = abs(QC_ARM_L1 - QC_ARM_L2) + 0.03
-    hi = QC_ARM_L1 + QC_ARM_L2 - 0.03
-    if dist < 1e-6:
-        dist = lo
-    scale = min(max(dist, lo), hi) / dist
-    reach *= scale
-    height *= scale
-    dist = math.hypot(reach, height)
-    cos_el = (QC_ARM_L1 * QC_ARM_L1 + dist * dist - QC_ARM_L2 * QC_ARM_L2) / (
-        2.0 * QC_ARM_L1 * dist
+    wrist_target = cup + np.array([0.0, 0.0, QC_ARM_WRIST])
+    shoulder, elbow, wrist, yaw = two_link_ik(
+        wrist_target, QC_ARM_S, QC_ARM_L1, QC_ARM_L2
     )
-    beta = math.acos(float(np.clip(cos_el, -1.0, 1.0)))
-    gamma = math.atan2(height, reach)
-    elbow_up = s + QC_ARM_L1 * _polar(yaw, gamma + beta)
-    elbow_down = s + QC_ARM_L1 * _polar(yaw, gamma - beta)
-    elbow = elbow_down if _arm_hits_pole(s, elbow_up, wrist) else elbow_up
-    if _arm_hits_pole(s, elbow, wrist):
-        elbow = elbow_down if elbow is elbow_up else elbow_up
-    return cup, s, elbow, wrist, yaw
+    return cup, shoulder, elbow, wrist, yaw
 
 
-def _pose_hits_pole(cup_xyz) -> bool:
-    _cup, s, elbow, wrist, _yaw = _qc_ik(cup_xyz)
-    return _arm_hits_pole(s, elbow, wrist)
+def _qc_reach(cup_xyz) -> float:
+    """Wrist distance from the shoulder for ``cup_xyz``, in metres.
 
-
-def _path_hits_pole(start, end) -> bool:
-    start = np.asarray(start, dtype=float)
-    end = np.asarray(end, dtype=float)
-    if _xy_near_pole(start, end) or _seg_hits_keepout(start, end, radius=0.06):
-        return True
-    for blend in np.linspace(0.0, 1.0, 8):
-        if _pose_hits_pole(start + blend * (end - start)):
-            return True
-    return False
-
-
-def _cup_path(start, end) -> list[np.ndarray]:
-    """Cup waypoints that keep the arm west of the camera post."""
-    start = np.asarray(start, dtype=float)
-    end = np.asarray(end, dtype=float)
-    if not _path_hits_pole(start, end):
-        return [end]
-    z = max(float(start[2]), float(end[2]), QC_CUP_LIFT_Z)
-    via_a = np.array([QC_CLEAR_X, start[1], z])
-    via_b = np.array([QC_CLEAR_X, end[1], z])
-    path = []
-    prev = start
-    for point in (via_a, via_b, end):
-        if float(np.linalg.norm(point - prev)) > 0.05:
-            path.append(point)
-            prev = point
-    return path or [end]
-
-
-def _quat_z_to(direction: np.ndarray) -> np.ndarray:
-    """Unit quaternion that rotates local +Z onto ``direction``."""
-    vec = np.asarray(direction, dtype=float)
-    n = float(np.linalg.norm(vec))
-    if n < 1e-9:
-        return np.array([1.0, 0.0, 0.0, 0.0])
-    vec = vec / n
-    z = np.array([0.0, 0.0, 1.0])
-    c = float(np.dot(z, vec))
-    if c > 0.999999:
-        return np.array([1.0, 0.0, 0.0, 0.0])
-    if c < -0.999999:
-        return np.array([0.0, 1.0, 0.0, 0.0])
-    axis = np.cross(z, vec)
-    q = np.array([1.0 + c, axis[0], axis[1], axis[2]])
-    return q / np.linalg.norm(q)
+    Under QC_ARM_L1 + QC_ARM_L2 - 0.03 the arm actually gets there; past it
+    the IK clamps and the cup falls short of where it was asked for. The
+    station's poses are all inside it — this is what a test asserts on.
+    """
+    _cup, shoulder, _elbow, wrist, _yaw = _qc_ik(cup_xyz)
+    return float(np.linalg.norm(wrist - shoulder))
 
 
 class FollowCam:
@@ -1862,7 +1908,7 @@ def main() -> None:
     parser.add_argument(
         "--camera",
         default="follow",
-        help="follow (tracks the shirt) or a fixed one: overview, orient_cam, spread_cam, "
+        help="follow (tracks the shirt) or a fixed one: overview, orient_cam, align_cam, "
         "press_cam, fold_cam, bagger_cam, bag_cam",
     )
     args = parser.parse_args()
