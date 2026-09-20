@@ -6,7 +6,6 @@ import {
   CameraOff,
   ChevronLeft,
   ChevronRight,
-  FlaskConical,
   History,
   Maximize2,
   Minimize2,
@@ -14,7 +13,6 @@ import {
   Play,
   Radio,
 } from "lucide-react";
-import { CellSchematic } from "./CellSchematic";
 import { XFoldLoader } from "@/components/XFoldLoader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +26,15 @@ import {
 import { RunVideoPlayer, type Status as VideoStatus } from "@/components/RunVideoPlayer";
 import type { RunReplay } from "@/lib/use-run-replay";
 import type { DataProvenance, RunDetail } from "@/lib/types";
+
+function EmptyView({ message }: { message: string }) {
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center font-mono text-[12px] uppercase tracking-[0.12em] text-hud-dim">
+      <CameraOff className="size-6 opacity-60" strokeWidth={1.5} aria-hidden />
+      <span>{message}</span>
+    </div>
+  );
+}
 
 export function SimulationViewport({
   run,
@@ -113,9 +120,9 @@ export function SimulationViewport({
           {live && run && runGarmentLabel(run) ? (
             <StatusBadge tone={runGarmentTone(run)}>{runGarmentLabel(run)}</StatusBadge>
           ) : null}
-          {provenance === "fixture" ? (
-            <StatusBadge tone="neutral" icon={<FlaskConical className="size-3" aria-hidden />}>
-              Sample
+          {provenance === "absent" || provenance === "stale" ? (
+            <StatusBadge tone="danger" icon={<CameraOff className="size-3" aria-hidden />}>
+              No stream
             </StatusBadge>
           ) : null}
           {showJpeg ? <ViewportStatusBadge status={viewport.status} /> : null}
@@ -174,9 +181,7 @@ export function SimulationViewport({
               className="absolute inset-0 h-full w-full object-contain"
             />
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center p-6">
-              <CellSchematic stage={stage} stages={run?.stages} />
-            </div>
+            <EmptyView message={replay.loading ? "Loading replay…" : "No replay frame"} />
           )
         ) : showJpeg ? (
           viewport.src ? (
@@ -190,7 +195,9 @@ export function SimulationViewport({
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center font-mono text-[12px] uppercase tracking-[0.12em] text-hud-dim">
               {viewport.status !== "offline" ? (
                 <XFoldLoader size={72} decorative tone="dark" surface="var(--viewport)" />
-              ) : null}
+              ) : (
+                <CameraOff className="size-6 opacity-60" strokeWidth={1.5} aria-hidden />
+              )}
               <span>
                 {viewport.status === "offline"
                   ? viewport.error ?? "No viewport signal"
@@ -204,9 +211,15 @@ export function SimulationViewport({
             </div>
           )
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center p-6">
-            <CellSchematic stage={stage} stages={run?.stages} />
-          </div>
+          <EmptyView
+            message={
+              !run
+                ? "No run selected"
+                : provenance === "absent" || !streamAvailable
+                  ? "Bridge offline · no camera"
+                  : "Waiting for camera"
+            }
+          />
         )}
 
         <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between px-6 py-5">

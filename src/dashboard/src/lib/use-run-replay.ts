@@ -70,7 +70,7 @@ export function stagesForT(markers: TimelineMarker[], t: number, tMax: number, s
   });
 }
 
-/** Fallback markers when the bridge has no timeline (fixtures / offline). */
+/** Fallback markers from run.stages when the bridge has no timeline yet. */
 function markersFromStages(run: RunDetail | null): TimelineMarker[] {
   if (!run) return [];
   return run.stages

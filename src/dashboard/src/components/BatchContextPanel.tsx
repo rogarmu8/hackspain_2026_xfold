@@ -25,7 +25,7 @@ import {
 import { Button } from "./ui/button";
 import { XFoldLoader } from "@/components/XFoldLoader";
 import { RunStatusBadges } from "@/components/RunStatusBadges";
-import type { PendingCommand } from "@/lib/adapter";
+import type { PendingCommand } from "@/lib/dashboard-context";
 import type { BatchSummary, CommandKind, RunDetail, SimulatorCapabilities } from "@/lib/types";
 
 export function BatchContextPanel({

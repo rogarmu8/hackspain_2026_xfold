@@ -10,13 +10,9 @@ import {
   useTransition,
   type ReactNode,
 } from "react";
-import {
-  getAdapter,
-  type FixtureScenario,
-  type PendingCommand,
-} from "@/lib/adapter";
 import type { JournalEvent } from "@xfold/protocol";
 import { BridgeClient, bridgeBaseUrl, probeBridge } from "@/lib/bridge-client";
+import { OFFLINE_CAPABILITIES } from "@/lib/capabilities";
 import type {
   BatchSummary,
   CommandKind,
@@ -27,19 +23,32 @@ import type {
   RunSummary,
 } from "@/lib/types";
 
-export type DataSource = "fixture" | "live";
+/** Live bridge, or honest empty UI when the bridge is unreachable. Never fixtures. */
+export type DataSource = "live" | "offline";
 
 const EMPTY_JOURNAL: JournalEvent[] = [];
+
+const OFFLINE_SNAPSHOT: ControlSnapshot = {
+  provenance: "absent",
+  connection: "disconnected",
+  lastUpdatedIso: null,
+  capabilities: OFFLINE_CAPABILITIES,
+  activeRun: null,
+  activeBatch: null,
+  incident: {
+    id: "bridge-down",
+    message: "No connection to the XFOLD bridge",
+    runId: null,
+  },
+};
 
 type DashboardContextValue = {
   source: DataSource;
   bridgeUrl: string;
   snapshot: ControlSnapshot;
-  scenario: FixtureScenario;
   pendingCommand: PendingCommand | null;
   experiments: ExperimentListItem[];
   history: RunSummary[];
-  setScenario: (scenario: FixtureScenario) => void;
   requestCommand: (kind: CommandKind, scopeLabel: string) => void;
   launch: (
     request: LaunchRequest,
@@ -49,22 +58,24 @@ type DashboardContextValue = {
     | Promise<{ ok: true; id: string } | { ok: false; reason: string }>;
   getRun: (id: string) => RunDetail | null;
   getBatch: (id: string) => BatchSummary | null;
-  /** Journal facts for a run (live only; empty on fixtures). */
+  /** Journal facts for a run (live only). */
   getJournal: (runId: string) => JournalEvent[];
   refresh: () => void;
+};
+
+export type PendingCommand = {
+  kind: CommandKind;
+  scopeLabel: string;
+  requestedAtIso: string;
 };
 
 const DashboardContext = createContext<DashboardContextValue | null>(null);
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
-  const fixture = useMemo(() => getAdapter(), []);
-  const [source, setSource] = useState<DataSource>("fixture");
+  const [source, setSource] = useState<DataSource>("offline");
   const [bridge, setBridge] = useState<BridgeClient | null>(null);
   const [, startTransition] = useTransition();
   const [version, setVersion] = useState(0);
-  const [scenario, setScenarioState] = useState<FixtureScenario>(
-    () => fixture.scenario,
-  );
   const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(
     null,
   );
@@ -82,7 +93,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       const ok = await probeBridge(url);
       if (cancelled) return;
       if (!ok) {
-        setSource("fixture");
+        setSource("offline");
         setBridge(null);
         bump();
         return;
@@ -94,7 +105,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (!started) {
-        setSource("fixture");
+        setSource("offline");
         setBridge(null);
         bump();
         return;
@@ -126,105 +137,77 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(() => {
     if (source === "live" && bridge) {
       void bridge.refreshSnapshot().then(bump);
-      return;
     }
-    startTransition(() => {
-      setPendingCommand(fixture.pendingCommand);
-      setScenarioState(fixture.scenario);
-      setVersion((v) => v + 1);
-    });
-  }, [source, bridge, fixture, bump, startTransition]);
+  }, [source, bridge, bump]);
 
   const snapshot = useMemo(() => {
     void version;
     if (source === "live" && bridge) return bridge.getControlSnapshot();
-    return fixture.getControlSnapshot();
-  }, [source, bridge, fixture, version]);
+    return OFFLINE_SNAPSHOT;
+  }, [source, bridge, version]);
 
   const experiments = useMemo(() => {
     void version;
     if (source === "live" && bridge) return bridge.listExperiments();
-    return fixture.listExperiments();
-  }, [source, bridge, fixture, version]);
+    return [];
+  }, [source, bridge, version]);
 
   const history = useMemo(() => {
     void version;
     if (source === "live" && bridge) return bridge.listHistory();
-    return fixture.listHistory();
-  }, [source, bridge, fixture, version]);
-
-  const setScenario = useCallback(
-    (next: FixtureScenario) => {
-      if (source === "live") return; // fixture knobs disabled while live
-      fixture.setScenario(next);
-      setScenarioState(next);
-      setPendingCommand(null);
-      setVersion((v) => v + 1);
-    },
-    [fixture, source],
-  );
+    return [];
+  }, [source, bridge, version]);
 
   const requestCommand = useCallback(
     (kind: CommandKind, scopeLabel: string) => {
-      if (source === "live" && bridge) {
-        const runId = bridge.getControlSnapshot().activeRun?.id ?? null;
-        const batchId = bridge.getControlSnapshot().activeBatch?.id ?? null;
-        setPendingCommand({
-          kind,
-          scopeLabel,
-          requestedAtIso: new Date().toISOString(),
-        });
-        void bridge.requestCommand(kind, runId, batchId).then(() => {
-          setPendingCommand(null);
-          bump();
-        });
-        return;
-      }
-      const pending = fixture.requestCommand(kind, scopeLabel);
-      setPendingCommand(pending);
-      setVersion((v) => v + 1);
-      if (!pending) return;
-      window.setTimeout(() => {
-        fixture.confirmPendingCommand();
+      if (source !== "live" || !bridge) return;
+      const runId = bridge.getControlSnapshot().activeRun?.id ?? null;
+      const batchId = bridge.getControlSnapshot().activeBatch?.id ?? null;
+      setPendingCommand({
+        kind,
+        scopeLabel,
+        requestedAtIso: new Date().toISOString(),
+      });
+      void bridge.requestCommand(kind, runId, batchId).then(() => {
         setPendingCommand(null);
-        setVersion((v) => v + 1);
-      }, 700);
+        bump();
+      });
     },
-    [source, bridge, fixture, bump],
+    [source, bridge, bump],
   );
 
   const launch = useCallback(
     (request: LaunchRequest) => {
-      if (source === "live" && bridge) {
-        return bridge.launch(request).then((result) => {
-          bump();
-          return result;
-        });
+      if (source !== "live" || !bridge) {
+        return {
+          ok: false as const,
+          reason: "Bridge offline — connect the simulator before launching.",
+        };
       }
-      const result = fixture.launch(request);
-      setScenarioState(fixture.scenario);
-      setVersion((v) => v + 1);
-      return result;
+      return bridge.launch(request).then((result) => {
+        bump();
+        return result;
+      });
     },
-    [source, bridge, fixture, bump],
+    [source, bridge, bump],
   );
 
   const getRun = useCallback(
     (id: string) => {
       void version;
       if (source === "live" && bridge) return bridge.getRun(id);
-      return fixture.getRun(id);
+      return null;
     },
-    [source, bridge, fixture, version],
+    [source, bridge, version],
   );
 
   const getBatch = useCallback(
     (id: string) => {
       void version;
       if (source === "live" && bridge) return bridge.getBatch(id);
-      return fixture.getBatch(id);
+      return null;
     },
-    [source, bridge, fixture, version],
+    [source, bridge, version],
   );
 
   const getJournal = useCallback(
@@ -240,11 +223,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       source,
       bridgeUrl: bridgeBaseUrl(),
       snapshot,
-      scenario,
       pendingCommand,
       experiments,
       history,
-      setScenario,
       requestCommand,
       launch,
       getRun,
@@ -255,11 +236,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     [
       source,
       snapshot,
-      scenario,
       pendingCommand,
       experiments,
       history,
-      setScenario,
       requestCommand,
       launch,
       getRun,

@@ -1,4 +1,9 @@
 import { PRODUCTIVE_CYCLE, SAMPLE_TELEMETRY } from "@xfold/protocol";
+/**
+ * Local demo adapter — NOT used by the live dashboard.
+ * Offline UI is empty (`provenance: absent`); see `dashboard-context.tsx`.
+ * Kept for isolated component experiments only.
+ */
 import { FIXTURE_CAPABILITIES, LIVE_CAPABILITIES } from "./capabilities";
 import {
   FIXTURE_ACTIVE_RUN,

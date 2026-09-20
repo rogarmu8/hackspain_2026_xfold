@@ -12,7 +12,6 @@ import { RunSummaryPanel } from "@/components/RunSummaryPanel";
 import { SimulationViewport } from "@/components/SimulationViewport";
 import { StageStepper } from "@/components/StageStepper";
 import { useDashboard } from "@/lib/dashboard-context";
-import type { FixtureScenario } from "@/lib/adapter";
 import { consoleLines } from "@/lib/console";
 import { formatSeconds, operatorStepTitle } from "@/lib/format";
 import type { RunLifecycle } from "@/lib/types";
@@ -22,17 +21,8 @@ import { ArrowUpRight, Camera, ClipboardList, Layers, TerminalSquare, TriangleAl
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./ui/sheet";
-import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 import { lifecycleLabel } from "@/lib/format";
 import { NewExperimentDialog } from "@/components/NewExperimentDialog";
-
-const SCENARIOS: { id: FixtureScenario; label: string }[] = [
-  { id: "active", label: "Active" },
-  { id: "empty", label: "Empty" },
-  { id: "disconnected", label: "Disconnected" },
-  { id: "failed", label: "Failed" },
-  { id: "finished", label: "Finished" },
-];
 
 const INSPECTOR_KEY = "xfold.inspectorWidth";
 const INSPECTOR_MIN = 260;
@@ -117,9 +107,7 @@ function autoInspectorPane(run: { lifecycle: RunLifecycle; hasPhoto?: boolean } 
 export function ControlRoom({ runId }: { runId: string }) {
   const {
     snapshot,
-    scenario,
     pendingCommand,
-    setScenario,
     requestCommand,
     source,
     bridgeUrl,
@@ -356,14 +344,11 @@ export function ControlRoom({ runId }: { runId: string }) {
         <p className="eyebrow mt-3 shrink-0 truncate">
           live · {bridgeUrl} · journal + REST/SSE
         </p>
-      ) : snapshot.provenance === "fixture" || snapshot.provenance === "stale" ? (
-        <details className="mt-3 shrink-0">
-          <summary className="eyebrow cursor-pointer">Demo scenarios · fixtures</summary>
-          <ToggleGroup type="single" value={scenario} onValueChange={(value) => { if (value) setScenario(value as FixtureScenario); }} variant="outline" size="sm" className="mt-2 flex-wrap" aria-label="Demo scenario">
-            {SCENARIOS.map(item => <ToggleGroupItem key={item.id} value={item.id}>{item.label}</ToggleGroupItem>)}
-          </ToggleGroup>
-        </details>
-      ) : null}
+      ) : (
+        <p className="eyebrow mt-3 shrink-0 truncate text-danger">
+          offline · {bridgeUrl} · no sample data
+        </p>
+      )}
     </AppShell>
   );
 }

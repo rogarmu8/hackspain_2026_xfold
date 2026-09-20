@@ -243,7 +243,7 @@ function NewExperimentDialogBody({
   }
 
   const process = snapshot.capabilities.process;
-  const scenario = snapshot.provenance === "fixture" ? "openarm-ninja-bag" : process?.scenario ?? "default";
+  const scenario = process?.scenario ?? "line";
   const batch = count > 1;
   const canLaunch = batch
     ? snapshot.capabilities.startBatch
@@ -464,10 +464,10 @@ function NewExperimentDialogBody({
         </DialogDescription>
       </DialogHeader>
 
-      {snapshot.provenance === "fixture" ? (
+      {snapshot.connection === "disconnected" || snapshot.provenance === "absent" ? (
         <p className="rounded-[var(--radius-sm)] bg-muted/50 px-3 py-2 text-[13px] text-muted-foreground">
-          <span className="font-semibold text-foreground">Sample data.</span>{" "}
-          Launch only mutates the local adapter; nothing is sent to MuJoCo.
+          <span className="font-semibold text-foreground">Bridge offline.</span>{" "}
+          Launch is disabled until the simulator is connected.
         </p>
       ) : null}
 
@@ -654,7 +654,7 @@ function NewExperimentDialogBody({
 
         {!canLaunch ? (
           <p className="text-[13px] text-muted-foreground">
-            Launch disabled: no simulation API. Use the sample adapter in Control to try the flow.
+            Launch disabled: connect the XFOLD bridge first.
           </p>
         ) : null}
       </form>

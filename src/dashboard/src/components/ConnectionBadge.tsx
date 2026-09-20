@@ -1,4 +1,4 @@
-import { CircleHelp, FlaskConical, PlugZap, TimerOff, Unplug } from "lucide-react";
+import { CircleHelp, PlugZap, TimerOff, Unplug } from "lucide-react";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { formatIso } from "@/lib/format";
 import type { ConnectionStatus, DataProvenance } from "@/lib/types";
@@ -25,10 +25,10 @@ export function ConnectionBadge({
     );
   }
 
-  if (provenance === "fixture") {
+  if (provenance === "fixture" || provenance === "absent") {
     return (
-      <StatusBadge tone="neutral" icon={<FlaskConical className="size-3.5" aria-hidden />} title="Local fixtures · bridge offline">
-        Sample
+      <StatusBadge tone="danger" icon={<Unplug className="size-3.5" aria-hidden />} title="No live bridge data">
+        Offline {stamp}
       </StatusBadge>
     );
   }

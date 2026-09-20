@@ -208,7 +208,9 @@ export function HistoryView() {
           <p className="mt-2 max-w-lg text-sm text-muted-foreground">
             {history.length
               ? "No rows match this filter."
-              : "No runs recorded yet. Launch the first from “New experiment”."}
+              : snapshot.connection === "disconnected"
+                ? "Bridge offline. Connect the simulator — the list stays empty until real runs exist."
+                : "No runs recorded yet. Launch the first from “New experiment”."}
           </p>
         </div>
       ) : (
