@@ -87,7 +87,9 @@ const FIRST_BEAT_MS = 1100;
 const BEAT_FACTOR = 0.78;
 /** Once the beats are this tight the joke has landed; hand over to slide 2. */
 const LAST_BEAT_MS = 110;
-const VISIBLE_LINES = 4;
+/** A line crosses in well under its beat, so it is still before the next one. */
+const CROSS_RATIO = 0.75;
+const CROSS_MAX_MS = 420;
 /** The cover hands over once per load; coming back to it replays without leaving. */
 let handedOver = false;
 const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
@@ -105,9 +107,11 @@ function useReducedMotion() {
 }
 
 /**
- * "Una camiseta más." then "Y otra.", each one faster, until the pile is going
- * quicker than anyone could work — at which point the deck moves on by itself.
- * Reduced motion gets the three lines at rest and keeps the keyboard in charge.
+ * "Una camiseta más." then "Y otra.", one line at a time: each arrives from the
+ * left, pushes the last one off to the right, and lands sooner than the one
+ * before it — until the pile is moving quicker than anyone could work and the
+ * deck hands over by itself. Reduced motion gets the line at rest and keeps the
+ * keyboard in charge.
  */
 function Cadence({ onAdvance }: SlideProps) {
   const [count, setCount] = useState(1);
@@ -136,29 +140,29 @@ function Cadence({ onAdvance }: SlideProps) {
     return () => window.clearTimeout(timer);
   }, [still]);
 
-  const lineClass =
-    "text-[clamp(1.1rem,2.4vw,1.9rem)] leading-tight whitespace-nowrap";
+  const lineClass = "text-[clamp(1.1rem,2.4vw,1.9rem)] leading-tight whitespace-nowrap opacity-80";
   if (still) {
-    return (
-      <p className={`${lineClass} opacity-80`}>Una camiseta más. Y otra. Y otra.</p>
-    );
+    return <p className={lineClass}>Una camiseta más. Y otra. Y otra.</p>;
   }
-  const shown = Array.from({ length: count }, (_, line) => line).slice(-VISIBLE_LINES);
+  // The beat that summoned this line, and the one before it leaving.
+  const beat = FIRST_BEAT_MS * BEAT_FACTOR ** (count - 1);
+  const cross = `${Math.round(Math.min(beat * CROSS_RATIO, CROSS_MAX_MS))}ms`;
   return (
-    <div
-      className="flex h-[6em] flex-col items-center justify-end gap-1 overflow-hidden text-[clamp(1.1rem,2.4vw,1.9rem)]"
-      style={{ maskImage: "linear-gradient(to bottom, transparent, #000 45%)" }}
-    >
-      {shown.map((line) => (
-        <p
-          key={line}
-          className={`${lineClass} opacity-80 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2`}
-          // The line arrives as fast as the beat that called it.
-          style={{ animationDuration: `${Math.max(70, FIRST_BEAT_MS * BEAT_FACTOR ** line * 0.5)}ms` }}
-        >
-          {line === 0 ? "Una camiseta más." : "Y otra."}
-        </p>
-      ))}
+    <div className="relative h-[2.4em] w-full overflow-hidden text-[clamp(1.1rem,2.4vw,1.9rem)]">
+      {[count - 1, count].map((line) =>
+        line < 1 ? null : (
+          <p
+            key={line}
+            className={`${lineClass} absolute inset-0 flex items-center justify-center ${
+              line === count ? "pitch-line-in" : "pitch-line-out"
+            }`}
+            style={{ "--pitch-beat": cross } as React.CSSProperties}
+            aria-hidden={line !== count}
+          >
+            {line === 1 ? "Una camiseta más." : "Y otra."}
+          </p>
+        ),
+      )}
     </div>
   );
 }

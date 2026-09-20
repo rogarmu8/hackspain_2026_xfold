@@ -175,6 +175,12 @@
 .scanline { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .scanline::after { content: ""; position: absolute; inset: 0; height: 30%; background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--hud) 6%, transparent), transparent); animation: scan 6s linear infinite; }
 
+/* Pitch cover (/ppt): each line crosses the slide the way a garment crosses a belt. */
+@keyframes pitch-line-in { from { transform: translateX(-55%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes pitch-line-out { from { transform: translateX(0); opacity: 1; } to { transform: translateX(55%); opacity: 0; } }
+.pitch-line-in { animation: pitch-line-in var(--pitch-beat, 300ms) var(--motion-ease) both; }
+.pitch-line-out { animation: pitch-line-out var(--pitch-beat, 300ms) var(--motion-ease) both; }
+
 .resize-handle { touch-action: none; }
 .resize-handle:hover > span, .resize-handle:focus-visible > span, .resize-handle[data-dragging="true"] > span { background: var(--foreground); opacity: 1; }
 
