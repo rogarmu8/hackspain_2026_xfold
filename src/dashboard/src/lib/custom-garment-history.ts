@@ -55,6 +55,12 @@ function write(items: StoredCustomGarment[]): StoredCustomGarment[] {
   return next;
 }
 
+/** Two cut-outs saved in the same millisecond must not share an id: delete
+ *  addresses entries by id, and a collision would drop the wrong one. */
+function newId(): string {
+  return `cg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export function rememberCustomGarment(
   draft: Pick<StoredCustomGarment, "sourceUrl" | "previewUrl" | "maskUrl" | "outline">,
 ): StoredCustomGarment[] {
@@ -62,7 +68,7 @@ export function rememberCustomGarment(
   const current = loadCustomGarments();
   const existing = current.findIndex((item) => item.previewUrl === draft.previewUrl);
   const entry: StoredCustomGarment = {
-    id: existing >= 0 ? current[existing].id : `cg-${Date.now().toString(36)}`,
+    id: existing >= 0 ? current[existing].id : newId(),
     sourceUrl: draft.sourceUrl,
     previewUrl: draft.previewUrl,
     maskUrl: draft.maskUrl,
@@ -71,4 +77,9 @@ export function rememberCustomGarment(
   };
   const rest = current.filter((item) => item.id !== entry.id);
   return write([entry, ...rest]);
+}
+
+/** Drop one saved cut-out. Returns the catalogue that is left. */
+export function forgetCustomGarment(id: string): StoredCustomGarment[] {
+  return write(loadCustomGarments().filter((item) => item.id !== id));
 }
