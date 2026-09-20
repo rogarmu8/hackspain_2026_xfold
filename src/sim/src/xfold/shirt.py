@@ -21,7 +21,8 @@ CELL_XML = MODELS_DIR / "cell.xml"
 ACTIVE_SHIRT_XML = MODELS_DIR / "_garment_active.xml"
 ACTIVE_SCENE_XML = MODELS_DIR / "_scene_active.xml"
 
-# Matches models/shirt.toml — bend FEM + edge equality, not cotton constants.
+# Matches models/shirt.toml — bend FEM + edge equality. young is calibrated
+# to cotton jersey there; the mesh, not young, is what sets the drape.
 # Flex-vs-one-plane is still one pair (mjMAXCONPAIR=50). Ground support
 # comes from per-vertex sphere geoms added in apply_shirt_config.
 SHIRT_CONTACT_BUDGET = 50

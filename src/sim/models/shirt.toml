@@ -28,9 +28,23 @@ type = "tee"
 # Dry T-shirt weight (kg). Adult cotton tee is typically 0.15–0.22.
 mass = 0.18
 
-# Bend stiffness (Pa). Issue #1433 / poncho drop tests: 1e3–5e3.
-# Stretch is the edge-equality constraint, not this number.
-young = 3.0e3
+# Bend stiffness (Pa). Stretch is the edge-equality constraint, not this.
+#
+# This is calibrated, not guessed: MuJoCo builds the bending matrix as
+# B = young * thickness^3 / 12, so with thickness = 1 mm this value gives
+# B = 5.0e-6 N*m, the flexural rigidity of 160 gsm cotton single jersey
+# (Kawabata / ASTM D1388, bending length ~17 mm). The old 3.0e3 was 20x
+# limper than cotton.
+#
+# Do not expect it to change how the garment looks. Measured on the tee
+# (hang it by two shoulder patches, 384 verts): sweeping young over 3e0
+# .. 3e5 moves the fold RMS by under 2 mm, because the mesh has 32 mm
+# edges and cotton's bending length is ~17 mm -- gravity dominates at
+# every element-scale angle the mesh can represent. Bending only starts
+# to show above ~3e6, which is 50x cotton and looks like card.
+# Drop-tested stable to 3e6 on this mesh, so 6e4 has plenty of headroom.
+# What does change the look is mesh density (see [garment]).
+young = 6.0e4
 
 # Keep 0 with edge equality (nonzero Poisson fights the constraint).
 poisson = 0.0

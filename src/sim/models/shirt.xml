@@ -1,7 +1,8 @@
-<!-- XFOLD T-shirt — inextensible edges + bend FEM (not cotton constants).
+<!-- XFOLD T-shirt — inextensible edges + bend FEM.
      Stretch FEM (elastic2d=both) + spring claws stretched the T into a spike.
-     Starter from issue #1433 / poncho_edgeequality:
-       edge equality, young=3e3, poisson=0, elastic2d=bend
+     Starter from issue #1433 / poncho_edgeequality: edge equality,
+     poisson=0, elastic2d=bend. young is calibrated in shirt.toml so that
+     young*thickness^3/12 is cotton jersey's flexural rigidity.
      Floor support is per-vertex spheres (apply_shirt_config), not the
      50-contact flex-vs-plane pair. Mesh density is a looks/drape knob. -->
 <mujoco model="xfold-shirt">
@@ -21,7 +22,7 @@
                solref="0.005 1" solimp="0.95 0.99 0.001"
                friction="0.5 0.005 0.0001" condim="3"/>
       <edge equality="true" damping="0.1"/>
-      <elasticity young="3e3" poisson="0" thickness="0.001"
+      <elasticity young="6e4" poisson="0" thickness="0.001"
                   elastic2d="bend" damping="0.02"/>
     </flexcomp>
   </worldbody>
