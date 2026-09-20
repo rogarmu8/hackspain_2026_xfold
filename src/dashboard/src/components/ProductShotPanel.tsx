@@ -146,14 +146,17 @@ export function ProductShotPanel({ run, embed = false }: { run: RunDetail; embed
   );
 }
 
-function HoverPhoto({
+export function HoverPhoto({
   src,
   alt,
   filename,
+  fit = "square",
 }: {
   src: string;
   alt: string;
   filename: string;
+  /** `contain` fills leftover inspector height without forcing a square. */
+  fit?: "square" | "contain";
 }) {
   const [open, setOpen] = useState(false);
 
@@ -175,12 +178,16 @@ function HoverPhoto({
 
   return (
     <>
-      <div className="group relative">
+      <div className={`group relative ${fit === "contain" ? "flex min-h-0 flex-1 flex-col" : ""}`}>
         {/* eslint-disable-next-line @next/next/no-img-element -- bridge file or data URI */}
         <img
           src={src}
           alt={alt}
-          className="aspect-square w-full border border-divider object-cover"
+          className={
+            fit === "contain"
+              ? "max-h-full min-h-0 w-full flex-1 border border-divider object-contain"
+              : "aspect-square w-full border border-divider object-cover"
+          }
         />
         <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 transition-opacity duration-[var(--motion-feedback)] group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
           <Button

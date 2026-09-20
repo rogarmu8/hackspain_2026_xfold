@@ -49,3 +49,22 @@ def save_photo(run_id: str, payload: bytes, mime: str) -> Path:
     path = photo_path(run_id, mime)
     path.write_bytes(payload)
     return path
+
+
+def fold_photo_path(run_id: str, mime: str = "image/jpeg") -> Path:
+    return photos_dir() / f"{_safe(run_id)}-fold{_SUFFIX.get(mime, '.jpg')}"
+
+
+def find_fold_photo(run_id: str) -> Path | None:
+    """OpenCV-annotated fold-eval frame, if the opener camera fired."""
+    for mime in ("image/jpeg", "image/png"):
+        path = fold_photo_path(run_id, mime)
+        if path.is_file():
+            return path
+    return None
+
+
+def save_fold_photo(run_id: str, payload: bytes, mime: str) -> Path:
+    path = fold_photo_path(run_id, mime)
+    path.write_bytes(payload)
+    return path

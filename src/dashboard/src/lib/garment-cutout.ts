@@ -5,7 +5,12 @@ const DETECT_SIZE = 256;
 const CLOTH = { r: 246, g: 246, b: 248 };
 
 export type GarmentCutout = {
+  /** Square crop of the photo, unmasked — paint/erase can restore pixels. */
+  sourceUrl: string;
+  /** Square print the operator sees (mask applied, cloth-white ground). */
   previewUrl: string;
+  /** White-on-transparent mask at CUTOUT_SIZE. */
+  maskUrl: string;
   outline: number[][];
 };
 
@@ -242,12 +247,28 @@ function maskOutline(mask: Uint8Array, w: number, h: number, box: { x: number; y
   return uv;
 }
 
+function letterbox(boxW: number, boxH: number, size: number) {
+  const scale = Math.min(size / Math.max(boxW, 1), size / Math.max(boxH, 1));
+  const nw = Math.max(1, Math.round(boxW * scale));
+  const nh = Math.max(1, Math.round(boxH * scale));
+  return {
+    nw,
+    nh,
+    dx: Math.floor((size - nw) / 2),
+    dy: Math.floor((size - nh) / 2),
+  };
+}
+
+function canvasPng(canvas: HTMLCanvasElement): string {
+  return canvas.toDataURL("image/png");
+}
+
 function paintSquare(
   img: HTMLImageElement,
   detectCanvas: HTMLCanvasElement,
   mask: Uint8Array,
   box: { x: number; y: number; w: number; h: number },
-): string {
+): { sourceUrl: string; previewUrl: string; maskUrl: string; outline: number[][] } {
   const dw = detectCanvas.width;
   const dh = detectCanvas.height;
   const sx = img.naturalWidth / dw;
@@ -259,42 +280,105 @@ function paintSquare(
     h: box.h * sy,
   };
   const size = CUTOUT_SIZE;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Could not cut out the garment.");
-  ctx.fillStyle = `rgb(${CLOTH.r}, ${CLOTH.g}, ${CLOTH.b})`;
-  const scale = Math.min(size / Math.max(crop.w, 1), size / Math.max(crop.h, 1));
-  const nw = Math.max(1, Math.round(crop.w * scale));
-  const nh = Math.max(1, Math.round(crop.h * scale));
-  const dx = Math.floor((size - nw) / 2);
-  const dy = Math.floor((size - nh) / 2);
-  const maskCanvas = document.createElement("canvas");
-  maskCanvas.width = box.w;
-  maskCanvas.height = box.h;
-  const mctx = maskCanvas.getContext("2d");
-  if (!mctx) throw new Error("Could not cut out the garment.");
-  const maskImage = mctx.createImageData(box.w, box.h);
-  for (let y = 0; y < box.h; y++) {
-    for (let x = 0; x < box.w; x++) {
-      const on = mask[(box.y + y) * dw + (box.x + x)];
-      const i = (y * box.w + x) * 4;
-      maskImage.data[i] = 255;
-      maskImage.data[i + 1] = 255;
-      maskImage.data[i + 2] = 255;
-      maskImage.data[i + 3] = on ? 255 : 0;
+  const { nw, nh, dx, dy } = letterbox(box.w, box.h, size);
+
+  const source = document.createElement("canvas");
+  source.width = size;
+  source.height = size;
+  const sctx = source.getContext("2d");
+  if (!sctx) throw new Error("Could not cut out the garment.");
+  sctx.fillStyle = `rgb(${CLOTH.r}, ${CLOTH.g}, ${CLOTH.b})`;
+  sctx.fillRect(0, 0, size, size);
+  sctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, dx, dy, nw, nh);
+
+  const bits = new Uint8Array(size * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = (x - dx) / Math.max(nw - 1, 1);
+      const v = (y - dy) / Math.max(nh - 1, 1);
+      if (u < 0 || v < 0 || u > 1 || v > 1) continue;
+      const mx = box.x + Math.round(u * Math.max(box.w - 1, 1));
+      const my = box.y + Math.round(v * Math.max(box.h - 1, 1));
+      if (mx < 0 || my < 0 || mx >= dw || my >= dh) continue;
+      if (mask[my * dw + mx]) bits[y * size + x] = 1;
     }
   }
+  const maskCanvas = document.createElement("canvas");
+  maskCanvas.width = size;
+  maskCanvas.height = size;
+  const mctx = maskCanvas.getContext("2d");
+  if (!mctx) throw new Error("Could not cut out the garment.");
+  const maskImage = mctx.createImageData(size, size);
+  for (let i = 0; i < bits.length; i++) {
+    const p = i * 4;
+    const on = bits[i] ? 255 : 0;
+    maskImage.data[p] = 255;
+    maskImage.data[p + 1] = 255;
+    maskImage.data[p + 2] = 255;
+    maskImage.data[p + 3] = on;
+  }
   mctx.putImageData(maskImage, 0, 0);
-  ctx.clearRect(0, 0, size, size);
-  ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, dx, dy, nw, nh);
-  ctx.globalCompositeOperation = "destination-in";
-  ctx.drawImage(maskCanvas, 0, 0, box.w, box.h, dx, dy, nw, nh);
-  ctx.globalCompositeOperation = "destination-over";
-  ctx.fillRect(0, 0, size, size);
-  ctx.globalCompositeOperation = "source-over";
-  return canvas.toDataURL("image/png");
+
+  const preview = document.createElement("canvas");
+  preview.width = size;
+  preview.height = size;
+  const pctx = preview.getContext("2d");
+  if (!pctx) throw new Error("Could not cut out the garment.");
+  pctx.drawImage(source, 0, 0);
+  pctx.globalCompositeOperation = "destination-in";
+  pctx.drawImage(maskCanvas, 0, 0);
+  pctx.globalCompositeOperation = "destination-over";
+  pctx.fillStyle = `rgb(${CLOTH.r}, ${CLOTH.g}, ${CLOTH.b})`;
+  pctx.fillRect(0, 0, size, size);
+  pctx.globalCompositeOperation = "source-over";
+
+  const fitted = maskBBox(bits, size, size);
+  const outline = fitted ? maskOutline(bits, size, size, fitted) : [];
+  return {
+    sourceUrl: canvasPng(source),
+    previewUrl: canvasPng(preview),
+    maskUrl: canvasPng(maskCanvas),
+    outline,
+  };
+}
+
+export async function composeCutout(
+  sourceUrl: string,
+  maskUrl: string,
+): Promise<{ previewUrl: string; outline: number[][]; maskUrl: string }> {
+  const source = await loadImage(sourceUrl);
+  const mask = await loadImage(maskUrl);
+  const size = CUTOUT_SIZE;
+  const preview = document.createElement("canvas");
+  preview.width = size;
+  preview.height = size;
+  const pctx = preview.getContext("2d");
+  if (!pctx) throw new Error("Could not update the outline.");
+  pctx.fillStyle = `rgb(${CLOTH.r}, ${CLOTH.g}, ${CLOTH.b})`;
+  pctx.fillRect(0, 0, size, size);
+  pctx.drawImage(source, 0, 0, size, size);
+  pctx.globalCompositeOperation = "destination-in";
+  pctx.drawImage(mask, 0, 0, size, size);
+  pctx.globalCompositeOperation = "destination-over";
+  pctx.fillRect(0, 0, size, size);
+
+  const maskCanvas = document.createElement("canvas");
+  maskCanvas.width = size;
+  maskCanvas.height = size;
+  const mctx = maskCanvas.getContext("2d", { willReadFrequently: true });
+  if (!mctx) throw new Error("Could not update the outline.");
+  mctx.drawImage(mask, 0, 0, size, size);
+  const data = mctx.getImageData(0, 0, size, size);
+  const bits = new Uint8Array(size * size);
+  for (let i = 0; i < bits.length; i++) {
+    bits[i] = data.data[i * 4 + 3] > 32 ? 1 : 0;
+  }
+  const box = maskBBox(bits, size, size);
+  return {
+    previewUrl: canvasPng(preview),
+    maskUrl: canvasPng(maskCanvas),
+    outline: box ? maskOutline(bits, size, size, box) : [],
+  };
 }
 
 export async function cutOutGarment(file: File): Promise<GarmentCutout> {
@@ -317,8 +401,8 @@ export async function cutOutGarment(file: File): Promise<GarmentCutout> {
         "No garment in view; try a plainer backdrop with the clothing centred.",
       );
     }
-    const previewUrl = paintSquare(img, detectCanvas, mask, box);
-    return { previewUrl, outline: maskOutline(mask, detectW, detectH, box) };
+    const baked = paintSquare(img, detectCanvas, mask, box);
+    return baked;
   } finally {
     URL.revokeObjectURL(src);
   }

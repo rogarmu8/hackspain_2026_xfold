@@ -30,7 +30,7 @@ _PRISTINE: tuple[tuple[str, str, str, str, str], ...] = (
     ("jersey", "Long V-neck jersey", "garment_jersey.obj", "garment_jersey.png", "jersey"),
     ("tank", "Sleeveless tank", "garment_tank.obj", "garment_tank.png", "tank"),
     ("polo", "Spread-collar polo", "garment_polo.obj", "garment_polo.png", "polo"),
-    ("dress", "Pinafore dress + braces", "garment_dress.obj", "garment_dress.png", "dress"),
+    ("dress", "Dress", "garment_dress.obj", "garment_dress.png", "dress"),
 )
 
 CATALOG: dict[str, Garment] = {}
@@ -115,6 +115,10 @@ def grade_line_outcome(
     """
     if outcome == "dropped":
         return False, f"dropped the {garment_result_label(garment, cloth_condition).lower()} garment"
+    if outcome == "missed":
+        return False, "bag missed the carton"
+    if outcome == "cancelled":
+        return False, "cancelled"
     actual = outcome if outcome in {"packed", "stained", "broken"} else "packed"
     expected = qc_reject_bin(garment) or "packed"
     if actual == expected:

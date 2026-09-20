@@ -220,7 +220,7 @@ class IsaacSession(_session_base()):
         line = Line(self.model, self.data, **kwargs)
         if self.follow is not None and self.backend is not None:
             self.follow.reset()
-            self.backend.set_camera("follow", *self.follow.pose(line.positions(), 0.0))
+            self.backend.set_camera("follow", *self.follow.eye())
         dt = float(self.model.opt.timestep)
         every = max(1, round(1.0 / (self.video_fps * dt)))
         self.shim = shim = EngineShim(line, self.backend, render_every=every)
@@ -287,6 +287,19 @@ class IsaacSession(_session_base()):
             return encode_frame(self.backend.capture(camera, size, size), quality=88)
         except Exception as exc:  # noqa: BLE001
             print(f"[sim-session] product shot failed: {exc}", flush=True)
+            return None
+
+    def render_rgb_camera(self, camera: str, size: int | None = None):
+        """Named-camera RGB for fold QC (and anything else that needs pixels)."""
+        from xfold.bridge.photo import PHOTO_SIZE
+
+        size = size or PHOTO_SIZE
+        try:
+            if self.shim is not None:
+                self.shim.sync_visuals()
+            return self.backend.capture(camera, size, size)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[sim-session] camera {camera!r} failed: {exc}", flush=True)
             return None
 
     def probe_render(self) -> bool:

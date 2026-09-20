@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from xfold.bridge.experiments import ExperimentStore, default_db_path
 from xfold.bridge.journal import Journal
 from xfold.bridge.line_driver import LineDriver
-from xfold.bridge.photo import find_photo
+from xfold.bridge.photo import find_fold_photo, find_photo
 from xfold.bridge.video import PLAYLIST, VideoManager, has_video, servable
 from xfold.bridge.mock_driver import MockDriver
 from xfold.bridge.press_driver import PressBridgeDriver
@@ -497,6 +497,22 @@ def create_app(
         path = find_photo(run_id)
         if path is None:
             raise HTTPException(404, "no product shot for run")
+        mime = "image/png" if path.suffix == ".png" else "image/jpeg"
+        return Response(
+            content=path.read_bytes(),
+            media_type=mime,
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
+
+    @app.get("/runs/{run_id}/fold-photo")
+    def run_fold_photo(run_id: str) -> Response:
+        """OpenCV-annotated fold-eval frame from fold_qc_cam.
+
+        A file, not a journal event — same rule as the QC product shot.
+        """
+        path = find_fold_photo(run_id)
+        if path is None:
+            raise HTTPException(404, "no fold eval shot for run")
         mime = "image/png" if path.suffix == ".png" else "image/jpeg"
         return Response(
             content=path.read_bytes(),

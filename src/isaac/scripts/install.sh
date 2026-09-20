@@ -11,7 +11,9 @@ if ! command -v pixi >/dev/null && [ ! -x "$HOME/.pixi/bin/pixi" ]; then
 fi
 . ./scripts/pixi-path.sh
 pixi install --environment isaac-sim
+# Fold QC uses OpenCV. Not locked from the laptop (isaac-sim is linux-only).
+bash src/isaac/scripts/ensure-opencv.sh
 # Importing isaacsim boots Kit (and its EULA prompt), so only look for it.
-pixi run --environment isaac-sim -- python -c "import importlib.util as u, xfold.line, xfold_isaac.engine; assert u.find_spec('isaacsim'); print('isaac-sim env ok')"
+pixi run --environment isaac-sim -- python -c "import importlib.util as u, xfold.line, xfold_isaac.engine; assert u.find_spec('isaacsim'); import cv2; print('isaac-sim env ok, cv2', cv2.__version__)"
 echo "Next: read NVIDIA's Omniverse EULA, then"
 echo "  OMNI_KIT_ACCEPT_EULA=YES moon run isaac:sim -- -g tee --seed 7 --max-seconds 5"

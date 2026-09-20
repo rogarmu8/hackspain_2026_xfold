@@ -52,6 +52,16 @@ def default_db_path() -> Path:
     return _repo_data_dir() / "experiments.sqlite"
 
 
+def _hydrate_fold_photo(detail: dict[str, Any]) -> dict[str, Any]:
+    """Set hasFoldPhoto from the JSON or the JPEG on disk."""
+    run_id = detail.get("id")
+    if run_id:
+        from xfold.bridge.photo import find_fold_photo
+
+        detail["hasFoldPhoto"] = bool(detail.get("hasFoldPhoto")) or find_fold_photo(str(run_id)) is not None
+    return detail
+
+
 def _rel_under_data(path: Path | None) -> str | None:
     if path is None:
         return None
@@ -381,7 +391,7 @@ class ExperimentStore:
         # Refresh media flags from the row (files may appear after the last upsert).
         detail["hasPhoto"] = bool(row["has_photo"]) or bool(detail.get("hasPhoto"))
         detail["hasVideo"] = bool(row["has_video"]) or bool(detail.get("hasVideo"))
-        return detail
+        return _hydrate_fold_photo(detail)
 
     def get_batch(self, batch_id: str) -> dict[str, Any] | None:
         with self._lock:
@@ -398,7 +408,7 @@ class ExperimentStore:
             rows = self._conn.execute(
                 "SELECT detail_json FROM experiments ORDER BY started_at_iso DESC"
             ).fetchall()
-        return [json.loads(r["detail_json"]) for r in rows]
+        return [_hydrate_fold_photo(json.loads(r["detail_json"])) for r in rows]
 
     def list_experiments(self) -> list[dict[str, Any]]:
         """Launch list items for Experimentos (runs not in a batch + batches)."""

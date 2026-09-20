@@ -68,6 +68,7 @@ class RunRecord:
     cancel_requested: bool = False
     driverLabel: str = "Bridge mock driver"
     hasPhoto: bool = False
+    hasFoldPhoto: bool = False
     garment: str = "tee"
     clothType: str = "tee"
     clothCondition: str = "good"
@@ -112,6 +113,7 @@ class RunRecord:
             "finishedAtIso": self.finishedAtIso,
             "failReason": self.failReason,
             "hasPhoto": self.hasPhoto,
+            "hasFoldPhoto": self.hasFoldPhoto,
             "hasVideo": self.hasVideo,
             "metrics": {
                 "cycleTimeSimS": self.t if self.lifecycle in {"succeeded", "failed", "cancelled"} else None,
@@ -121,6 +123,7 @@ class RunRecord:
                 ),
                 "flatnessPre": self.measurements.get("flatnessPreM"),
                 "flatnessPost": self.measurements.get("flatnessPostM"),
+                "foldQuality": self.measurements.get("foldQualityPct"),
                 "shirtInBag": self.shirt_in_bag,
                 "measurements": dict(self.measurements),
             },
@@ -461,7 +464,7 @@ class Runtime:
         from xfold.custom_design import CUSTOM_TEXTURE, bake_custom_design, decode_payload
 
         blob = decode_payload(payload.data, payload.mime)
-        bake_custom_design(blob)
+        bake_custom_design(blob, outline_uv=list(payload.outlineUv or []))
         return CUSTOM_TEXTURE
 
     def launch_run(
@@ -1015,6 +1018,14 @@ class Runtime:
                 except Exception as exc:  # noqa: BLE001
                     print(f"[experiments] mark_photo {run_id}: {exc}", flush=True)
 
+    def mark_fold_photo(self, run_id: str) -> None:
+        """The OpenCV fold-eval frame for this run is on disk."""
+        with self._lock:
+            run = self.runs.get(run_id)
+            if run:
+                run.hasFoldPhoto = True
+                self._persist_run(run)
+
     def mark_video(self, run_id: str) -> None:
         """This run is being recorded; its HLS playlist is live."""
         with self._lock:
@@ -1143,7 +1154,7 @@ def _purge_run_media(run_id: str) -> None:
     """Best-effort delete of photo, video and trajectory files for a run."""
     import shutil
 
-    from xfold.bridge.photo import find_photo
+    from xfold.bridge.photo import find_fold_photo, find_photo
     from xfold.bridge.trajectory import trajectory_path
     from xfold.bridge.video import run_dir
 
@@ -1151,6 +1162,9 @@ def _purge_run_media(run_id: str) -> None:
         photo = find_photo(run_id)
         if photo is not None and photo.exists():
             photo.unlink()
+        fold = find_fold_photo(run_id)
+        if fold is not None and fold.exists():
+            fold.unlink()
         path = trajectory_path(run_id)
         if path.exists():
             path.unlink()

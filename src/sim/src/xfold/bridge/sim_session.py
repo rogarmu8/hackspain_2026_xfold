@@ -376,15 +376,13 @@ class SimSession:
                 self.data.time = saved_time
                 self._mujoco.mj_forward(self.model, self.data)
 
-    def render_photo(
+    def render_rgb_camera(
         self, camera: str, size: int = PHOTO_SIZE
-    ) -> tuple[bytes, str] | None:
-        """One square frame from a named camera — the QC product shot.
+    ) -> np.ndarray | None:
+        """One square RGB frame from a named camera (QC, fold QC, …).
 
-        Its own Renderer, because it is square and larger than the viewport's,
-        and it is thrown away afterwards: this runs once per cycle, not per
-        frame. A failure here is local to the shot and does not disable the
-        viewport.
+        Its own Renderer: square and larger than the viewport, thrown away
+        afterwards. A failure here is local to the shot.
         """
         with self.lock:
             if not self._ok or self._mujoco is None or self._render_broken:
@@ -393,9 +391,9 @@ class SimSession:
             try:
                 renderer = self._mujoco.Renderer(self.model, height=size, width=size)
                 renderer.update_scene(self.data, camera=camera)
-                return encode_frame(np.asarray(renderer.render()), quality=88)
+                return np.asarray(renderer.render())
             except Exception as exc:  # noqa: BLE001
-                print(f"[sim-session] product shot failed: {exc}", flush=True)
+                print(f"[sim-session] camera {camera!r} failed: {exc}", flush=True)
                 return None
             finally:
                 if renderer is not None:
@@ -403,6 +401,15 @@ class SimSession:
                         renderer.close()
                     except Exception:
                         pass
+
+    def render_photo(
+        self, camera: str, size: int = PHOTO_SIZE
+    ) -> tuple[bytes, str] | None:
+        """One square JPEG from a named camera — the QC product shot."""
+        rgb = self.render_rgb_camera(camera, size)
+        if rgb is None:
+            return None
+        return encode_frame(rgb, quality=88)
 
     def render_rgb(self) -> np.ndarray | None:
         """Live viewport frame as raw RGB, for the video encoder.

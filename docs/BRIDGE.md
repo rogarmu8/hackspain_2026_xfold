@@ -74,15 +74,17 @@ dashboard shows it. The dip is not decoration: the overview lighting blows a
 white garment to flat white from 1 m up, taking the print and any stain with
 it. The image is a file, never a journal event — same rule as the viewport.
 
+**Fold QC.** After the flaps, `fold_qc_cam` (bolted to the bag-opener beam, looking straight down at the pack) renders one square RGB frame. OpenCV flags wrinkled pixels (local gray std above a generous threshold) and pack pixels that sit off the light folder deck; `foldQualityPct` is 100 minus that combined area share (100 = smooth and fully on the plates) and is emitted as a `metric_sample`. The same pass writes an annotated JPEG (`data/photos/{run}-fold.jpg`: wrinkle overlay + off-plate tint + pack outline + percent) served at `GET /runs/{id}/fold-photo`; the run detail carries `hasFoldPhoto`. Missing GL or an empty frame leave the metric and the image null.
+
 `LineDriver` logs which input a cycle got as its first console line and stores the effective per-run garment, mesh, texture, condition and seed usage in `run.config.inputs`.
 
 ### Simulator-defined process (0.2)
 
-`xfold.line.LINE_PHASES` is the sole line phase catalogue. The driver registers it with Runtime and forwards `Line.on_event` observations; the browser consumes `run.stages` and simulator labels. `/capabilities.process` advertises the scenario/catalogue/seed support before launch; `run_started` journals `stages`, `inputs` and `driver` for traceability. The old six-state mapping is no longer used for the line. Main phases distinguish conveyor trips (including `TO_QC`), the `PHOTO` stop, `SORT` (QC pass or suction reject), insertion, sealing and completion. Photo outcomes (`PHOTO_SAVED`, `PHOTO_UNAVAILABLE`, `PHOTO_FAILED`) retain structured phase/station/timestamp context; unavailable/failed captures are warnings. Stained garments go to the stained tote and torn garments to the broken tote (`REJECT_STAINED` / `REJECT_BROKEN`); those cycles skip fold/bag and finish at `DONE`. Process success is whether the line did the right thing: a stained shirt in the stained tote is `succeeded` and still marked Stained; packing that shirt is `failed` and Stained. Clean and rotated packs are `succeeded` plus Clean/Rotated. `run_finished` carries `clothCondition` so the operator sees both badges. Flatness post is sampled immediately after the press raises, before transport to QC. Sub-operations distinguish each flap, press motion and peel action. Bag preparation logs `parallel: true`, without advancing the main phase.
+`xfold.line.LINE_PHASES` is the sole line phase catalogue. The driver registers it with Runtime and forwards `Line.on_event` observations; the browser consumes `run.stages` and simulator labels. `/capabilities.process` advertises the scenario/catalogue/seed support before launch; `run_started` journals `stages`, `inputs` and `driver` for traceability. The old six-state mapping is no longer used for the line. Main phases distinguish conveyor trips (including `TO_QC`), the `PHOTO` stop, `SORT` (QC pass or suction reject), insertion, sealing and completion. Photo outcomes (`PHOTO_SAVED`, `PHOTO_UNAVAILABLE`, `PHOTO_FAILED`) retain structured phase/station/timestamp context; unavailable/failed captures are warnings. Stained garments go to the stained tote and torn garments to the broken tote (`REJECT_STAINED` / `REJECT_BROKEN`); those cycles skip fold/bag and finish at `DONE`. Process success is whether the line did the right thing: a stained shirt in the stained tote is `succeeded` and still marked Stained; packing that shirt is `failed` and Stained. Clean and rotated packs are `succeeded` plus Clean/Rotated only when the bag lands in the carton; missing the carton is `failed`. `run_finished` carries `clothCondition` so the operator sees both badges. Flatness post is sampled immediately after the press raises, before transport to QC. Sub-operations distinguish each flap, press motion and peel action. Bag preparation logs `parallel: true`, without advancing the main phase.
 
 Structured log context: `stage`, `operation`, `station`, `parallel`, plus existing `source`, `level`, `t`. Run snapshots preserve it for history/reconnect. The console uses complete `run.events` plus journal command events, rather than replacing history with a partial SSE tail. SSE cursors advance only on received events; snapshot sequence numbers cannot skip unread facts. Snapshot refreshes are coalesced and a 1 Hz refresh keeps the sim clock current between observations.
 
-Metrics are observations only: z-standard-deviation before/after the press (`flatnessPreM`, `flatnessPostM`) and folded AABB dimensions (`packLengthM`, `packWidthM`, `packHeightM`). All units are metres on the wire. No hard-coded flatness or bag success; unknown containment is null. Completing the script is not quality validation. Wall time includes pauses. The process advertises seed support; each run records whether selection, stain variant or skewed pose actually uses it. Fixed clean/torn selections do not vary with seed. `spawnYawRad` and `spawnOffsetYM` record the actual seeded heading and lateral offset at LOAD.
+Metrics are observations only: z-standard-deviation before/after the press (`flatnessPreM`, `flatnessPostM`) and folded AABB dimensions (`packLengthM`, `packWidthM`, `packHeightM`). All units are metres on the wire. No hard-coded flatness or bag success; unknown containment (`shirt_in_bag`) is null. Completing the script is not seal-quality validation. The bag landing in the carton is a process check: missing it fails the run (`outcome=missed`). Wall time includes pauses. The process advertises seed support; each run records whether selection, stain variant or skewed pose actually uses it. Fixed clean/torn selections do not vary with seed. `spawnYawRad` and `spawnOffsetYM` record the actual seeded heading and lateral offset at LOAD.
 
 Timeline final markers have no phase. Replay follows the supplied phase catalogue, including failed/cancelled endings, and labels qpos-only line reconstruction as partial. The console silence warning means **no signal**, not physical jam detection. Full replay fidelity, durable restart recovery and measured progress/quality gates are not implemented by this change.
 
@@ -93,10 +95,11 @@ use `seed` and optional `clothTypeWeights` / `clothConditionWeights` (0 = never)
 the SKU mesh or texture changes. Pose-only `skewed` does not rebuild: the shirt
 stays flat on the belt and `seed` picks the heading. `GET /capabilities` lists
 `clothTypes` and `clothConditions` for the dashboard form.
-`customDesign` (`mime` + base64 `data`) is required when `clothType` /
-`clothTypes` is `custom`: the bridge detects the garment in the photo, crops it
-onto `_custom_garment.png`, and `LineDriver` rebuilds a **silhouette** flexcomp
-(cut to the detected outline, print on **both faces**). Other catalogue SKUs keep their own
+`customDesign` (`mime` + base64 `data`, optional `outlineUv`) is required when `clothType` /
+`clothTypes` is `custom`. The dashboard sends it on Launch (no separate upload). If
+`outlineUv` is present the mesh follows that loop; otherwise the bridge detects one.
+It crops onto `_custom_garment.png` and `LineDriver` rebuilds a **silhouette** flexcomp
+(print on **both faces**). Other catalogue SKUs keep their own
 mesh/texture. The pixels stay off the journal (`customDesign: true` on
 `run_started` only). `XFOLD_GARMENT` and `[garment] type` in `shirt.toml` remain the
 compile-time default.
@@ -193,6 +196,7 @@ curl -sN 'http://127.0.0.1:8765/events/stream?after_seq=0'
 | `GET` | `/runs/{id}/recording` | Trajectory meta (`tMax`, `hasTrajectory`, …) |
 | `GET` | `/runs/{id}/recording/frame?t=` | Seek nearest sample → JPEG base64 + `state` |
 | `GET` | `/runs/{id}/photo` | QC camera's product shot (JPEG, 404 until the flash fires) |
+| `GET` | `/runs/{id}/fold-photo` | OpenCV fold-eval overlay (JPEG, 404 until the flaps) |
 | `GET` | `/runs/{id}/video/index.m3u8` | HLS playlist: live while the run goes, VOD after |
 | `GET` | `/runs/{id}/video/{init.mp4\|segNNNNN.m4s}` | fMP4 init + media segments |
 | `GET` | `/events/stream?after_seq=N` | SSE journal (replay + live) |

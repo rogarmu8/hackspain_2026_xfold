@@ -28,7 +28,7 @@ export function InspectorSection({
   return (
     <section
       className={`flex flex-col border border-divider bg-surface ${
-        fill ? "h-full min-h-0 overflow-hidden" : "shrink-0"
+        fill ? "h-full min-h-0 flex-1 overflow-hidden" : "shrink-0"
       } ${className}`}
     >
       <h2 className="shrink-0">

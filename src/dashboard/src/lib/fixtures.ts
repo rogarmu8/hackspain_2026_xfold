@@ -95,6 +95,7 @@ export const FIXTURE_ACTIVE_RUN: RunDetail = {
     cycleTimeWallS: null,
     flatnessPre: 0.041,
     flatnessPost: 0.002,
+    foldQuality: null,
     shirtInBag: false,
   },
   config: {
@@ -146,6 +147,7 @@ export const FIXTURE_FAILED_RUN: RunDetail = {
     cycleTimeWallS: 19.1,
     flatnessPre: 0.038,
     flatnessPost: null,
+    foldQuality: null,
     shirtInBag: false,
   },
   config: {
@@ -187,6 +189,7 @@ export const FIXTURE_SUCCEEDED_RUN: RunDetail = {
     cycleTimeWallS: 42.3,
     flatnessPre: 0.036,
     flatnessPost: 0.0018,
+    foldQuality: 91,
     shirtInBag: true,
   },
   config: {
@@ -232,6 +235,7 @@ export const FIXTURE_HISTORY: RunSummary[] = [
       cycleTimeWallS: 44.0,
       flatnessPre: 0.044,
       flatnessPost: 0.0022,
+      foldQuality: 84,
       shirtInBag: true,
     },
   },
@@ -252,6 +256,7 @@ export const FIXTURE_HISTORY: RunSummary[] = [
       cycleTimeWallS: 18,
       flatnessPre: 0.04,
       flatnessPost: null,
+      foldQuality: null,
       shirtInBag: false,
     },
   },
@@ -326,6 +331,7 @@ export const FIXTURE_RUNS_BY_ID: Record<string, RunDetail> = {
       cycleTimeWallS: 44.0,
       flatnessPre: 0.044,
       flatnessPost: 0.0022,
+      foldQuality: 84,
       shirtInBag: true,
     },
   },
@@ -347,6 +353,7 @@ export const FIXTURE_RUNS_BY_ID: Record<string, RunDetail> = {
       cycleTimeWallS: 18,
       flatnessPre: 0.04,
       flatnessPost: null,
+      foldQuality: null,
       shirtInBag: false,
     },
     config: {
@@ -402,7 +409,7 @@ export const FIXTURE_RUNS_BY_ID: Record<string, RunDetail> = {
     batchId: null,
     lifecycle: "succeeded",
     seed: 4,
-    name: "Pinafore",
+    name: "Dress",
     clothType: "dress",
     clothCondition: "good",
     startedAtIso: "2026-09-18T21:00:00.000Z",
@@ -447,6 +454,7 @@ function extraCatalogRun(
       cycleTimeWallS: opts.cycleTimeWallS,
       flatnessPre: failed ? 0.05 : 0.033,
       flatnessPost: failed ? null : 0.0019,
+      foldQuality: failed ? null : 88,
       shirtInBag: opts.shirtInBag,
     },
     config: {

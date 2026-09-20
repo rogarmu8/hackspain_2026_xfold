@@ -231,6 +231,39 @@ class LineDriver:
         line._observe("PHOTO_SAVED", f"product photo · {path.name} · {len(payload) // 1024} kB")
         return path.name
 
+    def _score_fold(self, run_id: str, line, session: SimSession | None = None) -> float | None:
+        """Render fold_qc_cam, save the OpenCV overlay, return the percent."""
+        from xfold.bridge.photo import save_fold_photo
+        from xfold.bridge.viewport import encode_frame
+        from xfold.fold_quality import inspect_fold
+
+        session = session or self.session
+        render = getattr(session, "render_rgb_camera", None)
+        rgb = render("fold_qc_cam") if callable(render) else None
+        if rgb is None:
+            line._observe(
+                "FOLD_QC_UNAVAILABLE",
+                "fold quality camera unavailable (no GL)",
+                level="warning",
+            )
+            return None
+        got = inspect_fold(rgb)
+        if got.score is None:
+            line._observe(
+                "FOLD_QC_UNAVAILABLE",
+                "fold quality camera saw no pack",
+                level="warning",
+            )
+            return None
+        if got.annotated is not None:
+            payload, mime = encode_frame(got.annotated, quality=88)
+            path = save_fold_photo(run_id, payload, mime)
+            line._observe(
+                "FOLD_QC_SAVED",
+                f"fold eval · {path.name} · {got.score:.0f}%",
+            )
+        return got.score
+
     # --- the cycle -------------------------------------------------------
 
     def _run_cycle(self, run, session: SimSession | None = None) -> None:
@@ -253,6 +286,7 @@ class LineDriver:
 
         try:
             shot: list[str] = []
+            fold_shot: list[str] = []
 
             def take_photo() -> None:
                 """QC camera → data/photos/{run}.jpg. Runs under session.lock.
@@ -263,6 +297,13 @@ class LineDriver:
                 name = self._capture_photo(run_id, line, session)
                 if name:
                     shot.append(name)
+
+            def inspect_fold() -> float | None:
+                """Opener-mounted camera → fold quality percent, or None."""
+                score = self._score_fold(run_id, line, session)
+                if score is not None:
+                    fold_shot.append("fold")
+                return score
 
             session.ensure_garment(garment, texture=custom_tex)
             session.reset_time()
@@ -277,6 +318,7 @@ class LineDriver:
                     on_event=pending.append,
                     seed=seed,
                     on_photo=take_photo,
+                    on_fold_inspect=inspect_fold,
                 )
                 if session.follow is not None:
                     session.follow.reset()
@@ -326,6 +368,9 @@ class LineDriver:
                 if shot:
                     shot.clear()
                     self.runtime.mark_photo(run_id)
+                if fold_shot:
+                    fold_shot.clear()
+                    self.runtime.mark_fold_photo(run_id)
 
                 if cloth is not None:
                     session.track_camera(cloth, _TRACK_EVERY * dt)

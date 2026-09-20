@@ -302,23 +302,56 @@ def _cutout_square(photo, mask_img, size: int):
     return cloth, mask_sq
 
 
+def outline_metres_from_uv(uv, side: float = BODY_W) -> np.ndarray | None:
+    """PNG-space loop (collar at the top) → closed sewing loop in metres."""
+    try:
+        arr = np.asarray(list(uv), dtype=np.float64)
+    except (TypeError, ValueError):
+        return None
+    if arr.ndim != 2 or arr.shape[-1] < 2 or len(arr) < 4:
+        return None
+    pts = np.clip(arr[:, :2], 0.0, 1.0)
+    x = (pts[:, 0] - 0.5) * side
+    y = (0.5 - pts[:, 1]) * side
+    poly = np.column_stack((x, y))
+    if not np.allclose(poly[0], poly[-1]):
+        poly = np.vstack((poly, poly[0]))
+    return poly
+
+
 def bake_custom_design(
     blob: bytes,
     *,
     style: str = "custom",
     size: int = TEX_SIZE,
     dest: Path | None = None,
+    outline_uv: list[list[float]] | None = None,
     **_ignored,
 ) -> Path:
     """Write the two-sided PNG and cut ``garment_custom.obj`` to the outline.
 
     ``style`` is ignored (kept so older callers do not crash). Extra kwargs
-    from the old overlay fit are ignored on purpose.
+    from the old overlay fit are ignored on purpose. When ``outline_uv`` is
+    sent from the dashboard editor, that loop is the mesh — do not re-detect.
     """
     from PIL import Image
 
     del style
     photo = _load_rgb(blob)
+    out = dest or CUSTOM_TEXTURE_PATH
+    out.parent.mkdir(parents=True, exist_ok=True)
+    edited = outline_metres_from_uv(outline_uv or [])
+    if edited is not None:
+        cloth = _contain_square(photo, size, CLOTH)
+        rgb = np.asarray(cloth, dtype=np.uint8)
+        try:
+            cloth.save(out, format="PNG", optimize=True)
+        except Exception:
+            write_png(out, rgb)
+        np.save(CUSTOM_OUTLINE_PATH, edited)
+        ensure_custom_mesh()
+        return out
+
     work_w = DETECT_SIZE
     work_h = max(32, int(round(DETECT_SIZE * photo.height / max(photo.width, 1))))
     work = photo.resize((work_w, work_h), Image.Resampling.BILINEAR)
@@ -332,8 +365,6 @@ def bake_custom_design(
         mask_img = mask_img.resize(photo.size, Image.Resampling.NEAREST)
         cloth, mask_sq = _cutout_square(photo, mask_img, size)
     rgb = np.asarray(cloth, dtype=np.uint8)
-    out = dest or CUSTOM_TEXTURE_PATH
-    out.parent.mkdir(parents=True, exist_ok=True)
     try:
         cloth.save(out, format="PNG", optimize=True)
     except Exception:

@@ -183,6 +183,8 @@ export type CustomDesignPayload = {
   mime: string;
   /** Raw base64, no ``data:`` prefix. Not a journal field. */
   data: string;
+  /** Optional operator-edited silhouette in PNG UV (collar at the top). */
+  outlineUv?: number[][];
 };
 
 /** What the bridge actually exposes right now. */
@@ -261,6 +263,7 @@ export type JournalEvent =
       t: number;
       flatness: number | null;
       shirt_in_bag: boolean | null;
+      /** Line scalars: flatnessPreM/PostM, pack*M, foldQualityPct (0–100, wrinkles + off-plate), … */
       measurements?: Record<string, number>;
       cycle: number;
       state: PhaseId;

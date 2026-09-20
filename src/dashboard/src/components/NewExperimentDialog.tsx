@@ -43,7 +43,13 @@ import {
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { DesignPreview } from "@/components/DesignPreview";
+import { OutlineEditor } from "@/components/OutlineEditor";
 import { cutOutGarment } from "@/lib/garment-cutout";
+import {
+  loadCustomGarments,
+  rememberCustomGarment,
+  type StoredCustomGarment,
+} from "@/lib/custom-garment-history";
 
 const WEIGHT_MAX = 10;
 const SEED_MAX = 999;
@@ -73,20 +79,17 @@ function payloadWeights(
   return out;
 }
 
-function readDesignFile(file: File): Promise<CustomDesignPayload> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = String(reader.result ?? "");
-      const comma = text.indexOf(",");
-      resolve({
-        mime: file.type || "image/png",
-        data: comma >= 0 ? text.slice(comma + 1) : text,
-      });
-    };
-    reader.onerror = () => reject(new Error("Could not read the image."));
-    reader.readAsDataURL(file);
-  });
+function payloadFromPreview(
+  previewUrl: string,
+  outline: number[][],
+): CustomDesignPayload {
+  const comma = previewUrl.indexOf(",");
+  const mime = previewUrl.match(/^data:([^;,]+)/)?.[1] ?? "image/png";
+  return {
+    mime,
+    data: comma >= 0 ? previewUrl.slice(comma + 1) : previewUrl,
+    outlineUv: outline,
+  };
 }
 
 export type NewExperimentDefaults = {
@@ -154,7 +157,7 @@ export function NewExperimentDialog({
         </DialogTrigger>
       ) : null}
       <DialogContent
-        className="gap-4 overflow-hidden rounded-[var(--radius-sm)] border border-divider bg-surface p-5 ring-0 sm:max-w-2xl"
+        className="max-h-[90vh] gap-4 overflow-y-auto rounded-[var(--radius-sm)] border border-divider bg-surface p-5 ring-0 sm:max-w-3xl"
         showCloseButton
       >
         {open ? (
@@ -210,11 +213,13 @@ function NewExperimentDialogBody({
     }),
   );
   const [designPreview, setDesignPreview] = useState<string | null>(null);
-  const [designFile, setDesignFile] = useState<File | null>(null);
-  const [designPayload, setDesignPayload] = useState<CustomDesignPayload | null>(null);
+  const [designSource, setDesignSource] = useState<string | null>(null);
+  const [designMask, setDesignMask] = useState<string | null>(null);
   const [designOutline, setDesignOutline] = useState<number[][]>([]);
-  const [designAttached, setDesignAttached] = useState(false);
-  const [attaching, setAttaching] = useState(false);
+  const [designHistory, setDesignHistory] = useState<StoredCustomGarment[]>(() =>
+    loadCustomGarments(),
+  );
+  const [editingOutline, setEditingOutline] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [designInputKey, setDesignInputKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -252,10 +257,9 @@ function NewExperimentDialogBody({
       ...defaults?.clothConditionWeights,
     });
     setDesignPreview(null);
-    setDesignFile(null);
-    setDesignPayload(null);
+    setDesignSource(null);
+    setDesignMask(null);
     setDesignOutline([]);
-    setDesignAttached(false);
     setDesignInputKey((key) => key + 1);
     setError(null);
   }
@@ -312,61 +316,57 @@ function NewExperimentDialogBody({
     return labelOf(selected[0] ?? "tee");
   }
 
+  function rememberDraft(draft: {
+    sourceUrl: string;
+    previewUrl: string;
+    maskUrl: string;
+    outline: number[][];
+  }) {
+    setDesignHistory(rememberCustomGarment(draft));
+  }
+
+  function applyDraft(draft: {
+    sourceUrl: string;
+    previewUrl: string;
+    maskUrl: string;
+    outline: number[][];
+  }) {
+    setDesignPreview(draft.previewUrl);
+    setDesignSource(draft.sourceUrl);
+    setDesignMask(draft.maskUrl);
+    setDesignOutline(draft.outline);
+  }
+
   function clearDesign() {
-    if (designPreview) URL.revokeObjectURL(designPreview);
     setDesignPreview(null);
-    setDesignFile(null);
-    setDesignPayload(null);
+    setDesignSource(null);
+    setDesignMask(null);
     setDesignOutline([]);
-    setDesignAttached(false);
     setDesignInputKey((key) => key + 1);
   }
 
   async function onPickDesign(file: File | undefined) {
-    if (designPreview?.startsWith("blob:")) URL.revokeObjectURL(designPreview);
-    setDesignAttached(false);
-    setDesignPayload(null);
-    setDesignOutline([]);
     if (!file) {
-      setDesignPreview(null);
-      setDesignFile(null);
+      clearDesign();
       return;
     }
-    setDesignFile(file);
     setDetecting(true);
     setError(null);
     try {
       const cut = await cutOutGarment(file);
-      setDesignPreview(cut.previewUrl);
-      setDesignOutline(cut.outline);
+      const draft = {
+        sourceUrl: cut.sourceUrl,
+        previewUrl: cut.previewUrl,
+        maskUrl: cut.maskUrl,
+        outline: cut.outline,
+      };
+      applyDraft(draft);
+      rememberDraft(draft);
     } catch (err) {
-      setDesignPreview(null);
-      setDesignFile(null);
-      setDesignInputKey((key) => key + 1);
+      clearDesign();
       setError(err instanceof Error ? err.message : "Could not cut out the garment.");
     } finally {
       setDetecting(false);
-    }
-  }
-
-  async function attachDesign() {
-    if (!designFile) {
-      setError("Choose an image first.");
-      return;
-    }
-    if (!customGarment) {
-      setError("Choose Custom to use a photo as the garment.");
-      return;
-    }
-    setAttaching(true);
-    setError(null);
-    try {
-      setDesignPayload(await readDesignFile(designFile));
-      setDesignAttached(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not read the image.");
-    } finally {
-      setAttaching(false);
     }
   }
 
@@ -421,17 +421,29 @@ function NewExperimentDialogBody({
       setError("Raise the weight of at least one condition.");
       return;
     }
-    if (customGarment && !designAttached) {
-      setError("Upload the garment photo (or pick another type) before launching.");
+    if (customGarment && !designPreview) {
+      setError("Choose a garment photo (or pick another type) before launching.");
       return;
     }
-    if (designAttached && !customGarment) {
+    if (designPreview && !customGarment) {
       setError("Choose Custom to use a photo as the garment.");
       return;
     }
 
     setSubmitting(true);
     try {
+      const customDesign =
+        customGarment && designPreview
+          ? payloadFromPreview(designPreview, designOutline)
+          : undefined;
+      if (customGarment && designPreview && designSource && designMask) {
+        rememberDraft({
+          sourceUrl: designSource,
+          previewUrl: designPreview,
+          maskUrl: designMask,
+          outline: designOutline,
+        });
+      }
       const result = await Promise.resolve(
         batch
           ? launch({
@@ -452,10 +464,7 @@ function NewExperimentDialogBody({
                 conditionWeights,
               ),
               speed,
-              customDesign:
-                customGarment && designAttached
-                  ? designPayload ?? undefined
-                  : undefined,
+              customDesign,
             })
           : launch({
               mode: "individual",
@@ -486,10 +495,7 @@ function NewExperimentDialogBody({
                 conditionWeights,
               ),
               speed,
-              customDesign:
-                customGarment && designAttached
-                  ? designPayload ?? undefined
-                  : undefined,
+              customDesign,
             }),
       );
 
@@ -618,7 +624,7 @@ function NewExperimentDialogBody({
               if (next[0] !== "custom") clearDesign();
             }}
             labelOf={clothTypeLabel}
-            pickHint="One garment for every run. Custom = cut-out from the photo."
+            pickHint="One garment for every run. Custom = photo at launch; hover the cut-out to edit the outline."
             randomHint="Each run draws a type from the weights and seed."
             weights={clothWeights}
             onWeightChange={(key, value) =>
@@ -660,36 +666,55 @@ function NewExperimentDialogBody({
             <FieldDescription>
               {detecting
                 ? "Detecting the cut-out…"
-                : "Plain backdrop, garment centred."}
+                : "Plain backdrop, garment centred. Launch publishes the outline."}
             </FieldDescription>
-            {designPreview ? (
-              <div className="mt-2 flex items-start gap-3">
-                <div className="w-28 shrink-0">
+            <div
+              className={
+                designPreview || designHistory.length
+                  ? "mt-2 grid gap-3 sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)]"
+                  : undefined
+              }
+            >
+              {designPreview ? (
+                <div className="flex max-w-[10rem] flex-col gap-2">
                   <DesignPreview
                     src={designPreview}
                     outline={designOutline}
-                    attached={designAttached}
+                    onEdit={designSource && designMask ? () => setEditingOutline(true) : undefined}
                   />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={attaching || designAttached || detecting}
-                    onClick={() => void attachDesign()}
-                  >
-                    {attaching
-                      ? "Uploading…"
-                      : designAttached
-                        ? "Garment uploaded"
-                        : "Upload garment"}
-                  </Button>
                   <Button type="button" size="sm" variant="outline" onClick={clearDesign}>
                     Remove
                   </Button>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
+              {designHistory.length ? (
+                <div className={designPreview ? "" : "sm:col-span-2"}>
+                  <p className="text-[13px] font-semibold">Custom garment history</p>
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">
+                    Click a cut-out to reuse it. Newest first, kept in this browser.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {designHistory.map((item) => {
+                      const active = item.previewUrl === designPreview;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          title="Use this garment"
+                          onClick={() => applyDraft(item)}
+                          className={`relative size-16 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border bg-[#f6f6f8] ${
+                            active ? "border-ink ring-1 ring-ink" : "border-divider"
+                          }`}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={item.previewUrl} alt="" className="size-full object-contain" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </Field>
           ) : null}
         </FieldGroup>
@@ -725,13 +750,31 @@ function NewExperimentDialogBody({
             type="submit"
             form={formId}
             variant="outline"
-            disabled={submitting || !canLaunch}
+            disabled={submitting || !canLaunch || detecting || (customGarment && !designPreview)}
             className="h-10 rounded-[var(--radius-sm)] px-3 text-sm font-semibold"
           >
             {submitting ? "Launching…" : "Launch"}
           </Button>
         </div>
       </DialogFooter>
+      {designSource && designMask ? (
+        <OutlineEditor
+          open={editingOutline}
+          sourceUrl={designSource}
+          maskUrl={designMask}
+          onOpenChange={setEditingOutline}
+          onSave={(next) => {
+            const draft = {
+              sourceUrl: designSource,
+              previewUrl: next.previewUrl,
+              maskUrl: next.maskUrl,
+              outline: next.outline,
+            };
+            applyDraft(draft);
+            rememberDraft(draft);
+          }}
+        />
+      ) : null}
     </>
   );
 }

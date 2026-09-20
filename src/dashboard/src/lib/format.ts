@@ -70,6 +70,11 @@ export function formatFlatness(value: number | null | undefined): string {
   return `${formatEn(value * 1000, 2)} mm`;
 }
 
+export function formatFoldQuality(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "—";
+  return `${formatEn(value, 0)} %`;
+}
+
 /** Deterministic UTC stamp — avoids SSR/client locale hydration drift. */
 export function formatIso(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -174,7 +179,7 @@ const CLOTH_TYPE_LABELS: Record<ClothType, string> = {
   jersey: "Jersey",
   tank: "Tank",
   polo: "Polo",
-  dress: "Pinafore",
+  dress: "Dress",
   custom: "Custom",
 };
 

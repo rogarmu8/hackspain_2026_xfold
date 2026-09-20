@@ -7,6 +7,7 @@ import { BatchContextPanel } from "@/components/BatchContextPanel";
 import { ConsolePanel } from "@/components/ConsolePanel";
 import { InspectorSection } from "@/components/InspectorSection";
 import { ProductShotPanel } from "@/components/ProductShotPanel";
+import { FoldEvalPanel } from "@/components/FoldEvalPanel";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
 import { RunSummaryPanel } from "@/components/RunSummaryPanel";
 import { SimulationViewport } from "@/components/SimulationViewport";
@@ -17,7 +18,7 @@ import { formatSeconds, operatorStepTitle } from "@/lib/format";
 import type { RunLifecycle } from "@/lib/types";
 import { useRunReplay } from "@/lib/use-run-replay";
 import Link from "next/link";
-import { ArrowUpRight, Camera, ClipboardList, Layers, TerminalSquare, TriangleAlert } from "lucide-react";
+import { ArrowUpRight, Camera, ClipboardList, Layers, ScanSearch, TerminalSquare, TriangleAlert } from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./ui/sheet";
@@ -92,10 +93,11 @@ function useInspectorWidth() {
 
 const FINISHED = new Set<RunLifecycle>(["succeeded", "failed", "cancelled"]);
 
-type InspectorPane = "context" | "photo" | "logs";
+type InspectorPane = "context" | "photo" | "fold" | "logs";
 
-function autoInspectorPane(run: { lifecycle: RunLifecycle; hasPhoto?: boolean } | null): InspectorPane {
+function autoInspectorPane(run: { lifecycle: RunLifecycle; hasPhoto?: boolean; hasFoldPhoto?: boolean } | null): InspectorPane {
   if (run && FINISHED.has(run.lifecycle)) return "context";
+  if (run?.hasFoldPhoto) return "fold";
   if (run?.hasPhoto) return "photo";
   return "logs";
 }
@@ -276,19 +278,7 @@ export function ControlRoom({ runId }: { runId: string }) {
           <span className="h-10 w-1 rounded-full bg-border opacity-70 transition-[background,opacity] duration-[var(--motion-feedback)]" />
         </div>
 
-        <div
-          className={
-            openPane === "logs"
-              ? run?.hasPhoto
-                ? "grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3"
-                : "grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-3"
-              : openPane === "context"
-                ? run?.hasPhoto
-                  ? "grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto_auto] gap-3"
-                  : "grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] gap-3"
-                : "grid h-full min-h-0 min-w-0 auto-rows-auto content-start gap-3"
-          }
-        >
+        <div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
           <InspectorSection
             id="inspector-context"
             title={finished ? "Run finished" : snapshot.activeBatch && isActive ? "Batch" : "Run"}
@@ -322,13 +312,25 @@ export function ControlRoom({ runId }: { runId: string }) {
               <ProductShotPanel key={run.id} run={run} embed />
             </InspectorSection>
           ) : null}
+          {run?.hasFoldPhoto ? (
+            <InspectorSection
+              id="inspector-fold"
+              title="Fold quality"
+              icon={ScanSearch}
+              open={openPane === "fold"}
+              onToggle={() => toggleInspector("fold")}
+              fill={openPane === "fold"}
+            >
+              <FoldEvalPanel key={`${run.id}-fold`} run={run} embed />
+            </InspectorSection>
+          ) : null}
           <InspectorSection
             id="inspector-logs"
             title="Console"
             icon={TerminalSquare}
             open={openPane === "logs"}
             onToggle={() => toggleInspector("logs")}
-            fill
+            fill={openPane === "logs"}
             trailing={
               <span className="font-mono text-[11px] tabular text-muted-foreground">
                 {consoleRows.length}

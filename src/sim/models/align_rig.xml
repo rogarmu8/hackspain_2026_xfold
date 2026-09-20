@@ -1,21 +1,18 @@
 <!--
-  Dual-arm align station (infeed, upstream of the linear belt).
+  Infeed frame and the two align pedestals (upstream of the linear belt).
 
-  The infeed used to be two conveyors that yawed the product by running at
-  different speeds. It is one plain belt now, and the heading is corrected by
-  two pedestal robot arms standing either side of it: each drops a suction
-  wrist onto its half of the garment, the pair lifts it clear of the belt,
-  swings it round to collar-downstream and lays it back down. They square the
-  position, not the wrinkles — the press still does those.
+  Both arms take the corner closest to the glide and the opposite corner,
+  yaw the sheet on the belt, then slide it onto the lane. No lift. Position,
+  not wrinkles — the press still does those.
 
   Station x = -2.10 .. -1.00, belt half-width 0.485 (same deck as belt 1, so
   a sleeve span of 0.91 m lies flat on it). Shirt vertices sit at 0.565.
   Contact is belt_top_in in line.xml; every geom here is deco.
 
-  Both arms are 2-link on a yaw turret, same build as the QC reject arm, and
-  xfold.align poses their mocap links with the shared 2-link IK. Shoulders
-  are at y = +/-0.80, outside the belt rails, and 0.80 m up so the links come
-  down onto the belt rather than across it.
+  Each arm is 2-link on a yaw turret, same build as the QC reject arm, and
+  xfold.align poses the mocap links with the shared 2-link IK. Shoulders at
+  y = ±0.80, 0.80 m up so the links come down onto the belt rather than
+  across it.
 -->
 <mujoco model="xfold-align-rig">
   <worldbody>
@@ -71,7 +68,7 @@
       <geom name="align_l_cup_stem" class="deco" type="cylinder" size="0.011 0.05" pos="0 0 0.082" material="chrome"/>
     </body>
 
-    <!-- Right arm pedestal (-Y), mirrored. -->
+    <!-- Right arm pedestal (−Y, aisle). Used only to take the near shoulder. -->
     <body name="align_r_base" pos="-1.55 -0.80 0">
       <geom name="align_r_foot" class="deco" type="cylinder" size="0.13 0.016" pos="0 0 0.016" material="steel"/>
       <geom name="align_r_column" class="deco" type="cylinder" size="0.058 0.38" pos="0 0 0.404" material="steel"/>

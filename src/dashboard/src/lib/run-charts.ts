@@ -11,7 +11,8 @@ export type ChartMetric =
   | "stains"
   | "success"
   | "bag"
-  | "flatness";
+  | "flatness"
+  | "fold";
 
 export type ChartGroup = "outcome" | "clothType" | "clothCondition" | "batch" | "day" | "cycle";
 export type GraphGroup = ChartGroup | "run";
@@ -35,6 +36,7 @@ export const CHART_METRICS: { id: ChartMetric; label: string }[] = [
   { id: "success", label: "Success rate" },
   { id: "bag", label: "Packed in bag" },
   { id: "flatness", label: "Flatness after press" },
+  { id: "fold", label: "Fold quality" },
 ];
 
 export const GRAPH_MEASURES: { id: ChartMetric; label: string }[] = [
@@ -45,6 +47,7 @@ export const GRAPH_MEASURES: { id: ChartMetric; label: string }[] = [
   { id: "holes", label: "Holes" },
   { id: "stains", label: "Stains" },
   { id: "success", label: "Success rate" },
+  { id: "fold", label: "Fold quality" },
 ];
 
 export const GRAPH_GROUPS: { id: GraphGroup; label: string }[] = [
@@ -355,6 +358,7 @@ function metricValue(runs: RunSummary[], metric: ChartMetric): number {
     const known = runs.filter((r) => r.metrics.shirtInBag != null);
     return known.length ? known.filter((r) => r.metrics.shirtInBag).length / known.length : 0;
   }
+  if (metric === "fold") return mean(runs.map(foldQualityOf).filter((v): v is number => v != null)) ?? 0;
   return mean(runs.map((r) => r.metrics.flatnessPost).filter((v): v is number => v != null)) ?? 0;
 }
 
@@ -371,14 +375,20 @@ function pointMetric(run: RunSummary, metric: ChartMetric, prefix: RunSummary[])
     return finished.length ? prefix.filter((r) => r.lifecycle === "succeeded").length / finished.length : null;
   }
   if (metric === "bag") return run.metrics.shirtInBag == null ? null : run.metrics.shirtInBag ? 1 : 0;
+  if (metric === "fold") return foldQualityOf(run);
   return run.metrics.flatnessPost;
 }
 
 export function formatMetric(metric: ChartMetric, value: number): string {
   if (metric === "cycle" || metric === "wall") return `${value.toFixed(1)} s`;
   if (metric === "success" || metric === "bag") return `${Math.round(value * 100)} %`;
+  if (metric === "fold") return `${Math.round(value)} %`;
   if (metric === "flatness") return `${(value * 1000).toFixed(2)} mm`;
   return String(Math.round(value));
+}
+
+function foldQualityOf(run: RunSummary): number | null {
+  return run.metrics.foldQuality ?? run.metrics.measurements?.foldQualityPct ?? null;
 }
 
 function clothKey(run: RunSummary): string {

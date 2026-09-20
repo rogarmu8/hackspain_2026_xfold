@@ -1,11 +1,12 @@
-"""The line: dual-arm align -> belt -> press -> flap folder -> bagger -> carton.
+"""The line: infeed align -> belt -> press -> flap folder -> bagger -> carton.
 
 1. A garment is laid on the infeed. If the selector's "skewed" place is
-   on, any cloth type is dropped at a random heading and a bit crumpled. Two
-   robot arms, one each side of the infeed belt, put a suction wrist on each
-   half of it, lift it off the belt, swing it round until the collar leads
-   downstream and lay it back down. They correct the position, not the
-   creases: the wrinkles stay until the press.
+   on, any cloth type is dropped at a random heading and a bit crumpled. The
+   far and aisle infeed arms put one cup on the corner closest to the
+   glide (top-right, bottom-right, …) and the other on the opposite
+   corner, yaw the sheet until the collar leads downstream, then slide
+   it onto the lane. It corrects the position, not the creases: the
+   wrinkles stay until the press. The garment is not lifted.
 2. The belt carries it under the press and stops. The platen comes down on
    the belt itself, steams the wrinkles out, and lifts.
 3. The belt runs on to the QC camera. After the product shot, an arm
@@ -41,9 +42,9 @@ bag. The cloth is not simulated as touching the bag's films.
 
 The belt is not a moving body. Cloth lying on it is given the belt's speed
 each step, which is what a belt does to something that does not slip. The
-align arms work the same way: what the pair holds is written onto the cloth
-every step, so the sheet rides between the cups without the solver having to
-resolve two grippers gripping. The
+align arms work the same way: what they hold is written onto the cloth
+every step, so the sheet rides with the cups without the solver having to
+resolve a gripper gripping. The
 folder's infeed runs with the belt while it takes the shirt over: cloth
 cannot be pushed, so a folder that only let the belt shove the shirt onto
 it would get a heap, not a shirt.
@@ -143,8 +144,8 @@ CARRIED_PHASES = frozenset(
 )
 
 # Operator place (selector "skewed"): a T on the belt, pose drawn each cycle.
-# Yaw is any heading, plus visible crumple. The align arms square the
-# heading; the press irons the wrinkles out.
+# Yaw is any heading, plus visible crumple. Both align arms turn and place
+# on a leading–opposite diagonal that follows the glide. The press irons.
 SKEW_X_MAX = 0.05
 SKEW_Y_MAX = 0.05
 BELT_HALF_Y = 0.475
@@ -292,8 +293,17 @@ LIFTER_REST_Z = 0.543
 PRESS_HOVER_Z = 0.76
 SEAL_BAR_HALF = 0.010
 STAMP_UNDER = 0.0132  # stamp origin to the label's face
-# The bag counts as boxed once its centre is below this.
+# The bag has fallen off belt 2 once its centre is below this. That is not
+# the same as landing in the carton — see pack_in_carton / CARTON_*.
 BOXED_Z = 0.25
+# Inner carton, matching line.xml body "carton" (inner 0.68 x 0.64 m, walls
+# to ~0.34 m). The bag comes off belt 2 at x = 2.10 and should drop in.
+CARTON_X = (2.12, 2.80)
+CARTON_Y = (-0.32, 0.32)
+CARTON_Z = (0.0, 0.38)
+CARTON_FRACTION = 0.5
+# How long belt 2 may run waiting for the drop before we call it a miss.
+CONVEY_S = 8.0
 
 # Gap the folded layers keep between them. Each flap lands on the layers
 # already folded, so its hinge rides up by its ``lift`` as it goes over.
@@ -564,6 +574,7 @@ class Line:
         speed: float = 1.0,
         garment: str | None = None,
         on_photo=None,
+        on_fold_inspect=None,
         on_event=None,
     ) -> None:
         import mujoco
@@ -595,6 +606,9 @@ class Line:
         # Called once, at the top of the flash, to take the product shot.
         # None (the windowed run) still fires the flash; nothing records it.
         self.on_photo = on_photo
+        # After the flaps, a top-down shot from fold_qc_cam. Returns fold
+        # quality in percent, or None if the camera / OpenCV pass is missing.
+        self.on_fold_inspect = on_fold_inspect
         self._flash = [int(model.light(n).id) for n in ("qc_flash_l", "qc_flash_r")]
         self._flash_level = 0.0
         self._bulb = [int(model.geom(n).id) for n in ("qc_bulb_l", "qc_bulb_r")]
@@ -744,7 +758,9 @@ class Line:
         self.stage = "idle"
         self.cycles = 0
         self.finished = False
-        # packed | stained | broken — where the shirt went, not process success.
+        # packed | stained | broken | dropped | missed | cancelled
+        # Where the shirt went, not process success. "packed" means the bag
+        # is in the carton; missing it is "missed", not packed.
         self.outcome: str | None = None
         self._set_arm(QC_CUP_HOME)
         self._program = self._run()
@@ -947,7 +963,7 @@ class Line:
             )
             self._enter(
                 "ORIENT",
-                "two arms pick the garment up and square its heading",
+                "both arms turn and slide; a cup on the leading corner and one opposite",
                 phase="ORIENT",
             )
             yield from self._align.cycle(self)
@@ -1045,6 +1061,7 @@ class Line:
             measurements={"packLengthM": float(size[0]), "packWidthM": float(size[1]), "packHeightM": float(size[2])},
         )
         yield from self._hold("FOLD", "", 0.3, quiet=True)
+        self._inspect_fold()
 
         if not self._bag_ready:
             self._enter("WAIT", "the pack waits for the bagger to open a bag")
@@ -1077,8 +1094,18 @@ class Line:
 
         self._enter("BELT", "belt 2 carries the bag to the carton", phase="TO_CARTON")
         yield from self._convey()
-        self.outcome = "packed"
-        yield from self._hold("DONE", "sequence complete; packaging quality not validated", 2.5, phase="DONE")
+        if self._in_carton():
+            self.outcome = "packed"
+            yield from self._hold(
+                "DONE",
+                "bag landed in the carton; seal quality not validated",
+                2.5,
+                phase="DONE",
+            )
+        else:
+            self.outcome = "missed"
+            self._enter("DONE", "bag missed the carton", phase="DONE", operation="MISSED")
+            yield from self._hold("DONE", "", 2.5, quiet=True)
 
     def _set_flash(self, level: float) -> None:
         """0 dark, 1 full. Lamps, bulbs and the station's dip move together."""
@@ -1146,6 +1173,30 @@ class Line:
             self._set_flash(1.0 - blend)
             yield
         self._set_flash(0.0)
+
+    def _inspect_fold(self) -> None:
+        """Score the packed garment from the opener-mounted camera.
+
+        ``on_fold_inspect`` renders and runs OpenCV. A missing camera or an
+        empty frame leaves the metric null; that is not a failed cycle.
+        """
+        if self.on_fold_inspect is None:
+            return
+        try:
+            score = self.on_fold_inspect()
+        except Exception as exc:  # noqa: BLE001 — a bad shot is not a bad cycle
+            self._observe("FOLD_QC_FAILED", f"fold camera failed: {exc}", level="warning")
+            self.log(f"[line {self.cycles}] FOLD   camera failed: {exc}")
+            return
+        if score is None:
+            return
+        quality = float(max(0.0, min(100.0, score)))
+        self._enter(
+            "FOLD",
+            f"fold quality {quality:.0f}%",
+            operation="FOLD_QC",
+            measurements={"foldQualityPct": quality},
+        )
 
     def _set_arm(self, cup_xyz) -> None:
         """Pose the QC pedestal arm so its suction cup sits at ``cup_xyz``."""
@@ -1737,8 +1788,14 @@ class Line:
             self._shape_bag(self._bag_film, angle)
 
     def _convey(self):
-        """Run belt 2 until the bag is in the carton."""
-        while self.data.qpos[self._bag_qadr + 2] > BOXED_Z:
+        """Run belt 2 until the bag has fallen off the end, then let it settle.
+
+        Falling off the belt is not landing in the carton. `_in_carton`
+        decides that after this returns.
+        """
+        for _ in range(self._steps(CONVEY_S)):
+            if float(self.data.qpos[self._bag_qadr + 2]) <= BOXED_Z:
+                break
             self.belt2_speed = min(
                 BELT2_SPEED * self.speed,
                 self.belt2_speed + BELT_ACCEL * self.speed * self.speed * self.dt,
@@ -1746,6 +1803,10 @@ class Line:
             yield
         self.belt2_speed = 0.0
         yield from self._hold("BOXED", "", 1.0, quiet=True)
+
+    def _in_carton(self) -> bool:
+        """True when most of the packed garment sits inside the carton walls."""
+        return pack_in_carton(self.positions())
 
     def _flip(self, flap: Flap):
         """Swing a flap over, carrying its cloth, let go, swing back.
@@ -1808,6 +1869,22 @@ class Line:
         if self.phase not in CARRIED_PHASES:
             return False
         return bool(self.positions()[:, 2].max() < DROPPED_Z)
+
+
+def pack_in_carton(pos: np.ndarray, *, fraction: float = CARTON_FRACTION) -> bool:
+    """True when at least ``fraction`` of cloth verts sit inside the carton."""
+    cloth = np.asarray(pos)
+    if cloth.ndim != 2 or cloth.shape[0] == 0 or cloth.shape[1] < 3:
+        return False
+    inside = (
+        (cloth[:, 0] > CARTON_X[0])
+        & (cloth[:, 0] < CARTON_X[1])
+        & (cloth[:, 1] > CARTON_Y[0])
+        & (cloth[:, 1] < CARTON_Y[1])
+        & (cloth[:, 2] > CARTON_Z[0])
+        & (cloth[:, 2] < CARTON_Z[1])
+    )
+    return float(inside.mean()) >= fraction
 
 
 def _rise(angle: float) -> float:
@@ -1909,10 +1986,17 @@ class FollowCam:
         cam.lookat[:] = self.lookat
 
     def track(self, cloth: np.ndarray, dt: float) -> None:
-        """Move the look-at toward the shirt; ``dt`` is time since the last call."""
+        """Move the look-at toward the shirt; ``dt`` is time since the last call.
+
+        Until the garment is on the infeed, stay there — rest-pose verts sit
+        under the press, and snapping to them makes the video open mid-line.
+        """
         rest_z = SURFACE_Z + 0.08
         goal = np.array([cloth[:, 0].mean(), 0.0, 0.65 * rest_z + 0.35 * cloth[:, 2].mean()])
         if not self._started:
+            if abs(float(goal[0]) - SPAWN_X) > 0.40:
+                self.cam.lookat[:] = self.lookat
+                return
             self.lookat[:] = goal
             self._started = True
         else:
@@ -1954,7 +2038,7 @@ def main() -> None:
         "--camera",
         default="follow",
         help="follow (tracks the shirt) or a fixed one: overview, orient_cam, align_cam, "
-        "press_cam, fold_cam, bagger_cam, bag_cam",
+        "press_cam, fold_cam, fold_qc_cam, bagger_cam, bag_cam",
     )
     args = parser.parse_args()
     chosen = garment_from_args(

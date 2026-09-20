@@ -135,6 +135,9 @@ Experiments persist on the box in `data/experiments.sqlite` (same bridge code as
 MuJoCo): after a restart, `GET /experiments` and `GET /runs/{id}` still return
 finished runs. Video and QC photos stay under `data/video/` and `data/photos/`.
 `rsync` from the laptop excludes `data/`, so the catalogue is not wiped on sync.
+Fold quality needs OpenCV in the box's `isaac-sim` env (not the laptop MuJoCo env):
+`bash src/isaac/scripts/ensure-opencv.sh` — `.pixi/` is rsync-excluded, so it sticks.
+The score is 100 minus wrinkle coverage minus pack sitting off the light folder deck.
 
 One render per frame, at two sizes: 1920x1080 into the run's recording (24 fps of sim time,
 so replay lines up with the timeline), and a 960x540 copy for the live view. The live view is

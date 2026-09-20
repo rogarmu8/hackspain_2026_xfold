@@ -92,6 +92,8 @@ class CustomDesignPayload(BaseModel):
 
     mime: str = "image/png"
     data: str = ""
+    # Operator-edited silhouette in PNG UV (collar at the top). Empty = detect.
+    outlineUv: list[list[float]] = Field(default_factory=list)
 
 
 class BridgeCapabilities(BaseModel):

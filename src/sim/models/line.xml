@@ -1,13 +1,13 @@
 <!--
-  The line: dual-arm align station -> infeed belt -> press -> flap folder.
+  The line: infeed align -> belt -> press -> flap folder.
 
   A shirt is laid on the belt. If it is the selector's skewed condition, it
-  lands at a random heading; two pedestal robot arms, one each side of the
-  infeed (align_rig.xml), drop their suction wrists on it, lift it off the
-  belt, swing it round until the collar leads (+x) and lay it back down. The
-  belt then stops it under the press, the platen comes down on the belt
-  itself (the press's own bed and table are removed in xfold.line), then the
-  belt stops the shirt under a QC camera. After the product shot an arm
+  lands at a random heading; both pedestals (align_rig.xml) take the corner
+  closest to the glide and the opposite corner, yaw the sheet until the
+  collar leads (+x), then slide it onto the lane. The belt then stops it
+  under the press, the platen comes down on the belt itself (the press's own
+  bed and table are removed in xfold.line), then the belt stops the shirt
+  under a QC camera. After the product shot an arm
   mounted on the camera's own post — the post stands at the x-midpoint of
   the two totes — reaches down with a suction cup and diverts stained
   garments into the stained tote and torn ones into the broken tote; clean
@@ -236,7 +236,7 @@
     -->
     <body name="belt">
       <!-- Infeed deck, one belt the full width (align_rig.xml): the dual-lane
-           turner is gone, the align arms square the heading instead. -->
+           turner is gone, the far arm squares the heading on the belt. -->
       <geom name="belt_top_in" type="box" size="0.55 0.485 0.003" pos="-1.55 0 0.559" material="belt"/>
       <!-- Linear belt meets the infeed with a 2 cm overlap (x = -1.02 .. 0.30).
            Press stays at x = -0.75, on this belt. -->
@@ -498,6 +498,18 @@
       <!-- The air knife's jet into the mouth: shown only while it blows. -->
       <geom name="air_jet" class="deco" type="box" size="0.09 0.20 0.004" pos="1.075 0 0.6525"
             quat="0.9538 0 0.3004 0" material="air"/>
+      <!--
+        Fold QC camera, bolted to this opener beam and looking straight down
+        at the folded pack on the folder (collar edge at x = 0.98, ~31–46 cm
+        back toward the hem). The boom sits above the eye so it is not in
+        the frustum. xyaxes matches qc_cam: collar-downstream (+x) up.
+        ~0.60 m above the plates at fovy 42 covers ~0.46 m, the longest pack.
+      -->
+      <geom name="fold_qc_riser" class="deco" type="cylinder" size="0.012 0.16" pos="1.03 0 1.05" material="steel"/>
+      <geom name="fold_qc_boom" class="deco" type="box" size="0.125 0.012 0.012" pos="0.905 0 1.21" material="steel"/>
+      <geom name="fold_qc_head" class="deco" type="box" size="0.04 0.04 0.028" pos="0.78 0 1.21" material="steel"/>
+      <camera name="fold_qc_cam" pos="0.78 0 1.16" xyaxes="0 -1 0 1 0 0" fovy="42"/>
+      <light name="fold_qc_light" pos="0.78 0 1.14" dir="0 0 -1" diffuse="0.40 0.40 0.42"/>
     </body>
     <body name="mouth_cup" mocap="true" pos="1.06 0 0.74">
       <geom name="mouth_cup_pad" class="deco" type="cylinder" size="0.02 0.006" pos="0 0 0.006" material="suction"/>

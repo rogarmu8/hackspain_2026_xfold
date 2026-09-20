@@ -77,11 +77,13 @@ class FollowCam:
 
         self.ref = Reference
         self.lookat = np.array([SPAWN_X, 0.0, SURFACE_Z + 0.08], dtype=float)
+        self._started = False
 
     def reset(self) -> None:
         from xfold.line import SPAWN_X, SURFACE_Z
 
         self.lookat = np.array([SPAWN_X, 0.0, SURFACE_Z + 0.08], dtype=float)
+        self._started = False
 
     def eye(self) -> tuple[np.ndarray, np.ndarray]:
         az, el = math.radians(self.ref.AZIMUTH), math.radians(self.ref.ELEVATION)
@@ -89,11 +91,17 @@ class FollowCam:
         return self.lookat - self.ref.DISTANCE * forward, forward
 
     def pose(self, cloth: np.ndarray, dt: float) -> tuple[np.ndarray, np.ndarray]:
-        from xfold.line import SURFACE_Z
+        from xfold.line import SPAWN_X, SURFACE_Z
 
         rest_z = SURFACE_Z + 0.08
         goal = np.array([cloth[:, 0].mean(), 0.0, 0.65 * rest_z + 0.35 * cloth[:, 2].mean()])
-        if dt <= 0.0:
+        if not self._started:
+            # Rest-pose verts are under the press; stay on the infeed until load.
+            if abs(float(goal[0]) - SPAWN_X) > 0.40:
+                return self.eye()
+            self.lookat = goal
+            self._started = True
+        elif dt <= 0.0:
             self.lookat = goal
         else:
             self.lookat = self.lookat + (goal - self.lookat) * (1.0 - math.exp(-dt / self.ref.TAU))
@@ -226,6 +234,19 @@ def main() -> None:
         save_png(backend.capture("qc_cam", 768, 768), args.photo)
         print(f"QC photo -> {args.photo}", flush=True)
 
+    def on_fold_inspect():
+        from xfold.fold_quality import inspect_fold
+
+        if shim is None:
+            return None
+        shim.sync_visuals()
+        got = inspect_fold(backend.capture("fold_qc_cam", 768, 768))
+        if args.photo is not None and got.annotated is not None:
+            fold_path = args.photo.with_name(f"{args.photo.stem}_fold{args.photo.suffix}")
+            save_png(got.annotated, fold_path)
+            print(f"fold eval -> {fold_path}  {got.score:.0f}%", flush=True)
+        return got.score
+
     line = Line(
         model,
         data,
@@ -235,6 +256,7 @@ def main() -> None:
         seed=int(args.seed),
         speed=float(args.speed),
         on_photo=on_photo,
+        on_fold_inspect=on_fold_inspect,
         on_event=on_event,
     )
     dt = float(model.opt.timestep)
@@ -246,7 +268,7 @@ def main() -> None:
     follow = FollowCam() if args.camera == "follow" else None
     camera = "follow" if follow is not None else args.camera
     if follow is not None:
-        backend.set_camera("follow", *follow.pose(line.positions(), 0.0))
+        backend.set_camera("follow", *follow.eye())
     if args.video:
         import imageio_ffmpeg
 

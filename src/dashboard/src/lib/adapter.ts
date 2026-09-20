@@ -107,7 +107,7 @@ export class DashboardAdapter {
         clothCondition,
         skewed,
       },
-      metrics: { cycleTimeSimS: null, cycleTimeWallS: null, flatnessPre: null, flatnessPost: null, shirtInBag: null },
+      metrics: { cycleTimeSimS: null, cycleTimeWallS: null, flatnessPre: null, flatnessPost: null, foldQuality: null, shirtInBag: null },
       telemetry: { t: 0, state: "PICK", cycle: 1, flatness: null, shirt_in_bag: false },
       stages: PRODUCTIVE_CYCLE.map((state, i) => ({ state, status: i === 0 ? "active" : "pending", startedAtSimS: i === 0 ? 0 : null, durationSimS: null })),
       events: [{ id: `${id}-start`, atSimS: 0, atWallIso: FIXTURE_CLOCK, stage: "PICK", message: "Local sample created; nothing was sent to the simulator.", level: "info" }],

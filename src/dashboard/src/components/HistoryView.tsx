@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, type CSSProperties } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "./ui/table";
 import { AppShell } from "@/components/AppShell";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
@@ -31,6 +31,7 @@ const LIFECYCLES: [RunLifecycle | "all", string][] = [
 const CONTROL =
   "h-10 rounded-[var(--radius-sm)] border border-input bg-surface px-3 text-sm";
 const FIELD = `mt-1 block ${CONTROL}`;
+const PAGE_SIZE = 50;
 
 type SortKey = "id" | "status" | "batch" | "seed" | "speed" | "cycle" | "started";
 type SortDir = "asc" | "desc";
@@ -82,6 +83,7 @@ export function HistoryView() {
   const [group, setGroup] = useState<GraphGroup>("clothType");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [page, setPage] = useState(1);
 
   function toggleSort(key: SortKey) {
     const first: SortDir = key === "id" || key === "batch" || key === "status" ? "asc" : "desc";
@@ -128,6 +130,17 @@ export function HistoryView() {
       })
       .map(({ run }) => run);
   }, [history, lifecycle, query, sortKey, sortDir]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [lifecycle, query, sortKey, sortDir]);
+
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pageRows = rows.slice(pageStart, pageStart + PAGE_SIZE);
+  const pageFrom = rows.length === 0 ? 0 : pageStart + 1;
+  const pageTo = Math.min(pageStart + PAGE_SIZE, rows.length);
 
   const graphRows = useMemo(
     () => filterChartRuns(history, { lifecycle, query, clothType, clothCondition, batchId: "all" }),
@@ -196,7 +209,7 @@ export function HistoryView() {
           </TableRow>
         </TableHeader>
         <TableBody className="[&_tr:last-child]:border-b [&_tr:last-child]:border-divider">
-          {rows.map((run) => <RunRow key={run.id} run={run} onOpen={() => router.push(`/historial/${run.id}`)} />)}
+          {pageRows.map((run) => <RunRow key={run.id} run={run} onOpen={() => router.push(`/historial/${run.id}`)} />)}
         </TableBody>
       </Table>
     </div>
@@ -310,12 +323,48 @@ export function HistoryView() {
         ) : null}
         <span className="ml-auto self-center font-mono text-[11px] tabular text-muted-foreground">
           {ready
-            ? `${view === "graphs" ? graphRows.length : rows.length} / ${history.length}`
+            ? view === "graphs"
+              ? `${graphRows.length} / ${history.length}`
+              : rows.length > PAGE_SIZE
+                ? `${pageFrom}–${pageTo} / ${rows.length}`
+                : `${rows.length} / ${history.length}`
             : "…"}
         </span>
       </div>
 
       {listBody}
+      {ready && view === "list" && pageCount > 1 ? (
+        <div className="mt-3 flex shrink-0 items-center justify-between gap-3">
+          <p className="font-mono text-[11px] tabular text-muted-foreground">
+            {pageFrom}–{pageTo} of {rows.length} · {PAGE_SIZE} per page
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className={`${CONTROL} inline-flex items-center gap-1 disabled:opacity-50`}
+              disabled={currentPage <= 1}
+              aria-label="Previous page"
+              onClick={() => setPage(currentPage - 1)}
+            >
+              <ChevronLeft className="size-3.5" aria-hidden />
+              Previous
+            </button>
+            <span className="font-mono text-[11px] tabular text-muted-foreground">
+              Page {currentPage} of {pageCount}
+            </span>
+            <button
+              type="button"
+              className={`${CONTROL} inline-flex items-center gap-1 disabled:opacity-50`}
+              disabled={currentPage >= pageCount}
+              aria-label="Next page"
+              onClick={() => setPage(currentPage + 1)}
+            >
+              Next
+              <ChevronRight className="size-3.5" aria-hidden />
+            </button>
+          </div>
+        </div>
+      ) : null}
     </AppShell>
   );
 }

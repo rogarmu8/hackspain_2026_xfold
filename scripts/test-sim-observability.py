@@ -2,6 +2,8 @@ import os
 import unittest
 from types import SimpleNamespace
 
+import numpy as np
+
 from xfold.bridge.journal import Journal
 from xfold.bridge.runtime import Runtime
 from xfold.line import LINE_PHASES, Line
@@ -78,6 +80,10 @@ class ObservabilityTests(unittest.TestCase):
         ok, reason = grade_line_outcome("packed", "tee_notgood1")
         self.assertFalse(ok)
         self.assertIn("stained", reason)
+        missed, missed_reason = grade_line_outcome("missed", "tee")
+        self.assertFalse(missed)
+        self.assertIn("carton", missed_reason)
+        self.assertFalse(grade_line_outcome("missed", "tee_notgood2")[0])
         self.assertEqual(garment_result_label("tee_notgood1"), "Stained")
         self.runtime.emit_state(self.run_id, "SORT", 1)
         self.runtime.finish_success(self.run_id, 2)
@@ -123,7 +129,15 @@ class ObservabilityTests(unittest.TestCase):
         self.assertEqual(metrics["flatnessPre"], 0.01)
         self.assertEqual(metrics["flatnessPost"], 0.004)
         self.assertIsNone(metrics["shirtInBag"])
+        self.assertIsNone(metrics["foldQuality"])
         self.assertIsNotNone(metrics["cycleTimeWallS"])
+
+    def test_fold_quality_metric_is_percent(self):
+        self.runtime.emit_state(self.run_id, "FOLD", 20)
+        self.runtime.emit_metrics(self.run_id, 20, {"foldQualityPct": 87.4})
+        metrics = self.runtime.get_run(self.run_id)["metrics"]
+        self.assertEqual(metrics["foldQuality"], 87.4)
+        self.assertEqual(metrics["measurements"]["foldQualityPct"], 87.4)
 
     def test_simulator_emits_distinct_transports_and_exact_time(self):
         events = []
@@ -183,6 +197,38 @@ class ObservabilityTests(unittest.TestCase):
         line.on_photo.assert_called_once()
         warning = next(e for e in events if e["operation"] == "PHOTO_FAILED")
         self.assertEqual((warning["state"], warning["station"], warning["level"]), ("PHOTO", "qc", "warning"))
+
+    def test_fold_inspect_emits_percent(self):
+        events = []
+        line = Line.__new__(Line)
+        line.data = SimpleNamespace(time=30)
+        line.cycles = 1
+        line.phase = "FOLD"
+        line.log = lambda message: None
+        line.on_event = events.append
+        line.on_fold_inspect = lambda: 92.0
+        line._inspect_fold()
+        event = events[-1]
+        self.assertEqual(event["operation"], "FOLD_QC")
+        self.assertEqual(event["measurements"]["foldQualityPct"], 92.0)
+        self.assertIn("92%", event["message"])
+
+    def test_fold_inspect_failure_is_a_warning(self):
+        from unittest.mock import Mock
+
+        events = []
+        line = Line.__new__(Line)
+        line.data = SimpleNamespace(time=30)
+        line.cycles = 1
+        line.phase = "FOLD"
+        line.log = lambda message: None
+        line.on_event = events.append
+        line.on_fold_inspect = Mock(side_effect=RuntimeError("no GL"))
+        line._inspect_fold()
+        warning = events[-1]
+        self.assertEqual(warning["operation"], "FOLD_QC_FAILED")
+        self.assertEqual(warning["level"], "warning")
+        self.assertEqual(warning["measurements"], {})
 
     def test_selected_garment_replaces_startup_inputs(self):
         from xfold.garments import resolve_garment
@@ -339,6 +385,126 @@ class PhysicsObservabilityTests(unittest.TestCase):
         self.assertEqual(len([e for e in logs if e["operation"].startswith("FLAP_")]), 3)
         self.assertTrue(any(e["parallel"] and e["operation"] == "BAG_READY" for e in logs))
         print(f"headless line: {data.time:.3f}s sim; measured={measurements}")
+
+
+class FoldQualityTests(unittest.TestCase):
+    def test_smooth_pack_is_near_perfect(self):
+        from xfold.fold_quality import score_fold
+
+        gray = np.full((256, 256, 3), 180, dtype=np.uint8)
+        score = score_fold(gray)
+        self.assertIsNotNone(score)
+        self.assertGreaterEqual(score, 99)
+
+    def test_wrinkle_coverage_drops_the_score(self):
+        from xfold.fold_quality import score_fold
+
+        y, x = np.mgrid[0:256, 0:256]
+        band = (y >= 80) & (y < 120)
+        shade = np.where(band, 180 + 48 * np.sin(x / 3.0), 180)
+        rgb = np.clip(np.stack([shade, shade, shade], axis=-1), 0, 255).astype(np.uint8)
+        wrinkled = score_fold(rgb)
+        smooth = score_fold(np.full((256, 256, 3), 180, dtype=np.uint8))
+        self.assertIsNotNone(wrinkled)
+        self.assertIsNotNone(smooth)
+        self.assertLess(wrinkled, smooth)
+        # ~20 % of the ROI is a crease field; generous, so still well above 50.
+        self.assertGreater(wrinkled, 50)
+        self.assertLess(wrinkled, 95)
+
+    def test_a_fully_creased_sheet_is_worse_than_a_band(self):
+        from xfold.fold_quality import score_fold
+
+        y, x = np.mgrid[0:256, 0:256]
+        band = (y >= 80) & (y < 120)
+        shade_band = np.where(band, 180 + 48 * np.sin(x / 3.0), 180)
+        shade_all = 180 + 48 * np.sin(x / 3.0)
+        band_score = score_fold(
+            np.clip(np.stack([shade_band] * 3, axis=-1), 0, 255).astype(np.uint8)
+        )
+        all_score = score_fold(
+            np.clip(np.stack([shade_all] * 3, axis=-1), 0, 255).astype(np.uint8)
+        )
+        self.assertIsNotNone(band_score)
+        self.assertIsNotNone(all_score)
+        self.assertLess(all_score, band_score)
+
+    def test_cloth_off_the_white_plate_drops_the_score(self):
+        from xfold.fold_quality import score_fold
+
+        on_plate = np.full((256, 256, 3), 10, dtype=np.uint8)
+        on_plate[58:198, 58:198] = 180
+        hanging = on_plate.copy()
+        hanging[70:186, 38:58] = 200
+        seated = score_fold(on_plate)
+        spilled = score_fold(hanging)
+        self.assertIsNotNone(seated)
+        self.assertIsNotNone(spilled)
+        self.assertGreaterEqual(seated, 95)
+        self.assertLess(spilled, seated - 3)
+        self.assertGreater(spilled, 50)
+
+    def test_empty_frame_is_unmeasured(self):
+        from xfold.fold_quality import score_fold
+
+        self.assertIsNone(score_fold(np.zeros((64, 64, 3), dtype=np.uint8)))
+
+    def test_inspect_returns_a_frame_when_scored(self):
+        from xfold.fold_quality import inspect_fold
+
+        rgb = np.full((128, 128, 3), 180, dtype=np.uint8)
+        got = inspect_fold(rgb)
+        self.assertIsNotNone(got.score)
+        self.assertIsNotNone(got.annotated)
+        self.assertEqual(got.annotated.shape, rgb.shape)
+
+
+class CartonLandingTests(unittest.TestCase):
+    def test_majority_inside_counts_as_landed(self):
+        from xfold.line import CARTON_X, CARTON_Y, CARTON_Z, pack_in_carton
+
+        mid = np.array([[
+            0.5 * (CARTON_X[0] + CARTON_X[1]),
+            0.5 * (CARTON_Y[0] + CARTON_Y[1]),
+            0.5 * (CARTON_Z[0] + CARTON_Z[1]),
+        ]])
+        pack = np.repeat(mid, 10, axis=0)
+        self.assertTrue(pack_in_carton(pack))
+
+    def test_beside_the_carton_is_a_miss(self):
+        from xfold.line import pack_in_carton
+
+        beside = np.array([[1.5, 0.0, 0.10]] * 10)
+        self.assertFalse(pack_in_carton(beside))
+        self.assertFalse(pack_in_carton(np.zeros((0, 3))))
+
+    def test_half_the_verts_is_the_threshold(self):
+        from xfold.line import CARTON_X, CARTON_Y, CARTON_Z, pack_in_carton
+
+        inside = np.array([
+            0.5 * (CARTON_X[0] + CARTON_X[1]),
+            0.5 * (CARTON_Y[0] + CARTON_Y[1]),
+            0.5 * (CARTON_Z[0] + CARTON_Z[1]),
+        ])
+        outside = np.array([0.0, 0.0, 0.8])
+        self.assertFalse(pack_in_carton(np.vstack([np.repeat(inside[None, :], 4, axis=0),
+                                                   np.repeat(outside[None, :], 6, axis=0)])))
+        self.assertTrue(pack_in_carton(np.vstack([np.repeat(inside[None, :], 6, axis=0),
+                                                  np.repeat(outside[None, :], 4, axis=0)])))
+
+
+class CustomOutlineTests(unittest.TestCase):
+    def test_operator_uv_loop_becomes_metres(self):
+        from xfold.custom_design import outline_metres_from_uv
+        from xfold.generate_shirt_mesh import BODY_W
+
+        uv = [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]]
+        poly = outline_metres_from_uv(uv)
+        self.assertIsNotNone(poly)
+        self.assertGreaterEqual(len(poly), 5)
+        self.assertAlmostEqual(float(poly[0, 0]), (0.2 - 0.5) * BODY_W, places=6)
+        self.assertTrue(outline_metres_from_uv([]) is None)
+        self.assertTrue(outline_metres_from_uv([[0, 0]]) is None)
 
 
 if __name__ == "__main__":

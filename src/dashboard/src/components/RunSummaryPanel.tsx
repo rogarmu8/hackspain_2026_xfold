@@ -5,7 +5,8 @@ import { ArrowUpRight, ClipboardList, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NewExperimentDialog } from "@/components/NewExperimentDialog";
 import { RunStatusBadges } from "@/components/RunStatusBadges";
-import { formatFlatness, formatIso, formatSeconds, DEFAULT_CLOTH_CONDITIONS, DEFAULT_CLOTH_TYPES } from "@/lib/format";
+import { formatFlatness, formatFoldQuality, formatIso, formatSeconds, DEFAULT_CLOTH_CONDITIONS, DEFAULT_CLOTH_TYPES } from "@/lib/format";
+import { HoverPhoto } from "@/components/ProductShotPanel";
 import type { RunDetail } from "@/lib/types";
 import type { ClothCondition, ClothType } from "@xfold/protocol";
 
@@ -36,6 +37,16 @@ export function RunSummaryPanel({ run, embed = false }: { run: RunDetail; embed?
         {run.failReason ? (
           <p className="text-sm text-danger">{run.failReason}</p>
         ) : null}
+        {run.hasFoldPhoto ? (
+          <figure className="m-0 flex flex-col gap-1.5">
+            <HoverPhoto
+              src={`/api/bridge/runs/${encodeURIComponent(run.id)}/fold-photo`}
+              alt={`OpenCV fold evaluation for ${run.id}`}
+              filename={`${run.id}-fold.jpg`}
+            />
+            <figcaption className="eyebrow">Fold eval · OpenCV · warmer = more wrinkles</figcaption>
+          </figure>
+        ) : null}
 
         <dl className="grid grid-cols-3 gap-x-3 gap-y-2 border-t border-divider pt-3">
           <Metric label="duration" value={formatSeconds(run.metrics.cycleTimeSimS)} />
@@ -43,6 +54,7 @@ export function RunSummaryPanel({ run, embed = false }: { run: RunDetail; embed?
           <Metric label="in bag" value={run.metrics.shirtInBag == null ? "not measured" : run.metrics.shirtInBag ? "yes" : "no"} />
           <Metric label="flatness pre" value={formatFlatness(run.metrics.flatnessPre)} />
           <Metric label="flatness post" value={formatFlatness(run.metrics.flatnessPost)} />
+          <Metric label="fold quality" value={formatFoldQuality(run.metrics.foldQuality ?? run.metrics.measurements?.foldQualityPct)} />
           <Metric label="ended" value={formatIso(run.finishedAtIso)} />
         </dl>
 
@@ -52,11 +64,11 @@ export function RunSummaryPanel({ run, embed = false }: { run: RunDetail; embed?
           </p>
         ) : null}
         {run.config.inputs?.driver === "line" ? (
-          <p className="text-xs text-muted-foreground">Flatness = vertex height deviation (σz). Finishing the sequence does not validate seal quality or containment.</p>
+          <p className="text-xs text-muted-foreground">Flatness = vertex height deviation (σz). Missing the carton fails the run. Seal quality is not validated.</p>
         ) : null}
       </div>
       {run.config.inputs ? (
-        <InputParams inputs={run.config.inputs} embed={embed} />
+        <InputParams inputs={run.config.inputs} embed={embed} compact={Boolean(run.hasFoldPhoto)} />
       ) : null}
 
       <div className="shrink-0">
@@ -91,7 +103,7 @@ export function RunSummaryPanel({ run, embed = false }: { run: RunDetail; embed?
   );
 
   if (embed) {
-    return <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden p-4">{body}</div>;
+    return <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-4">{body}</div>;
   }
 
   return (
@@ -110,14 +122,17 @@ export function RunSummaryPanel({ run, embed = false }: { run: RunDetail; embed?
 function InputParams({
   inputs,
   embed,
+  compact = false,
 }: {
   inputs: Record<string, unknown>;
   embed: boolean;
+  compact?: boolean;
 }) {
+  const grow = embed && !compact;
   return (
-    <div className={embed ? "flex h-0 min-h-0 flex-1 flex-col overflow-hidden" : "shrink-0"}>
+    <div className={grow ? "flex h-0 min-h-0 flex-1 flex-col overflow-hidden" : "shrink-0"}>
       <p className="shrink-0 text-xs font-semibold">Input and simulation parameters</p>
-      <div className={`mt-2 min-h-0 overflow-y-auto overscroll-contain ${embed ? "flex-1" : "max-h-[min(40vh,16rem)]"}`}>
+      <div className={`mt-2 min-h-0 overflow-y-auto overscroll-contain ${grow ? "flex-1" : compact ? "max-h-[min(20vh,8rem)]" : "max-h-[min(40vh,16rem)]"}`}>
         <dl className="grid grid-cols-2 gap-1 font-mono text-xs">
           {Object.entries(inputs).map(([key, value]) => (
             <div key={key} className="contents">

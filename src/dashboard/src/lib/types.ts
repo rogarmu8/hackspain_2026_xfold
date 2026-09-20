@@ -126,6 +126,8 @@ export type RunMetrics = {
   cycleTimeWallS: number | null;
   flatnessPre: number | null;
   flatnessPost: number | null;
+  /** 0–100 % from the opener-mounted fold camera. Null if not measured. */
+  foldQuality?: number | null;
   shirtInBag: boolean | null;
   measurements?: Record<string, number>;
 };
@@ -166,6 +168,8 @@ export type RunDetail = RunSummary & {
   config: RunConfig;
   /** The QC camera fired for this run; GET /runs/{id}/photo has the shot. */
   hasPhoto?: boolean;
+  /** Fold-eval overlay is on disk; GET /runs/{id}/fold-photo has the OpenCV frame. */
+  hasFoldPhoto?: boolean;
   /** This run is recorded; GET /runs/{id}/video/index.m3u8 plays it. */
   hasVideo?: boolean;
   stages: StageProgress[];
