@@ -1,17 +1,18 @@
 <!--
-  The line: dual-arm spread station -> infeed belt -> press -> flap folder.
+  The line: dual-arm align station -> infeed belt -> press -> flap folder.
 
   A shirt is laid on the belt. If it is the selector's skewed condition, it
-  lands at a random heading; a dual conveyor product turner (spread_rig.xml)
-  yaws it until the collar leads (+x): two side-by-side belts run together,
-  then one speeds up and the other slows so the shirt pivots, then they
-  resync. The linear belt then stops it under the press, the platen comes
-  down on the belt itself (the press's own bed and table are removed in
-  xfold.line), then the belt stops the shirt under a QC camera. After the
-  product shot a pedestal arm with a suction cup diverts stained garments
-  into a stained tote and torn ones into a broken tote; clean shirts run
-  off the belt onto the folder. The folder is a FlipFold on legs: a sliding peel under the
-  collar, a flap on each side and one under the hem.
+  lands at a random heading; two pedestal robot arms, one each side of the
+  infeed (align_rig.xml), drop their suction wrists on it, lift it off the
+  belt, swing it round until the collar leads (+x) and lay it back down. The
+  belt then stops it under the press, the platen comes down on the belt
+  itself (the press's own bed and table are removed in xfold.line), then the
+  belt stops the shirt under a QC camera. After the product shot an arm
+  mounted on the camera's own post — the post stands at the x-midpoint of
+  the two totes — reaches down with a suction cup and diverts stained
+  garments into the stained tote and torn ones into the broken tote; clean
+  shirts run off the belt onto the folder. The folder is a FlipFold on legs:
+  a sliding peel under the collar, a flap on each side and one under the hem.
 
   Then the bagger, two stations on belt 2. Pre-made bags (gusseted, sealed on
   three sides) lie flat in a magazine behind the belt. While the shirt is
@@ -106,7 +107,7 @@
   </asset>
 
   <include file="press_rig.xml"/>
-  <include file="spread_rig.xml"/>
+  <include file="align_rig.xml"/>
 
   <worldbody>
     <light name="key" pos="-0.4 -1.2 2.2" dir="0.1 0.5 -1" diffuse="0.8 0.75 0.7"/>
@@ -114,7 +115,7 @@
     <light name="fold_light" pos="0.64 -0.3 1.5" dir="0 0.2 -1" diffuse="0.35 0.35 0.38"/>
     <light name="bag_light" pos="1.45 -0.4 1.6" dir="0 0.2 -1" diffuse="0.35 0.35 0.38"/>
     <light name="carton_light" pos="2.3 -0.4 1.6" dir="0 0.2 -1" diffuse="0.3 0.3 0.32"/>
-    <light name="spread_light" pos="-1.55 -0.4 1.8" dir="0 0.15 -1" diffuse="0.45 0.40 0.36"/>
+    <light name="align_light" pos="-1.55 -0.4 1.8" dir="0 0.15 -1" diffuse="0.45 0.40 0.36"/>
     <geom name="floor" type="plane" size="4.0 2.5 0.05" material="floor"/>
 
     <!-- Aim points for the cameras; no geometry. -->
@@ -122,14 +123,15 @@
     <body name="fold_center" pos="0.90 0 0.56"/>
     <body name="bag_center" pos="1.55 0 0.45"/>
     <body name="bagger_center" pos="1.40 0.20 0.62"/>
-    <body name="spread_center" pos="-1.55 0 0.56"/>
+    <body name="align_center" pos="-1.55 0 0.60"/>
 
     <camera name="overview" pos="0.45 -4.30 2.60" mode="targetbody" target="line_center"/>
     <camera name="press_cam" pos="-1.35 -1.55 1.35" mode="targetbody" target="press_platen"/>
     <camera name="fold_cam" pos="0.90 -1.15 1.70" mode="targetbody" target="fold_center"/>
     <camera name="bag_cam" pos="1.60 -1.35 1.60" mode="targetbody" target="bag_center"/>
     <camera name="bagger_cam" pos="0.75 -1.10 1.45" mode="targetbody" target="bagger_center"/>
-    <camera name="spread_cam" pos="-1.55 -1.55 1.45" mode="targetbody" target="spread_center"/>
+    <!-- Off the corner, not square on: a pedestal stands at y = -0.80. -->
+    <camera name="align_cam" pos="-2.55 -1.35 1.75" mode="targetbody" target="align_center"/>
 
     <!--
       Infeed heading camera, over the dual-belt turner (spawn x = -1.55).
@@ -164,7 +166,9 @@
     <light name="qc_flash_l" pos="-0.20 0.42 1.30" dir="0 -0.47 -0.88" diffuse="0 0 0" specular="0 0 0" cutoff="70" exponent="2"/>
     <light name="qc_flash_r" pos="-0.20 -0.42 1.30" dir="0 0.47 -0.88" diffuse="0 0 0" specular="0 0 0" cutoff="70" exponent="2"/>
     <body name="qc_rig" pos="-0.20 0 0">
-      <geom name="qc_post" class="deco" type="cylinder" size="0.022 0.55" pos="0 0.66 1.05" material="steel"/>
+      <geom name="qc_post" class="deco" type="cylinder" size="0.030 0.55" pos="0 0.66 1.05" material="steel"/>
+      <geom name="qc_post_foot" class="deco" type="cylinder" size="0.10 0.014" pos="0 0.66 0.014" material="panel_grey"/>
+      <geom name="qc_post_base" class="deco" type="cylinder" size="0.038 0.25" pos="0 0.66 0.25" material="steel"/>
       <geom name="qc_arm" class="deco" type="box" size="0.018 0.58 0.018" pos="0 0.08 1.62" material="steel"/>
       <geom name="qc_head" class="deco" type="box" size="0.05 0.05 0.035" pos="0 0 1.60" material="steel"/>
       <geom name="qc_drop_l" class="deco" type="cylinder" size="0.012 0.14" pos="0 0.42 1.46" material="steel"/>
@@ -175,30 +179,36 @@
       <geom name="qc_bulb_r" class="deco" type="box" size="0.044 0.029 0.005" pos="0 -0.42 1.286" rgba="0.5 0.5 0.55 1"/>
     </body>
     <!--
-      QC reject arm: a pedestal 2-link on the operator side of the camera
-      post. After the product shot it reaches onto the belt, carries a
-      stained shirt into the upstream tote or a torn shirt into the
-      downstream tote, and lets go. Parked west of the camera post, not on it.
-      Links are mocap; xfold.line poses them with 2-link IK.
+      QC reject arm, mounted on the camera's own post. The post stands at
+      x = -0.20, which is the midpoint of the stained tote (x = -0.70) and the
+      broken tote (x = +0.30), so one shoulder reaches both at the same
+      stretch, and the belt under the camera at the same stretch again. The
+      shoulder is a collar clamped on the post at z = 1.05, under the camera
+      boom and above everything the arm swings over, so nothing on the post
+      is ever in the arm's way and the old keep-out detour is gone.
+
+      Parked, the wrist tucks back behind the post at y = 0.92, well outside
+      qc_cam's cone (half-width there is ~0.27 m), so it is not in the
+      product shot. Links are mocap; xfold.line poses them with 2-link IK.
     -->
-    <body name="qc_arm_base" pos="-0.52 0.80 0">
-      <geom name="qc_arm_foot" class="deco" type="cylinder" size="0.12 0.016" pos="0 0 0.016" material="steel"/>
-      <geom name="qc_arm_column" class="deco" type="cylinder" size="0.055 0.36" pos="0 0 0.392" material="steel"/>
-      <geom name="qc_arm_cap" class="deco" type="cylinder" size="0.07 0.04" pos="0 0 0.76" material="panel_grey"/>
+    <body name="qc_arm_mount" pos="-0.20 0.66 1.05">
+      <geom name="qc_arm_collar" class="deco" type="cylinder" size="0.042 0.05" material="panel_grey"/>
+      <geom name="qc_arm_bracket" class="deco" type="box" size="0.036 0.05 0.016" pos="0 0.07 0.02" material="steel"/>
+      <geom name="qc_arm_cap" class="deco" type="cylinder" size="0.062 0.016" pos="0 0 0.062" material="panel_grey"/>
     </body>
-    <body name="qc_arm_yaw" mocap="true" pos="-0.52 0.80 0.76">
-      <geom name="qc_arm_turret" class="deco" type="cylinder" size="0.062 0.035" pos="0 0 0.01" material="panel_grey"/>
-      <geom name="qc_arm_horn" class="deco" type="box" size="0.05 0.028 0.022" pos="0.04 0 0.02" material="flap"/>
+    <body name="qc_arm_yaw" mocap="true" pos="-0.20 0.66 1.05">
+      <geom name="qc_arm_turret" class="deco" type="cylinder" size="0.056 0.030" pos="0 0 0.09" material="panel_grey"/>
+      <geom name="qc_arm_horn" class="deco" type="box" size="0.05 0.026 0.020" pos="0.04 0 0.10" material="flap"/>
     </body>
-    <body name="qc_arm_upper" mocap="true" pos="-0.52 0.80 0.76">
-      <geom name="qc_arm_upper_tube" class="deco" type="cylinder" size="0.038 0.375" pos="0 0 0.375" material="steel"/>
-      <geom name="qc_arm_elbow" class="deco" type="sphere" size="0.048" pos="0 0 0.75" material="panel_grey"/>
+    <body name="qc_arm_upper" mocap="true" pos="-0.20 0.66 1.05">
+      <geom name="qc_arm_upper_tube" class="deco" type="cylinder" size="0.034 0.275" pos="0 0 0.275" material="steel"/>
+      <geom name="qc_arm_elbow" class="deco" type="sphere" size="0.044" pos="0 0 0.55" material="panel_grey"/>
     </body>
-    <body name="qc_arm_fore" mocap="true" pos="-0.17 0.80 1.20">
-      <geom name="qc_arm_fore_tube" class="deco" type="cylinder" size="0.032 0.45" pos="0 0 0.45" material="steel"/>
-      <geom name="qc_arm_wrist" class="deco" type="sphere" size="0.04" pos="0 0 0.90" material="panel_grey"/>
+    <body name="qc_arm_fore" mocap="true" pos="-0.20 0.11 1.05">
+      <geom name="qc_arm_fore_tube" class="deco" type="cylinder" size="0.029 0.29" pos="0 0 0.29" material="steel"/>
+      <geom name="qc_arm_wrist" class="deco" type="sphere" size="0.036" pos="0 0 0.58" material="panel_grey"/>
     </body>
-    <body name="qc_cup" mocap="true" pos="-0.44 0.98 1.08">
+    <body name="qc_cup" mocap="true" pos="-0.20 0.92 0.98">
       <geom name="qc_cup_pad" class="deco" type="cylinder" size="0.042 0.008" material="suction"/>
       <geom name="qc_cup_lip" class="deco" type="cylinder" size="0.048 0.004" pos="0 0 -0.010" rgba="0.08 0.08 0.09 1"/>
       <geom name="qc_cup_stem" class="deco" type="cylinder" size="0.011 0.05" pos="0 0 0.058" material="steel"/>
@@ -225,12 +235,10 @@
       cloth in xfold.line. Slats are visual and slide along the linear deck.
     -->
     <body name="belt">
-      <!-- Dual-lane contact decks, same split as spread_rig.xml.
-           A thin mid strip fills the lane gap so the spine cannot fall through. -->
-      <geom name="belt_top_orient_l" type="box" size="0.55 0.230 0.003" pos="-1.55  0.250 0.559" rgba="0 0 0 0"/>
-      <geom name="belt_top_orient_r" type="box" size="0.55 0.230 0.003" pos="-1.55 -0.250 0.559" rgba="0 0 0 0"/>
-      <geom name="belt_top_orient_mid" type="box" size="0.55 0.025 0.003" pos="-1.55 0 0.559" rgba="0 0 0 0"/>
-      <!-- Linear belt meets the turner with a 2 cm overlap (x = -1.02 .. 0.30).
+      <!-- Infeed deck, one belt the full width (align_rig.xml): the dual-lane
+           turner is gone, the align arms square the heading instead. -->
+      <geom name="belt_top_in" type="box" size="0.55 0.485 0.003" pos="-1.55 0 0.559" material="belt"/>
+      <!-- Linear belt meets the infeed with a 2 cm overlap (x = -1.02 .. 0.30).
            Press stays at x = -0.75, on this belt. -->
       <geom name="belt_top" type="box" size="0.66 0.485 0.003" pos="-0.36 0 0.559" material="belt"/>
       <geom name="belt_rail_l" class="deco" type="box" size="0.66 0.020 0.045" pos="-0.36  0.505 0.515" material="steel"/>
@@ -240,8 +248,6 @@
       <geom name="belt_bed" class="deco" type="box" size="0.64 0.45 0.025" pos="-0.36 0 0.508" material="steel"/>
       <geom name="roller_in" class="deco" type="cylinder" size="0.032 0.485" pos="-1.02 0 0.530" euler="1.5708 0 0" material="roller"/>
       <geom name="roller_out" class="deco" type="cylinder" size="0.032 0.485" pos="0.30 0 0.530" euler="1.5708 0 0" material="roller"/>
-      <geom name="belt_leg_0" class="deco" type="box" size="0.03 0.03 0.25" pos="-1.90 0.41 0.25" material="steel"/>
-      <geom name="belt_leg_1" class="deco" type="box" size="0.03 0.03 0.25" pos="-1.90 -0.41 0.25" material="steel"/>
       <geom name="belt_leg_2" class="deco" type="box" size="0.03 0.03 0.25" pos="0.20 0.41 0.25" material="steel"/>
       <geom name="belt_leg_3" class="deco" type="box" size="0.03 0.03 0.25" pos="0.20 -0.41 0.25" material="steel"/>
       <!-- The press columns stand on these, where the press table used to be.
@@ -249,16 +255,23 @@
       <geom name="press_post_l" class="deco" type="box" size="0.04 0.04 0.252" pos="-0.99 0.54 0.252" material="steel"/>
       <geom name="press_post_r" class="deco" type="box" size="0.04 0.04 0.252" pos="-0.99 -0.54 0.252" material="steel"/>
 
-      <!-- Even 0.147 m pitch, all on the belt top (x = -1.02 .. 0.30). -->
-      <geom name="belt_slat_0" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.0200 0 0.5626" material="slat"/>
-      <geom name="belt_slat_1" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.8733 0 0.5626" material="slat"/>
-      <geom name="belt_slat_2" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.7267 0 0.5626" material="slat"/>
-      <geom name="belt_slat_3" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.5800 0 0.5626" material="slat"/>
-      <geom name="belt_slat_4" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.4333 0 0.5626" material="slat"/>
-      <geom name="belt_slat_5" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.2867 0 0.5626" material="slat"/>
-      <geom name="belt_slat_6" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.1400 0 0.5626" material="slat"/>
-      <geom name="belt_slat_7" class="deco" type="box" size="0.010 0.480 0.0006" pos="0.0067 0 0.5626" material="slat"/>
-      <geom name="belt_slat_8" class="deco" type="box" size="0.010 0.480 0.0006" pos="0.1533 0 0.5626" material="slat"/>
+      <!-- One slat run over both decks, x = -2.10 .. 0.30, even 0.15 m pitch. -->
+      <geom name="belt_slat_0" class="deco" type="box" size="0.010 0.480 0.0006" pos="-2.1000 0 0.5626" material="slat"/>
+      <geom name="belt_slat_1" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.9500 0 0.5626" material="slat"/>
+      <geom name="belt_slat_2" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.8000 0 0.5626" material="slat"/>
+      <geom name="belt_slat_3" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.6500 0 0.5626" material="slat"/>
+      <geom name="belt_slat_4" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.5000 0 0.5626" material="slat"/>
+      <geom name="belt_slat_5" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.3500 0 0.5626" material="slat"/>
+      <geom name="belt_slat_6" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.2000 0 0.5626" material="slat"/>
+      <geom name="belt_slat_7" class="deco" type="box" size="0.010 0.480 0.0006" pos="-1.0500 0 0.5626" material="slat"/>
+      <geom name="belt_slat_8" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.9000 0 0.5626" material="slat"/>
+      <geom name="belt_slat_9" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.7500 0 0.5626" material="slat"/>
+      <geom name="belt_slat_10" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.6000 0 0.5626" material="slat"/>
+      <geom name="belt_slat_11" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.4500 0 0.5626" material="slat"/>
+      <geom name="belt_slat_12" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.3000 0 0.5626" material="slat"/>
+      <geom name="belt_slat_13" class="deco" type="box" size="0.010 0.480 0.0006" pos="-0.1500 0 0.5626" material="slat"/>
+      <geom name="belt_slat_14" class="deco" type="box" size="0.010 0.480 0.0006" pos="0.0000 0 0.5626" material="slat"/>
+      <geom name="belt_slat_15" class="deco" type="box" size="0.010 0.480 0.0006" pos="0.1500 0 0.5626" material="slat"/>
     </body>
 
     <!--
@@ -509,10 +522,20 @@
 
       A dynamic body, so belt 2 can carry it and gravity can drop it. Its one
       collision box is invisible and keeps its size; everything else is film
-      that xfold.line shapes: flat, blown open (0.11 m), then settled on the
-      pack. The roof ends 0.19 m short of the mouth in a hinged tail that the
-      mouth cup lifts and the seal bar presses down, and a short lip past the
-      seal line. Sizes here are the open ones. Body origin is the bag's centre
+      that xfold.line shapes: flat, blown open (0.11 m), then settled.
+
+      The roof and the gussets are not one panel each but 7 rings across the
+      bag's length, x = -0.19 .. 0.3, so the film does not have to be one height
+      everywhere. On release xfold.line reads the pack's own height under
+      each ring and sets that ring to it, bridging the dips between high
+      points the way film does, so the bag comes down onto the product
+      instead of staying a box with a lid. The side seams are low bands along
+      the bottom edge, which is where a gusseted bag carries them, so they do
+      not have to follow the drape.
+
+      The roof ends 0.19 m short of the mouth in a hinged tail that the mouth
+      cup lifts and the seal bar presses down, and a short lip past the seal
+      line. Sizes here are the open ones. Body origin is the bag's centre
       with its floor on the surface under it.
     -->
     <body name="bag" pos="1.32 0.66 0.5676">
@@ -520,20 +543,46 @@
       <inertial pos="0 0 0" mass="0.5" diaginertia="0.0100 0.0153 0.0250"/>
       <geom name="bag_hull" type="box" size="0.30 0.245 0.038" contype="4" conaffinity="1" group="3"/>
       <geom name="bag_floor" class="deco" type="box" size="0.30 0.245 0.0008" pos="0 0 -0.0372" material="film"/>
-      <geom name="bag_roof" class="deco" type="box" size="0.245 0.245 0.0008" pos="0.055 0 0.0728" material="film"/>
-      <geom name="bag_side_l" class="deco" type="box" size="0.245 0.0008 0.055" pos="0.055 0.2442 0.0178" material="film"/>
-      <geom name="bag_side_r" class="deco" type="box" size="0.245 0.0008 0.055" pos="0.055 -0.2442 0.0178" material="film"/>
+      <geom name="bag_roof_0" class="deco" type="box" size="0.0350 0.245 0.0008" pos="-0.1550 0 0.0728" material="film"/>
+      <geom name="bag_roof_1" class="deco" type="box" size="0.0350 0.245 0.0008" pos="-0.0850 0 0.0728" material="film"/>
+      <geom name="bag_roof_2" class="deco" type="box" size="0.0350 0.245 0.0008" pos="-0.0150 0 0.0728" material="film"/>
+      <geom name="bag_roof_3" class="deco" type="box" size="0.0350 0.245 0.0008" pos="0.0550 0 0.0728" material="film"/>
+      <geom name="bag_roof_4" class="deco" type="box" size="0.0350 0.245 0.0008" pos="0.1250 0 0.0728" material="film"/>
+      <geom name="bag_roof_5" class="deco" type="box" size="0.0350 0.245 0.0008" pos="0.1950 0 0.0728" material="film"/>
+      <geom name="bag_roof_6" class="deco" type="box" size="0.0350 0.245 0.0008" pos="0.2650 0 0.0728" material="film"/>
+      <geom name="bag_side_l_0" class="deco" type="box" size="0.0350 0.0008 0.055" pos="-0.1550 0.2442 0.0178" material="film"/>
+      <geom name="bag_side_l_1" class="deco" type="box" size="0.0350 0.0008 0.055" pos="-0.0850 0.2442 0.0178" material="film"/>
+      <geom name="bag_side_l_2" class="deco" type="box" size="0.0350 0.0008 0.055" pos="-0.0150 0.2442 0.0178" material="film"/>
+      <geom name="bag_side_l_3" class="deco" type="box" size="0.0350 0.0008 0.055" pos="0.0550 0.2442 0.0178" material="film"/>
+      <geom name="bag_side_l_4" class="deco" type="box" size="0.0350 0.0008 0.055" pos="0.1250 0.2442 0.0178" material="film"/>
+      <geom name="bag_side_l_5" class="deco" type="box" size="0.0350 0.0008 0.055" pos="0.1950 0.2442 0.0178" material="film"/>
+      <geom name="bag_side_l_6" class="deco" type="box" size="0.0350 0.0008 0.055" pos="0.2650 0.2442 0.0178" material="film"/>
+      <geom name="bag_side_r_0" class="deco" type="box" size="0.0350 0.0008 0.055" pos="-0.1550 -0.2442 0.0178" material="film"/>
+      <geom name="bag_side_r_1" class="deco" type="box" size="0.0350 0.0008 0.055" pos="-0.0850 -0.2442 0.0178" material="film"/>
+      <geom name="bag_side_r_2" class="deco" type="box" size="0.0350 0.0008 0.055" pos="-0.0150 -0.2442 0.0178" material="film"/>
+      <geom name="bag_side_r_3" class="deco" type="box" size="0.0350 0.0008 0.055" pos="0.0550 -0.2442 0.0178" material="film"/>
+      <geom name="bag_side_r_4" class="deco" type="box" size="0.0350 0.0008 0.055" pos="0.1250 -0.2442 0.0178" material="film"/>
+      <geom name="bag_side_r_5" class="deco" type="box" size="0.0350 0.0008 0.055" pos="0.1950 -0.2442 0.0178" material="film"/>
+      <geom name="bag_side_r_6" class="deco" type="box" size="0.0350 0.0008 0.055" pos="0.2650 -0.2442 0.0178" material="film"/>
       <geom name="bag_end" class="deco" type="box" size="0.0008 0.245 0.055" pos="0.2992 0 0.0178" material="film"/>
-      <!-- Factory welds: the far end and both sides. -->
+      <!-- Factory welds: the far end, and a seam band along each bottom edge. -->
       <geom name="bag_weld_end" class="deco" type="box" size="0.007 0.245 0.055" pos="0.293 0 0.0178" material="weld"/>
-      <geom name="bag_weld_l" class="deco" type="box" size="0.245 0.007 0.055" pos="0.055 0.238 0.0178" material="weld"/>
-      <geom name="bag_weld_r" class="deco" type="box" size="0.245 0.007 0.055" pos="0.055 -0.238 0.0178" material="weld"/>
+      <geom name="bag_weld_l" class="deco" type="box" size="0.245 0.007 0.012" pos="0.055 0.238 -0.0252" material="weld"/>
+      <geom name="bag_weld_r" class="deco" type="box" size="0.245 0.007 0.012" pos="0.055 -0.238 -0.0252" material="weld"/>
+      <!-- Euro slot: a reinforced patch on the far end of the roof, punched. -->
+      <geom name="bag_hang_patch" class="deco" type="box" size="0.022 0.026 0.0007" pos="0.262 0 0.0744" material="film_sealed"/>
+      <geom name="bag_hang_hole" class="deco" type="cylinder" size="0.009 0.0009" pos="0.262 0 0.0748" rgba="0.10 0.12 0.14 1"/>
       <geom name="bag_tail" class="deco" type="box" size="0.039 0.245 0.0008" pos="-0.229 0 0.0728" material="film"/>
       <geom name="bag_lip" class="deco" type="box" size="0.016 0.245 0.0008" pos="-0.284 0 0.0728" material="film"/>
       <geom name="bag_tail_side_l" class="deco" type="box" size="0.039 0.0008 0.055" pos="-0.229 0.2442 0.0178" material="film"/>
       <geom name="bag_tail_side_r" class="deco" type="box" size="0.039 0.0008 0.055" pos="-0.229 -0.2442 0.0178" material="film"/>
-      <geom name="bag_seam" class="deco" type="box" size="0.012 0.245 0.0010" pos="-0.272 0 -0.0355"
+      <geom name="bag_seam" class="deco" type="box" size="0.018 0.245 0.0010" pos="-0.268 0 -0.0355"
             material="film_sealed" rgba="0.70 0.84 0.95 0"/>
+      <!-- Knurl the seal bar leaves in the weld; shown with the seam. -->
+      <geom name="bag_crimp_0" class="deco" type="box" size="0.0016 0.240 0.0011" pos="-0.2810 0 -0.0350" material="weld" rgba="0.62 0.78 0.92 0"/>
+      <geom name="bag_crimp_1" class="deco" type="box" size="0.0016 0.240 0.0011" pos="-0.2725 0 -0.0350" material="weld" rgba="0.62 0.78 0.92 0"/>
+      <geom name="bag_crimp_2" class="deco" type="box" size="0.0016 0.240 0.0011" pos="-0.2640 0 -0.0350" material="weld" rgba="0.62 0.78 0.92 0"/>
+      <geom name="bag_crimp_3" class="deco" type="box" size="0.0016 0.240 0.0011" pos="-0.2555 0 -0.0350" material="weld" rgba="0.62 0.78 0.92 0"/>
       <geom name="bag_sticker" class="deco" type="box" size="0.05 0.035 0.0006" pos="0.10 0 0.0742"
             material="label_tee" rgba="1 1 1 0"/>
     </body>
