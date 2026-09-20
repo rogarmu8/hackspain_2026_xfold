@@ -295,6 +295,8 @@ export class BridgeClient {
           scenario: request.scenario,
           clothType: request.clothType,
           clothCondition: request.clothCondition,
+          conditionMix: request.conditionMix,
+          conditions: request.conditions,
           clothTypeWeights: request.clothTypeWeights,
           clothConditionWeights: request.clothConditionWeights,
           customDesign: request.customDesign,

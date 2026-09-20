@@ -198,28 +198,62 @@ def public_catalog() -> dict[str, list[dict]]:
     }
 
 
-def compose_pick(cloth: str, condition: str, rng) -> GarmentPick:
-    """Map a cloth type + condition onto a catalogue SKU (and pose flag)."""
+def _condition_flags(condition: str | list[str] | tuple[str, ...]) -> set[str]:
+    if isinstance(condition, (list, tuple)):
+        raw = list(condition)
+    else:
+        raw = [condition or "good"]
+    flags: set[str] = set()
+    for item in raw:
+        cond = (item or "good").strip().lower()
+        if cond not in CLOTH_CONDITION_KEYS:
+            raise ValueError(
+                f"unknown condition {item!r}; choose one of: {', '.join(CLOTH_CONDITION_KEYS)}"
+            )
+        flags.add(cond)
+    if not flags:
+        flags.add("good")
+    materials = flags & {"damaged", "notgood"}
+    if len(materials) > 1:
+        raise ValueError("cannot combine torn (damaged) and stained (notgood)")
+    return flags
+
+
+def primary_condition(flags: set[str]) -> str:
+    """Stored ``clothCondition`` for a flag set (pose lives on ``GarmentPick.skewed``)."""
+    if "damaged" in flags:
+        return "damaged"
+    if "notgood" in flags:
+        return "notgood"
+    if "skewed" in flags and "good" not in flags:
+        return "skewed"
+    return "good"
+
+
+def compose_pick(
+    cloth: str, condition: str | list[str] | tuple[str, ...], rng
+) -> GarmentPick:
+    """Map a cloth type + one or more conditions onto a catalogue SKU (and pose).
+
+    Multiple conditions are simultaneous on one garment: material SKU
+    (damaged / notgood / good) plus optional skewed pose. Torn and stained
+    cannot be combined.
+    """
     import random as _random
 
     base = base_garment(cloth).key
     if base not in CLOTH_TYPE_KEYS:
         raise ValueError(f"unknown cloth type {cloth!r}")
-    cond = (condition or "good").strip().lower()
-    if cond not in CLOTH_CONDITION_KEYS:
-        raise ValueError(
-            f"unknown condition {condition!r}; choose one of: {', '.join(CLOTH_CONDITION_KEYS)}"
-        )
+    flags = _condition_flags(condition)
+    skewed = "skewed" in flags
     if base == CUSTOM_KEY:
-        return GarmentPick(CUSTOM_KEY, skewed=(cond == "skewed"))
-    if cond == "damaged":
-        return GarmentPick(f"{base}_damaged", skewed=False)
-    if cond == "notgood":
+        return GarmentPick(CUSTOM_KEY, skewed=skewed)
+    if "damaged" in flags:
+        return GarmentPick(f"{base}_damaged", skewed=skewed)
+    if "notgood" in flags:
         n = rng.randint(1, 3) if hasattr(rng, "randint") else _random.Random().randint(1, 3)
-        return GarmentPick(f"{base}_notgood{n}", skewed=False)
-    if cond == "skewed":
-        return GarmentPick(base, skewed=True)
-    return GarmentPick(base, skewed=False)
+        return GarmentPick(f"{base}_notgood{n}", skewed=skewed)
+    return GarmentPick(base, skewed=skewed)
 
 
 def _weight_of(weights: dict[str, float] | None, key: str) -> float:
@@ -270,14 +304,19 @@ def resolve_launch(
     """Pick one SKU for a run (or batch member). Returns pick, cloth type, condition.
 
     Random / list draws are seeded and, when weights are given, weighted.
+    ``multiple`` applies exactly two distinct conditions at once (SKU + pose).
     ``skewed`` is still a condition: the pose itself is sampled later from the
     same seed (flat on the belt, random heading).
     """
     import random
 
+    if cloth_mix == "multiple":
+        raise ValueError("multiple only applies to conditions, not garment type")
     cloth_mix = cloth_mix if cloth_mix in {"same", "random", "list"} else "same"
     condition_mix = (
-        condition_mix if condition_mix in {"same", "random", "list"} else "same"
+        condition_mix
+        if condition_mix in {"same", "random", "list", "multiple"}
+        else "same"
     )
     types = list(cloth_types or [])
     conds = list(conditions or [])
@@ -285,7 +324,7 @@ def resolve_launch(
     cond_seed = (int(seed) * 17 + 1) & 0xFFFFFFFF
     if cloth_mix != "same":
         cloth_seed = (cloth_seed + index + 1) & 0xFFFFFFFF
-    if condition_mix != "same":
+    if condition_mix not in {"same", "multiple"}:
         cond_seed = (cond_seed + index + 1) & 0xFFFFFFFF
     cloth_rng = random.Random(cloth_seed)
     cond_rng = random.Random(cond_seed)
@@ -295,6 +334,12 @@ def resolve_launch(
     cloth = _mix_choice(
         cloth_mix, types, cloth_universe, cloth_rng, cloth_weights
     )
+    if condition_mix == "multiple":
+        flags = _condition_flags(conds)
+        if len(flags) != 2:
+            raise ValueError("multiple needs exactly two distinct conditions")
+        pick = compose_pick(cloth, sorted(flags), cond_rng)
+        return pick, cloth, primary_condition(flags)
     cond = _mix_choice(
         condition_mix, conds, CLOTH_CONDITION_KEYS, cond_rng, condition_weights
     )

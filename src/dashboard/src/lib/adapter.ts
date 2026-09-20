@@ -370,11 +370,30 @@ export class DashboardAdapter {
       ];
       this.scenario = "active";
       this.fixtureBatch = null;
+      const multi =
+        request.conditionMix === "multiple" &&
+        Array.isArray(request.conditions) &&
+        request.conditions.length === 2;
+      const multiFlags = multi ? new Set(request.conditions) : null;
+      const clothCondition = multiFlags
+        ? multiFlags.has("damaged")
+          ? "damaged"
+          : multiFlags.has("notgood")
+            ? "notgood"
+            : multiFlags.has("good")
+              ? "good"
+              : "skewed"
+        : request.clothCondition === "random"
+          ? "good"
+          : request.clothCondition;
+      const skewed = multiFlags
+        ? multiFlags.has("skewed")
+        : request.clothCondition === "skewed";
       this.fixtureRun = this.freshRun(id, request.seed, request.name, request.scenario, null, {
         clothType: request.clothType === "random" ? "tee" : request.clothType,
-        clothCondition: request.clothCondition === "random" ? "good" : request.clothCondition,
+        clothCondition,
         garment: request.clothType === "random" ? "tee" : request.clothType,
-        skewed: request.clothCondition === "skewed",
+        skewed,
       });
       this.remember();
       return { ok: true, id };
@@ -418,19 +437,35 @@ export class DashboardAdapter {
       baseSeed: request.baseSeed,
     };
     const batchCloth = request.clothMix === "same" ? request.clothTypes[0] : request.clothTypes[0] ?? "tee";
-    const batchCond = request.conditionMix === "same" ? request.conditions[0] : request.conditions[0] ?? "good";
+    const multi =
+      request.conditionMix === "multiple" && request.conditions.length === 2;
+    const multiFlags = multi ? new Set(request.conditions) : null;
+    const batchCond = multiFlags
+      ? multiFlags.has("damaged")
+        ? "damaged"
+        : multiFlags.has("notgood")
+          ? "notgood"
+          : multiFlags.has("good")
+            ? "good"
+            : "skewed"
+      : request.conditionMix === "same"
+        ? request.conditions[0]
+        : request.conditions[0] ?? "good";
+    const batchSkewed = multiFlags
+      ? multiFlags.has("skewed")
+      : batchCond === "skewed";
     this.fixtureRun = this.freshRun(firstRunId, request.baseSeed, request.name, request.scenario, id, {
       clothType: batchCloth,
       clothCondition: batchCond,
       garment: batchCloth,
-      skewed: batchCond === "skewed",
+      skewed: batchSkewed,
     });
     for (let i = 1; i < request.count; i++) {
       const queued = this.freshRun(`${firstRunId}-${i + 1}`, request.baseSeed + i, request.name, request.scenario, id, {
         clothType: batchCloth,
         clothCondition: batchCond,
         garment: batchCloth,
-        skewed: batchCond === "skewed",
+        skewed: batchSkewed,
       });
       queued.lifecycle = "queued"; queued.startedAtIso = null; queued.currentState = null; queued.events = []; queued.telemetry = null;
       queued.stages = queued.stages.map((stage) => ({ ...stage, status: "pending", startedAtSimS: null }));

@@ -569,6 +569,8 @@ def create_app(
                 scenario=body.scenario,
                 cloth_type=body.clothType,
                 cloth_condition=body.clothCondition,
+                condition_mix=body.conditionMix,
+                conditions=body.conditions,
                 cloth_weights=body.clothTypeWeights,
                 condition_weights=body.clothConditionWeights,
                 custom_design=body.customDesign,

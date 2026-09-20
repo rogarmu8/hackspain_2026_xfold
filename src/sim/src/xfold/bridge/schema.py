@@ -140,6 +140,9 @@ class LaunchRunRequest(BaseModel):
     scenario: str = "mock"
     clothType: str = "tee"
     clothCondition: str = "good"
+    # ``multiple`` = two simultaneous conditions via ``conditions`` (ignored clothCondition).
+    conditionMix: Literal["same", "random", "list", "multiple"] = "same"
+    conditions: list[str] = Field(default_factory=list)
     clothTypeWeights: dict[str, float] = Field(default_factory=dict)
     clothConditionWeights: dict[str, float] = Field(default_factory=dict)
     customDesign: CustomDesignPayload | None = None
@@ -156,7 +159,7 @@ class LaunchBatchRequest(BaseModel):
     scenario: str = "mock"
     clothMix: Literal["same", "random", "list"] = "same"
     clothTypes: list[str] = Field(default_factory=lambda: ["tee"])
-    conditionMix: Literal["same", "random", "list"] = "same"
+    conditionMix: Literal["same", "random", "list", "multiple"] = "same"
     conditions: list[str] = Field(default_factory=lambda: ["good"])
     clothTypeWeights: dict[str, float] = Field(default_factory=dict)
     clothConditionWeights: dict[str, float] = Field(default_factory=dict)

@@ -218,6 +218,31 @@ class ObservabilityTests(unittest.TestCase):
             configs.append(config)
         self.assertEqual(configs[0], configs[1])
 
+    def test_multiple_conditions_combine_sku_and_pose(self):
+        runtime = Runtime(Journal())
+        runtime.configure_process(LINE_PHASES, scenario="line", config={"seedApplied": True})
+        run_id = runtime.launch_run(
+            name="dual",
+            seed=3,
+            scenario="line",
+            cloth_type="tee",
+            condition_mix="multiple",
+            conditions=["notgood", "skewed"],
+        )["id"]
+        detail = runtime.get_run(run_id)
+        self.assertTrue(detail["skewed"])
+        self.assertEqual(detail["clothCondition"], "notgood")
+        self.assertTrue(detail["garment"].startswith("tee_notgood"))
+        with self.assertRaises(ValueError):
+            runtime.launch_run(
+                name="bad",
+                seed=1,
+                scenario="line",
+                cloth_type="tee",
+                condition_mix="multiple",
+                conditions=["damaged", "notgood"],
+            )
+
     def test_batch_inputs_match_each_resolved_sku(self):
         from xfold.garments import resolve_garment
 

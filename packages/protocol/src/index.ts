@@ -157,8 +157,12 @@ export const CLOTH_CONDITION_KEYS = [
 
 export type ClothCondition = (typeof CLOTH_CONDITION_KEYS)[number];
 
-/** How a batch row samples cloth or condition. */
-export const CLOTH_MIX_KEYS = ["same", "random", "list"] as const;
+/**
+ * How a batch/run samples cloth or condition.
+ * ``multiple`` is condition-only: exactly two simultaneous flags on one garment
+ * (e.g. stained + rotated). Not valid for garment-type mix.
+ */
+export const CLOTH_MIX_KEYS = ["same", "random", "list", "multiple"] as const;
 
 export type ClothMix = (typeof CLOTH_MIX_KEYS)[number];
 
@@ -314,8 +318,15 @@ export type BridgeLaunchRun = {
   scenario?: string;
   /** Concrete type, or `"random"` to draw from the catalogue with `seed`. */
   clothType?: ClothType | "random";
-  /** Concrete condition, or `"random"`. */
+  /** Concrete condition, or `"random"`. Ignored when `conditionMix` is `"multiple"`. */
   clothCondition?: ClothCondition | "random";
+  /**
+   * Condition sampling. Default `"same"` (use `clothCondition`).
+   * `"multiple"` applies exactly two entries from `conditions` at once.
+   */
+  conditionMix?: ClothMix;
+  /** Required when `conditionMix` is `"multiple"` (exactly two distinct conditions). */
+  conditions?: ClothCondition[];
   /** Used when `clothType` is `"random"`. Missing keys default to 1. */
   clothTypeWeights?: ClothWeightMap;
   /** Used when `clothCondition` is `"random"`. */

@@ -100,12 +100,19 @@ export function lifecycleLabel(value: string): string {
 export type RunResultSource = {
   lifecycle: string;
   clothCondition?: string | null;
+  skewed?: boolean | null;
   failReason?: string | null;
-  config?: { clothCondition?: string | null };
+  config?: { clothCondition?: string | null; skewed?: boolean | null };
 };
 
 function runCondition(run: RunResultSource): string | null {
   return run.clothCondition ?? run.config?.clothCondition ?? null;
+}
+
+function runSkewed(run: RunResultSource): boolean {
+  if (run.skewed != null) return Boolean(run.skewed);
+  if (run.config?.skewed != null) return Boolean(run.config.skewed);
+  return runCondition(run) === "skewed";
 }
 
 /** Process status: did the line do the right thing with this garment. */
@@ -121,16 +128,29 @@ export function runProcessTone(run: RunResultSource): "active" | "neutral" | "da
   return "neutral";
 }
 
-/** Garment mark: Clean / Rotated / Stained / Torn, independent of success. */
+/** Garment mark: Clean / Rotated / Stained / Torn (and combinations). */
 export function runGarmentLabel(run: RunResultSource): string | null {
   const condition = runCondition(run);
-  return condition ? clothConditionLabel(condition) : null;
+  const skewed = runSkewed(run);
+  const parts: string[] = [];
+  if (condition && condition !== "skewed") {
+    parts.push(clothConditionLabel(condition));
+  }
+  if (skewed) {
+    parts.push(clothConditionLabel("skewed"));
+  } else if (condition === "skewed") {
+    parts.push(clothConditionLabel("skewed"));
+  }
+  if (!parts.length && condition) {
+    parts.push(clothConditionLabel(condition));
+  }
+  return parts.length ? parts.join(" · ") : null;
 }
 
 export function runGarmentTone(run: RunResultSource): "active" | "neutral" | "danger" | "success" | "pending" {
   const label = runGarmentLabel(run);
-  if (label === "Stained" || label === "Torn") return "danger";
-  if (label === "Clean" || label === "Rotated") return "neutral";
+  if (!label) return "neutral";
+  if (label.includes("Stained") || label.includes("Torn")) return "danger";
   return "neutral";
 }
 

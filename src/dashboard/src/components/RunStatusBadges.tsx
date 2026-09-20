@@ -9,7 +9,8 @@ import {
 type RunStatusSource = {
   lifecycle: string;
   clothCondition?: string | null;
-  config?: { clothCondition?: string | null };
+  skewed?: boolean | null;
+  config?: { clothCondition?: string | null; skewed?: boolean | null };
 };
 
 /** Process result and garment mark as two independent badges. */

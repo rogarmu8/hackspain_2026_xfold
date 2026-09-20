@@ -152,6 +152,7 @@ export type RunSummary = {
   garment?: string | null;
   clothType?: string | null;
   clothCondition?: string | null;
+  skewed?: boolean;
   currentState: PhaseId | null;
   startedAtIso: string | null;
   finishedAtIso: string | null;
@@ -235,6 +236,9 @@ export type LaunchRequest =
       scenario: string;
       clothType: ClothType | "random";
       clothCondition: ClothCondition | "random";
+      /** When `"multiple"`, applies exactly two `conditions` at once. */
+      conditionMix?: ClothMix;
+      conditions?: ClothCondition[];
       clothTypeWeights?: ClothWeightMap;
       clothConditionWeights?: ConditionWeightMap;
       customDesign?: CustomDesignPayload;

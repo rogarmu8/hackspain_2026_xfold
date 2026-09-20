@@ -472,20 +472,29 @@ class Runtime:
         scenario: str,
         cloth_type: str = "tee",
         cloth_condition: str = "good",
+        condition_mix: str = "same",
+        conditions: list[str] | None = None,
         cloth_weights: dict[str, float] | None = None,
         condition_weights: dict[str, float] | None = None,
         custom_design: CustomDesignPayload | None = None,
         speed: float = 1.0,
     ) -> dict[str, Any]:
         cloth_mix = "random" if cloth_type == "random" else "same"
-        cond_mix = "random" if cloth_condition == "random" else "same"
         cloth_types = [] if cloth_mix == "random" else [cloth_type]
-        conditions = [] if cond_mix == "random" else [cloth_condition]
+        cond_mix = condition_mix if condition_mix in {"same", "random", "list", "multiple"} else "same"
+        if cond_mix == "same" and cloth_condition == "random":
+            cond_mix = "random"
+        if cond_mix == "multiple":
+            conds = list(conditions or [])
+        elif cond_mix == "random":
+            conds = []
+        else:
+            conds = list(conditions or []) or [cloth_condition]
         pick, cloth, cond = resolve_launch(
             cloth_mix=cloth_mix,
             cloth_types=cloth_types,
             condition_mix=cond_mix,
-            conditions=conditions,
+            conditions=conds,
             seed=seed,
             index=0,
             cloth_weights=cloth_weights if cloth_mix == "random" else None,
@@ -502,7 +511,10 @@ class Runtime:
                 cloth_type=cloth,
                 cloth_condition=cond,
                 skewed=pick.skewed,
-                seed_applied=cloth_mix == "random" or cond_mix == "random" or cond in {"notgood", "skewed"},
+                seed_applied=cloth_mix == "random"
+                or cond_mix in {"random", "list", "multiple"}
+                or cond in {"notgood", "skewed"}
+                or pick.skewed,
                 custom_texture=custom_tex,
                 speed=speed,
             )
@@ -534,6 +546,10 @@ class Runtime:
             raise ValueError("Select at least one garment type")
         if condition_mix == "list" and not conds:
             raise ValueError("Select at least one condition")
+        if condition_mix == "multiple" and len({c for c in conds}) != 2:
+            raise ValueError("Multiple needs exactly two distinct conditions")
+        if cloth_mix == "multiple":
+            raise ValueError("multiple only applies to conditions, not garment type")
         wants_custom = (
             (cloth_mix == "same" and (types[:1] == ["custom"]))
             or (cloth_mix == "list" and "custom" in types)
@@ -577,7 +593,10 @@ class Runtime:
                     cloth_type=cloth,
                     cloth_condition=cond,
                     skewed=pick.skewed,
-                    seed_applied=cloth_mix != "same" or condition_mix != "same" or cond in {"notgood", "skewed"},
+                    seed_applied=cloth_mix != "same"
+                    or condition_mix != "same"
+                    or cond in {"notgood", "skewed"}
+                    or pick.skewed,
                     custom_texture=custom_tex if cloth == "custom" else None,
                 )
                 batch.run_ids.append(run.id)

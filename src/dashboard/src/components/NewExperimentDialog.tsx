@@ -305,6 +305,10 @@ function NewExperimentDialogBody({
       if (!selected.length) return "empty selection";
       return selected.map(labelOf).join(", ");
     }
+    if (mix === "multiple") {
+      if (selected.length !== 2) return "pick two conditions";
+      return selected.map(labelOf).join(" + ");
+    }
     return labelOf(selected[0] ?? "tee");
   }
 
@@ -398,6 +402,17 @@ function NewExperimentDialogBody({
       setError("Select at least one condition.");
       return;
     }
+    if (conditionMix === "multiple") {
+      if (conditions.length !== 2) {
+        setError("Multiple needs exactly two conditions.");
+        return;
+      }
+      const materials = conditions.filter((c) => c === "damaged" || c === "notgood");
+      if (materials.length > 1) {
+        setError("Torn and Stained cannot be combined.");
+        return;
+      }
+    }
     if (clothMix === "random" && weightTotal(clothWeights, catalogPool) <= 0) {
       setError("Raise the weight of at least one garment type.");
       return;
@@ -449,7 +464,21 @@ function NewExperimentDialogBody({
               scenario,
               clothType: clothMix === "random" ? "random" : clothTypes[0],
               clothCondition:
-                conditionMix === "random" ? "random" : conditions[0],
+                conditionMix === "random"
+                  ? "random"
+                  : conditionMix === "multiple"
+                    ? (conditions.find((c) => c !== "skewed") ?? conditions[0])
+                    : conditions[0],
+              conditionMix:
+                conditionMix === "multiple" || conditionMix === "random"
+                  ? conditionMix
+                  : undefined,
+              conditions:
+                conditionMix === "multiple"
+                  ? conditions
+                  : conditionMix === "random"
+                    ? []
+                    : undefined,
               clothTypeWeights: payloadWeights(clothMix, catalogPool, clothWeights),
               clothConditionWeights: payloadWeights(
                 conditionMix,
@@ -609,6 +638,8 @@ function NewExperimentDialogBody({
             labelOf={clothConditionLabel}
             pickHint="The same condition for every run."
             randomHint="Each run draws a condition from the weights."
+            multipleHint="Both conditions apply to the same garment (e.g. Stained + Rotated)."
+            allowMultiple
             weights={conditionWeights}
             onWeightChange={(key, value) =>
               setConditionWeights((prev) => ({ ...prev, [key]: value }))
@@ -706,6 +737,7 @@ function NewExperimentDialogBody({
 }
 
 const MIX_RANDOM = "__random__";
+const MIX_MULTIPLE = "__multiple__";
 
 function MixField<T extends string>({
   formId,
@@ -718,6 +750,8 @@ function MixField<T extends string>({
   labelOf,
   pickHint,
   randomHint,
+  multipleHint,
+  allowMultiple = false,
   weights,
   onWeightChange,
   className,
@@ -732,6 +766,8 @@ function MixField<T extends string>({
   labelOf: (key: string) => string;
   pickHint: string;
   randomHint: string;
+  multipleHint?: string;
+  allowMultiple?: boolean;
   weights: Record<string, number>;
   onWeightChange: (key: T, value: number) => void;
   className?: string;
@@ -740,15 +776,39 @@ function MixField<T extends string>({
   const selectId = `${formId}-${axis}`;
   const weightOptions = options.filter((key) => key !== "custom");
   const selectValue =
-    mix === "random" ? MIX_RANDOM : (selected[0] ?? options[0] ?? "");
+    mix === "random"
+      ? MIX_RANDOM
+      : mix === "multiple"
+        ? MIX_MULTIPLE
+        : (selected[0] ?? options[0] ?? "");
 
   function onSelect(value: string) {
     if (value === MIX_RANDOM) {
       onMixChange("random");
       return;
     }
+    if (value === MIX_MULTIPLE) {
+      onMixChange("multiple");
+      if (selected.length !== 2) {
+        const next = options.slice(0, 2) as T[];
+        onSelectedChange(next.length === 2 ? next : selected);
+      }
+      return;
+    }
     onMixChange("same");
     onSelectedChange([value as T]);
+  }
+
+  function toggleMultiple(key: T) {
+    if (selected.includes(key)) {
+      onSelectedChange(selected.filter((k) => k !== key));
+      return;
+    }
+    if (selected.length < 2) {
+      onSelectedChange([...selected, key]);
+      return;
+    }
+    onSelectedChange([selected[1]!, key]);
   }
 
   return (
@@ -773,9 +833,38 @@ function MixField<T extends string>({
           </option>
         ))}
         <option value={MIX_RANDOM}>Random</option>
+        {allowMultiple ? <option value={MIX_MULTIPLE}>Multiple</option> : null}
       </select>
 
       {mix === "same" ? <FieldDescription>{pickHint}</FieldDescription> : null}
+
+      {mix === "multiple" && allowMultiple ? (
+        <>
+          <div className="grid grid-cols-1 gap-y-1.5 pt-1">
+            {options.map((key) => {
+              const checked = selected.includes(key);
+              return (
+                <label
+                  key={key}
+                  className="flex items-center gap-2 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleMultiple(key)}
+                    className="size-3.5 accent-[var(--color-active)]"
+                  />
+                  <span className="min-w-0 truncate">{labelOf(key)}</span>
+                </label>
+              );
+            })}
+          </div>
+          <FieldDescription>
+            {multipleHint ?? "Pick exactly two conditions."}{" "}
+            {selected.length}/2 selected.
+          </FieldDescription>
+        </>
+      ) : null}
 
       {mix === "random" ? (
         <>
