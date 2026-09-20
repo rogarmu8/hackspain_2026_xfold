@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { DicesIcon, PlusIcon } from "lucide-react";
+import { DicesIcon, PlusIcon, X } from "lucide-react";
 import {
   useId,
   useState,
@@ -46,6 +46,7 @@ import { DesignPreview } from "@/components/DesignPreview";
 import { OutlineEditor } from "@/components/OutlineEditor";
 import { cutOutGarment } from "@/lib/garment-cutout";
 import {
+  forgetCustomGarment,
   loadCustomGarments,
   rememberCustomGarment,
   type StoredCustomGarment,
@@ -335,6 +336,13 @@ function NewExperimentDialogBody({
     setDesignSource(draft.sourceUrl);
     setDesignMask(draft.maskUrl);
     setDesignOutline(draft.outline);
+  }
+
+  function forgetDraft(id: string) {
+    const gone = designHistory.find((item) => item.id === id);
+    const left = forgetCustomGarment(id);
+    setDesignHistory(left);
+    if (gone && gone.previewUrl === designPreview) clearDesign();
   }
 
   function clearDesign() {
@@ -691,24 +699,34 @@ function NewExperimentDialogBody({
                 <div className={designPreview ? "" : "sm:col-span-2"}>
                   <p className="text-[13px] font-semibold">Custom garment history</p>
                   <p className="mt-0.5 text-[12px] text-muted-foreground">
-                    Click a cut-out to reuse it. Newest first, kept in this browser.
+                    Click a cut-out to reuse it, or × to delete it. Newest first, kept in this browser.
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {designHistory.map((item) => {
                       const active = item.previewUrl === designPreview;
                       return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          title="Use this garment"
-                          onClick={() => applyDraft(item)}
-                          className={`relative size-16 shrink-0 overflow-hidden rounded-[var(--radius-sm)] border bg-[#f6f6f8] ${
-                            active ? "border-ink ring-1 ring-ink" : "border-divider"
-                          }`}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={item.previewUrl} alt="" className="size-full object-contain" />
-                        </button>
+                        <div key={item.id} className="group/thumb relative size-16 shrink-0">
+                          <button
+                            type="button"
+                            title="Use this garment"
+                            onClick={() => applyDraft(item)}
+                            className={`size-full overflow-hidden rounded-[var(--radius-sm)] border bg-[#f6f6f8] ${
+                              active ? "border-ink ring-1 ring-ink" : "border-divider"
+                            }`}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={item.previewUrl} alt="" className="size-full object-contain" />
+                          </button>
+                          <button
+                            type="button"
+                            title="Delete this garment"
+                            aria-label="Delete this garment"
+                            onClick={() => forgetDraft(item.id)}
+                            className="absolute -right-1.5 -top-1.5 inline-flex size-5 items-center justify-center rounded-full border border-divider bg-surface text-muted-foreground opacity-0 shadow-sm transition-opacity duration-[var(--motion-feedback)] hover:text-destructive focus-visible:opacity-100 group-hover/thumb:opacity-100 [@media(hover:none)]:opacity-100"
+                          >
+                            <X className="size-3" aria-hidden />
+                          </button>
+                        </div>
                       );
                     })}
                   </div>
