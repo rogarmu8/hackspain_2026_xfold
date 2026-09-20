@@ -108,6 +108,21 @@ moon run xfold:dev-isaac     # Isaac bridge on the box + dashboard on http://loc
 moon run xfold:dev           # the MuJoCo stack, unchanged, on :3000 (both can run at once)
 ```
 
+On the GPU box the live Vercel dashboard talks to `127.0.0.1:8765` through a Cloudflare
+tunnel. Isaac itself is a **systemd user service** (`xfold-isaac-bridge.service`) so a
+crash or SSH disconnect does not leave the site Offline. Install once on the box:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp src/isaac/scripts/xfold-isaac-bridge.service ~/.config/systemd/user/
+sudo loginctl enable-linger "$USER"
+systemctl --user daemon-reload
+systemctl --user enable --now xfold-isaac-bridge.service
+```
+
+The trycloudflare hostname is stable until `cloudflared` itself is killed; do not restart
+that tmux session (`xfold-tunnel`) unless you are ready to paste a new URL into Vercel.
+
 `moon run isaac:bridge` syncs the working copy, starts `python -m xfold_isaac.bridge` on the
 box's 127.0.0.1:8765 and forwards it here to 127.0.0.1:8766 over SSH; `dashboard:dev-isaac`
 points the dashboard at that (or at `XFOLD_ISAAC_BRIDGE_URL` if set). The live view, the run

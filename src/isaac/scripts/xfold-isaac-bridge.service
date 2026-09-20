@@ -1,0 +1,21 @@
+[Unit]
+Description=XFOLD Isaac Sim bridge (localhost:8765)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/xfold
+Environment=OMNI_KIT_ACCEPT_EULA=YES
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/xfold/scripts/pixi-run.sh isaac-sim python -m xfold_isaac.bridge --host 127.0.0.1 --port 8765
+Restart=always
+RestartSec=15
+TimeoutStartSec=180
+TimeoutStopSec=40
+KillMode=control-group
+StandardOutput=append:/tmp/xfold-isaac-bridge.log
+StandardError=append:/tmp/xfold-isaac-bridge.log
+
+[Install]
+WantedBy=default.target
