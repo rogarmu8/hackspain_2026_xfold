@@ -1,0 +1,24 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+id: video
+language: typescript
+layer: application
+stack: frontend
+
+tasks:
+  dev:
+    script: |
+      cd src/video
+      npx remotion studio --port 3333
+    preset: server
+    options:
+      persistent: true
+      cache: false
+      runFromWorkspaceRoot: true
+  render:
+    script: |
+      cd src/video
+      npx remotion render XFoldIntro
+    options:
+      cache: false
+      runFromWorkspaceRoot: true

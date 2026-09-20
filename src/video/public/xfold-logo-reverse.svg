@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="96" viewBox="0 0 320 96" role="img" aria-label="XFOLD"><g fill="none" stroke-width="4" stroke-linejoin="miter" stroke-linecap="square">
+    <path stroke="#faf6ec" d="M72 76H32V44L26 50 14 38 32 20H40L45 28H55L60 20H72V76Z"/>
+    <path fill="#d96b2a" fill-rule="evenodd" d="M71.17157287525382 18H74V44.82842712474619L66 52.82842712474619L51.17157287525381 38Z M70 24.82842712474619L56.82842712474619 38L66 47.17157287525381L70 43.17157287525381Z"/>
+  </g><g transform="translate(112 29)"><g fill="#faf6ec">
+    <path d="M0 0H12L19 11 26 0H38L25 19 38 38H26L19 27 12 38H0L13 19Z"/>
+    <path d="M44 0H89V8H54V16H73V24H54V38H44Z"/>
+    <path fill-rule="evenodd" d="M87 0H109L117 8V30L109 38H87L79 30V8ZM91 8 89 10V28L91 30H105L107 28V10L105 8Z"/>
+    <path d="M123 0H133V30H152V38H123Z"/>
+    <path fill-rule="evenodd" d="M157 0H183L193 10V28L183 38H157ZM167 8V30H178L183 25V13L178 8Z"/>
+  </g></g></svg>
