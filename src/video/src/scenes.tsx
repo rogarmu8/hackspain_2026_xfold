@@ -25,44 +25,15 @@ import {
   IconShirt,
   IconTag,
 } from "./icons";
+import {
+  BeltRail,
+  snap,
+  useBeltIn,
+  useFloat,
+  useFoldIn,
+  useHemIn,
+} from "./motion";
 import { colors, fonts } from "./theme";
-
-const snap = Easing.bezier(0.34, 1.56, 0.64, 1);
-
-const useEnter = (holdFrames = 10) => {
-  const frame = useCurrentFrame();
-  const { durationInFrames } = useVideoConfig();
-  const enter = interpolate(frame, [0, holdFrames], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-    easing: snap,
-  });
-  const leave = interpolate(
-    frame,
-    [durationInFrames - 8, durationInFrames],
-    [0, 1],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-  );
-  return {
-    opacity: enter * (1 - leave),
-    rise: interpolate(enter, [0, 1], [28, 0]),
-  };
-};
-
-const useStagger = (index: number, gap = 12, dur = 10) => {
-  const frame = useCurrentFrame();
-  return interpolate(frame, [index * gap, index * gap + dur], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-    easing: snap,
-  });
-};
-
-const useFloat = (delay: number, amp = 7) => {
-  const frame = useCurrentFrame();
-  const t = Math.max(0, frame - delay);
-  return Math.sin(t / 16) * amp;
-};
 
 const useCount = (to: number, start: number, dur: number) => {
   const frame = useCurrentFrame();
@@ -88,8 +59,8 @@ const titleStyle: React.CSSProperties = {
 };
 
 export const HookScene: React.FC = () => {
-  const { opacity, rise } = useEnter(8);
-  const line = useStagger(1, 14, 10);
+  const logo = useFoldIn(0, 18);
+  const line = useBeltIn(1, 18, 14, -72);
   return (
     <AbsoluteFill
       style={{
@@ -100,18 +71,19 @@ export const HookScene: React.FC = () => {
     >
       <div
         style={{
-          opacity,
-          transform: `translateY(${rise}px)`,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: 36,
+          gap: 28,
+          width: 640,
         }}
       >
-        <Img
-          src={staticFile("xfold-logo-reverse.svg")}
-          style={{ width: 480, height: "auto" }}
-        />
+        <div style={logo}>
+          <Img
+            src={staticFile("xfold-logo-reverse.svg")}
+            style={{ width: 480, height: "auto" }}
+          />
+        </div>
         <div
           style={{
             ...kickerStyle,
@@ -121,12 +93,13 @@ export const HookScene: React.FC = () => {
             textTransform: "none",
             fontFamily: fonts.sans,
             fontWeight: 600,
-            opacity: line,
             textAlign: "center",
+            ...line,
           }}
         >
           Una camiseta más.
         </div>
+        <BeltRail padTop={8} />
       </div>
     </AbsoluteFill>
   );
@@ -271,7 +244,7 @@ export const FootageScene: React.FC<FootageSceneProps> = ({
             ...kickerStyle,
             marginBottom: 16,
             opacity: kickerIn,
-            transform: `translateY(${interpolate(kickerIn, [0, 1], [16, 0])}px)`,
+            transform: `translateX(${interpolate(kickerIn, [0, 1], [-64, 0])}px)`,
           }}
         >
           {kicker}
@@ -284,7 +257,8 @@ export const FootageScene: React.FC<FootageSceneProps> = ({
             lineHeight: 1.1,
             maxWidth: 1400,
             opacity: titleIn,
-            transform: `translateY(${interpolate(titleIn, [0, 1], [20, 0])}px)`,
+            transform: `perspective(1100px) rotateY(${interpolate(titleIn, [0, 1], [70, 0])}deg)`,
+            transformOrigin: "left center",
           }}
         >
           {title}
@@ -297,7 +271,7 @@ export const FootageScene: React.FC<FootageSceneProps> = ({
               gap: 22,
               marginTop: 18,
               opacity: subIn,
-              transform: `translateY(${interpolate(subIn, [0, 1], [20, 0])}px)`,
+              transform: `translateX(${interpolate(subIn, [0, 1], [-80, 0])}px)`,
             }}
           >
             <IconPeople size={56} color={colors.orange} />
@@ -326,7 +300,7 @@ const STATS = [
 ];
 
 export const StatScene: React.FC<{ kicker: string }> = ({ kicker }) => {
-  const { opacity } = useEnter(12);
+  const kickerFold = useFoldIn(0, 12);
   return (
     <AbsoluteFill
       style={{
@@ -335,8 +309,8 @@ export const StatScene: React.FC<{ kicker: string }> = ({ kicker }) => {
         justifyContent: "center",
       }}
     >
-      <div style={{ opacity, width: "100%" }}>
-        <div style={{ ...kickerStyle, marginBottom: 56 }}>{kicker}</div>
+      <div style={{ width: "100%" }}>
+        <div style={{ ...kickerStyle, marginBottom: 48, ...kickerFold }}>{kicker}</div>
         <div
           style={{
             display: "flex",
@@ -347,7 +321,7 @@ export const StatScene: React.FC<{ kicker: string }> = ({ kicker }) => {
         >
           {STATS.map((stat, i) => {
             const start = 12 + i * 20;
-            const beat = useStagger(i, 20, 14);
+            const car = useBeltIn(i, 20, 14);
             const raw = useCount(stat.to, start, 42);
             const shown = stat.decimals
               ? raw.toFixed(1).replace(".", ",")
@@ -360,8 +334,7 @@ export const StatScene: React.FC<{ kicker: string }> = ({ kicker }) => {
                   flex: "1 1 0",
                   minWidth: 0,
                   textAlign: "center",
-                  opacity: beat,
-                  transform: `translateY(${interpolate(beat, [0, 1], [40, 0])}px) scale(${interpolate(beat, [0, 1], [0.8, 1])})`,
+                  ...car,
                 }}
               >
                 <div style={{ transform: `translateY(${float}px)` }}>
@@ -384,6 +357,7 @@ export const StatScene: React.FC<{ kicker: string }> = ({ kicker }) => {
             );
           })}
         </div>
+        <BeltRail />
       </div>
     </AbsoluteFill>
   );
@@ -424,7 +398,7 @@ export const ImpactScene: React.FC = () => {
         }}
       >
         {lines.map((line, i) => {
-          const beat = useStagger(i, 22, 16);
+          const hem = useHemIn(8 + i * 18, 16);
           const float = useFloat(20 + i * 22, 5);
           const LineIcon = line.Icon;
           return (
@@ -465,8 +439,7 @@ export const ImpactScene: React.FC = () => {
                   left: 48,
                   right: 48,
                   bottom: 56,
-                  opacity: beat,
-                  transform: `translateY(${interpolate(beat, [0, 1], [24, 0])}px)`,
+                  ...hem,
                 }}
               >
                 <div style={{ transform: `translateY(${float}px)` }}>
@@ -505,7 +478,8 @@ export const ImpactScene: React.FC = () => {
 };
 
 export const FoldScene: React.FC = () => {
-  const { opacity, rise } = useEnter(8);
+  const copy = useFoldIn(10, 18);
+  const line = useBeltIn(2, 16, 14, -56);
   return (
     <AbsoluteFill
       style={{
@@ -524,16 +498,10 @@ export const FoldScene: React.FC = () => {
           gap: 72,
         }}
       >
-      <div style={{ opacity, transform: `translateY(${rise}px)` }}>
+      <div>
         <FoldLoader size={420} startMs={350} />
       </div>
-      <div
-        style={{
-          opacity,
-          transform: `translateY(${rise}px)`,
-          maxWidth: 860,
-        }}
-      >
+      <div style={{ maxWidth: 860, ...copy }}>
         <div style={{ ...kickerStyle, marginBottom: 18 }}>Dobla y empaqueta</div>
         <div
           style={{
@@ -544,6 +512,9 @@ export const FoldScene: React.FC = () => {
           }}
         >
           Sin nadie en la mesa.
+        </div>
+        <div style={line}>
+          <BeltRail padTop={4} />
         </div>
       </div>
       </div>
@@ -559,7 +530,7 @@ const LINE = [
 ];
 
 export const StackScene: React.FC = () => {
-  const { opacity } = useEnter(10);
+  const kickerFold = useFoldIn(0, 12);
   return (
     <AbsoluteFill
       style={{
@@ -568,8 +539,10 @@ export const StackScene: React.FC = () => {
         justifyContent: "center",
       }}
     >
-      <div style={{ opacity, width: "100%" }}>
-        <div style={{ ...kickerStyle, marginBottom: 56 }}>Cómo lo hacemos</div>
+      <div style={{ width: "100%" }}>
+        <div style={{ ...kickerStyle, marginBottom: 48, ...kickerFold }}>
+          Cómo lo hacemos
+        </div>
         <div
           style={{
             display: "flex",
@@ -580,7 +553,7 @@ export const StackScene: React.FC = () => {
           }}
         >
           {LINE.map((step, i) => {
-            const beat = useStagger(i, 22, 14);
+            const car = useBeltIn(i, 22, 14);
             const arrow = interpolate(
               useCurrentFrame(),
               [i * 22 + 14, i * 22 + 28],
@@ -596,8 +569,7 @@ export const StackScene: React.FC = () => {
                     flex: "1 1 0",
                     minWidth: 0,
                     textAlign: "center",
-                    opacity: beat,
-                    transform: `translateY(${interpolate(beat, [0, 1], [36, 0])}px) scale(${interpolate(beat, [0, 1], [0.78, 1])})`,
+                    ...car,
                   }}
                 >
                   <div style={{ transform: `translateY(${float}px)` }}>
@@ -629,6 +601,7 @@ export const StackScene: React.FC = () => {
             );
           })}
         </div>
+        <BeltRail />
       </div>
     </AbsoluteFill>
   );
@@ -642,7 +615,7 @@ const MARKETS = [
 ];
 
 export const MarketScene: React.FC = () => {
-  const { opacity } = useEnter(10);
+  const kickerFold = useFoldIn(0, 12);
   return (
     <AbsoluteFill
       style={{
@@ -651,11 +624,13 @@ export const MarketScene: React.FC = () => {
         justifyContent: "center",
       }}
     >
-      <div style={{ opacity, width: "100%" }}>
-        <div style={{ ...kickerStyle, marginBottom: 56 }}>Para quién</div>
+      <div style={{ width: "100%" }}>
+        <div style={{ ...kickerStyle, marginBottom: 48, ...kickerFold }}>
+          Para quién
+        </div>
         <div style={{ display: "flex", gap: 24, width: "100%" }}>
           {MARKETS.map((market, i) => {
-            const beat = useStagger(i, 20, 14);
+            const car = useBeltIn(i, 20, 14);
             const float = useFloat(16 + i * 20, 7);
             return (
               <div
@@ -664,8 +639,7 @@ export const MarketScene: React.FC = () => {
                   flex: "1 1 0",
                   minWidth: 0,
                   textAlign: "center",
-                  opacity: beat,
-                  transform: `translateY(${interpolate(beat, [0, 1], [32, 0])}px) scale(${interpolate(beat, [0, 1], [0.8, 1])})`,
+                  ...car,
                 }}
               >
                 <div style={{ transform: `translateY(${float}px)` }}>
@@ -686,6 +660,7 @@ export const MarketScene: React.FC = () => {
             );
           })}
         </div>
+        <BeltRail />
       </div>
     </AbsoluteFill>
   );
@@ -735,16 +710,15 @@ export const TeamScene: React.FC = () => {
         }}
       >
         {TEAM.map((person, i) => {
-          const beat = useStagger(i, 16, 14);
+          const car = useBeltIn(i, 16, 14, -70);
           return (
             <div
               key={person.name}
               style={{
                 flex: 1,
-                opacity: beat,
-                transform: `translateY(${interpolate(beat, [0, 1], [18, 0])}px)`,
                 backgroundColor: colors.cream,
                 padding: "18px 22px",
+                ...car,
               }}
             >
               <div
@@ -768,7 +742,9 @@ export const TeamScene: React.FC = () => {
 };
 
 export const EndCard: React.FC = () => {
-  const { opacity, rise } = useEnter(10);
+  const logo = useFoldIn(0, 18);
+  const slogan = useBeltIn(1, 16, 14, -64);
+  const credit = useBeltIn(2, 16, 14, -48);
   return (
     <AbsoluteFill
       style={{
@@ -779,20 +755,26 @@ export const EndCard: React.FC = () => {
     >
       <div
         style={{
-          opacity,
-          transform: `translateY(${rise}px)`,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: 28,
+          gap: 24,
+          width: 720,
         }}
       >
-        <Img
-          src={staticFile("xfold-logo-ink.svg")}
-          style={{ width: 520, height: "auto" }}
-        />
-        <div style={{ ...titleStyle, fontSize: 42 }}>Sin nadie en la mesa.</div>
-        <div style={kickerStyle}>THEKER × XFOLD · HackSpain '26</div>
+        <div style={logo}>
+          <Img
+            src={staticFile("xfold-logo-ink.svg")}
+            style={{ width: 520, height: "auto" }}
+          />
+        </div>
+        <div style={{ ...titleStyle, fontSize: 42, ...slogan }}>
+          Sin nadie en la mesa.
+        </div>
+        <div style={{ ...kickerStyle, ...credit }}>
+          THEKER × XFOLD · HackSpain '26
+        </div>
+        <BeltRail padTop={4} />
       </div>
     </AbsoluteFill>
   );
