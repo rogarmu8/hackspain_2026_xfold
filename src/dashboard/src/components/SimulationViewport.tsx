@@ -68,11 +68,18 @@ export function SimulationViewport({
     Boolean(run?.hasVideo) && provenance !== "fixture" && !(running && !liveVideo);
   const engineName = engine === "isaac" ? "Isaac Sim" : "MuJoCo";
   const [videoStatus, setVideoStatus] = useState<VideoStatus>("waiting");
+  const hadVideo = useRef(false);
   useEffect(() => {
     setVideoStatus("waiting");
+    hadVideo.current = false;
   }, [run?.id]);
-  const videoUp = showVideo && videoStatus === "ready";
-  const videoBuffering = showVideo && videoStatus === "waiting";
+  const onVideoStatus = (status: VideoStatus) => {
+    if (status === "ready") hadVideo.current = true;
+    if (status === "waiting" && hadVideo.current) return;
+    setVideoStatus(status);
+  };
+  const videoUp = showVideo && (videoStatus === "ready" || hadVideo.current);
+  const videoBuffering = showVideo && videoStatus === "waiting" && !hadVideo.current;
   const showJpeg =
     !replay &&
     !showVideo &&
@@ -143,11 +150,11 @@ export function SimulationViewport({
                     t: replay.t,
                     playing: replay.playing,
                     onTime: replay.reportTime,
-                    onEnded: () => replay.seek(replay.tMax),
+                    onEnded: () => replay.seek(0),
                   }
                 : undefined
             }
-            onStatus={setVideoStatus}
+            onStatus={onVideoStatus}
             className={`absolute inset-0 h-full w-full object-contain ${videoUp ? "z-10" : "pointer-events-none opacity-0"}`}
           />
         ) : null}

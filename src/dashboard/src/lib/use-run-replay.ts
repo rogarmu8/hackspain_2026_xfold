@@ -166,7 +166,13 @@ export function useRunReplay({
     [update, tMax],
   );
 
-  const togglePlay = useCallback(() => update({ playing: !playing }), [update, playing]);
+  const togglePlay = useCallback(() => {
+    if (playing) {
+      update({ playing: false });
+      return;
+    }
+    update(t >= tMax - 0.05 ? { t: 0, playing: true } : { playing: true });
+  }, [playing, t, tMax, update]);
 
   const stepMarker = useCallback(
     (dir: -1 | 1) => {

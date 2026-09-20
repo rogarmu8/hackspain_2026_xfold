@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, type CSSProperties } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "./ui/table";
 import { AppShell } from "@/components/AppShell";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
@@ -30,6 +31,43 @@ const CONTROL =
   "h-10 rounded-[var(--radius-sm)] border border-input bg-surface px-3 text-sm";
 const FIELD = `mt-1 block ${CONTROL}`;
 
+type SortKey = "id" | "status" | "batch" | "seed" | "speed" | "cycle" | "started";
+type SortDir = "asc" | "desc";
+
+const LIFE_RANK: Record<RunLifecycle, number> = {
+  running: 0,
+  paused: 1,
+  queued: 2,
+  succeeded: 3,
+  failed: 4,
+  cancelled: 5,
+};
+
+function compareRuns(a: RunSummary, b: RunSummary, key: SortKey): number {
+  switch (key) {
+    case "id":
+      return a.id.localeCompare(b.id, undefined, { numeric: true });
+    case "status":
+      return LIFE_RANK[a.lifecycle] - LIFE_RANK[b.lifecycle];
+    case "batch":
+      return (a.batchId ?? "\uffff").localeCompare(b.batchId ?? "\uffff", undefined, { numeric: true });
+    case "seed":
+      return a.seed - b.seed;
+    case "speed":
+      return (a.speed ?? 1) - (b.speed ?? 1);
+    case "cycle": {
+      const av = a.metrics.cycleTimeSimS;
+      const bv = b.metrics.cycleTimeSimS;
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return av - bv;
+    }
+    case "started":
+      return (a.startedAtIso ?? "").localeCompare(b.startedAtIso ?? "");
+  }
+}
+
 /** Single list of every run (individual or batch member). Opening one lands in the control view. */
 export function HistoryView() {
   const { history, snapshot, ready } = useDashboard();
@@ -41,6 +79,24 @@ export function HistoryView() {
   const [clothCondition, setClothCondition] = useState("all");
   const [metric, setMetric] = useState<ChartMetric>("cycle");
   const [group, setGroup] = useState<GraphGroup>("clothType");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  function toggleSort(key: SortKey) {
+    const first: SortDir = key === "id" || key === "batch" || key === "status" ? "asc" : "desc";
+    const second: SortDir = first === "asc" ? "desc" : "asc";
+    if (sortKey === key) {
+      if (sortDir === first) {
+        setSortDir(second);
+        return;
+      }
+      setSortKey(null);
+      setSortDir("desc");
+      return;
+    }
+    setSortKey(key);
+    setSortDir(first);
+  }
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -62,9 +118,15 @@ export function HistoryView() {
     });
     return matches
       .map((run, index) => ({ run, index }))
-      .sort((a, b) => rank(a.run) - rank(b.run) || a.index - b.index)
+      .sort((a, b) => {
+        if (sortKey) {
+          const cmp = compareRuns(a.run, b.run, sortKey);
+          return (sortDir === "asc" ? cmp : -cmp) || a.index - b.index;
+        }
+        return rank(a.run) - rank(b.run) || a.index - b.index;
+      })
       .map(({ run }) => run);
-  }, [history, lifecycle, query]);
+  }, [history, lifecycle, query, sortKey, sortDir]);
 
   const graphRows = useMemo(
     () => filterChartRuns(history, { lifecycle, query, clothType, clothCondition, batchId: "all" }),
@@ -109,18 +171,28 @@ export function HistoryView() {
     </div>
   ) : (
     <div className="min-h-0 flex-1 overflow-auto border border-divider bg-surface">
-      <Table className="w-full min-w-[720px] border-collapse text-left text-sm">
+      <Table className="w-full min-w-[880px] table-fixed border-collapse text-left text-sm">
+        <colgroup>
+          <col className="w-[16%]" />
+          <col className="w-[22%]" />
+          <col className="w-[12%]" />
+          <col className="w-[8%]" />
+          <col className="w-[8%]" />
+          <col className="w-[14%]" />
+          <col className="w-[20%]" />
+        </colgroup>
         <TableHeader>
           <TableRow className="border-b border-divider text-[13px] text-muted-foreground">
-            <TableHead className="px-4 py-3 font-semibold">Run</TableHead>
-            <TableHead className="px-4 py-3 font-semibold">Status</TableHead>
-            <TableHead className="px-4 py-3 font-semibold">Batch</TableHead>
-            <TableHead className="px-4 py-3 font-semibold">Seed</TableHead>
-            <TableHead className="px-4 py-3 text-right font-semibold">cycle t (sim)</TableHead>
-            <TableHead className="px-4 py-3 font-semibold">Started</TableHead>
+            <SortHead label="Run" column="id" active={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortHead label="Status" column="status" active={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortHead label="Batch" column="batch" active={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortHead label="Seed" column="seed" active={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortHead label="Speed" column="speed" active={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortHead label="Duration" column="cycle" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
+            <SortHead label="Started" column="started" active={sortKey} dir={sortDir} onSort={toggleSort} />
           </TableRow>
         </TableHeader>
-        <TableBody>
+        <TableBody className="[&_tr:last-child]:border-b [&_tr:last-child]:border-divider">
           {rows.map((run) => <RunRow key={run.id} run={run} onOpen={() => router.push(`/historial/${run.id}`)} />)}
         </TableBody>
       </Table>
@@ -131,7 +203,6 @@ export function HistoryView() {
     <AppShell
       fit
       title="Runs"
-      eyebrow="individual · batches"
       actions={
         <>
           <ConnectionBadge
@@ -271,7 +342,7 @@ function RunRow({ run, onOpen }: { run: RunSummary; onOpen: () => void }) {
       aria-busy={run.lifecycle === "running" || undefined}
       onClick={onOpen}
     >
-      <TableCell className="px-4 py-3">
+      <TableCell className="whitespace-normal px-4 py-3">
         <Link
           href={`/historial/${run.id}`}
           onClick={(e) => e.stopPropagation()}
@@ -279,9 +350,9 @@ function RunRow({ run, onOpen }: { run: RunSummary; onOpen: () => void }) {
         >
           {run.id}
         </Link>
-        {run.name ? <span className="mt-0.5 block text-[13px] text-muted-foreground">{run.name}</span> : null}
+        {run.name ? <span className="mt-0.5 block truncate text-[13px] text-muted-foreground">{run.name}</span> : null}
       </TableCell>
-      <TableCell className="px-4 py-3">
+      <TableCell className="whitespace-normal px-4 py-3">
         <RunStatusBadges run={run} />
       </TableCell>
       <TableCell className="px-4 py-3 font-mono text-muted-foreground tabular">
@@ -302,5 +373,42 @@ function RunRow({ run, onOpen }: { run: RunSummary; onOpen: () => void }) {
       <TableCell className="px-4 py-3 text-right font-mono tabular">{formatSeconds(run.metrics.cycleTimeSimS)}</TableCell>
       <TableCell className="px-4 py-3 text-muted-foreground">{formatIso(run.startedAtIso)}</TableCell>
     </TableRow>
+  );
+}
+
+function SortHead({
+  label,
+  column,
+  active,
+  dir,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  column: SortKey;
+  active: SortKey | null;
+  dir: SortDir;
+  onSort: (key: SortKey) => void;
+  align?: "left" | "right";
+}) {
+  const on = active === column;
+  const Icon = dir === "asc" ? ChevronUp : ChevronDown;
+  return (
+    <TableHead
+      aria-sort={on ? (dir === "asc" ? "ascending" : "descending") : "none"}
+      className="h-auto p-0 font-semibold"
+    >
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        aria-label={on ? `Sort by ${label}, ${dir === "asc" ? "ascending" : "descending"}` : `Sort by ${label}`}
+        className={`flex w-full items-center gap-1 px-4 py-3 text-[13px] font-semibold ${
+          align === "right" ? "justify-end" : "justify-start"
+        } ${on ? "text-ink" : "text-muted-foreground hover:text-ink"}`}
+      >
+        {label}
+        {on ? <Icon className="size-3.5 shrink-0" aria-hidden /> : null}
+      </button>
+    </TableHead>
   );
 }

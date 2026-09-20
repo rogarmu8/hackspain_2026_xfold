@@ -109,7 +109,6 @@ export function ControlRoom({ runId }: { runId: string }) {
     snapshot,
     pendingCommand,
     requestCommand,
-    source,
     bridgeUrl,
     getRun,
     getJournal,
@@ -283,7 +282,11 @@ export function ControlRoom({ runId }: { runId: string }) {
               ? run?.hasPhoto
                 ? "grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3"
                 : "grid h-full min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-3"
-              : "grid h-full min-h-0 min-w-0 auto-rows-auto content-start gap-3"
+              : openPane === "context"
+                ? run?.hasPhoto
+                  ? "grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto_auto] gap-3"
+                  : "grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_auto] gap-3"
+                : "grid h-full min-h-0 min-w-0 auto-rows-auto content-start gap-3"
           }
         >
           <InspectorSection
@@ -292,6 +295,7 @@ export function ControlRoom({ runId }: { runId: string }) {
             icon={finished ? ClipboardList : Layers}
             open={openPane === "context"}
             onToggle={() => toggleInspector("context")}
+            fill={openPane === "context"}
           >
             {run && finished ? (
               <RunSummaryPanel run={run} embed />
@@ -339,16 +343,6 @@ export function ControlRoom({ runId }: { runId: string }) {
           </InspectorSection>
         </div>
       </div>
-
-      {source === "live" ? (
-        <p className="eyebrow mt-3 shrink-0 truncate">
-          live · {bridgeUrl} · journal + REST/SSE
-        </p>
-      ) : (
-        <p className="eyebrow mt-3 shrink-0 truncate text-danger">
-          offline · {bridgeUrl} · no sample data
-        </p>
-      )}
     </AppShell>
   );
 }

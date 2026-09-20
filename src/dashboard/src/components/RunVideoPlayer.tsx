@@ -56,10 +56,20 @@ export function RunVideoPlayer({
     let destroy: (() => void) | undefined;
     setStatus("waiting");
 
-    const onPlaying = () => {
+    const markReady = () => {
       if (!cancelled) setStatus("ready");
     };
-    video.addEventListener("playing", onPlaying);
+    const onEnded = () => {
+      if (cancelled) return;
+      video.currentTime = 0;
+      video.pause();
+      setStatus("ready");
+      transportRef.current?.onEnded();
+    };
+    video.addEventListener("canplay", markReady);
+    video.addEventListener("loadeddata", markReady);
+    video.addEventListener("playing", markReady);
+    video.addEventListener("ended", onEnded);
 
     async function attach() {
       const minSeg = liveRef.current ? 2 : 1;
@@ -95,13 +105,21 @@ export function RunVideoPlayer({
         let joined = false;
         const start = () => {
           if (cancelled || joined) return;
+          const parked = transportRef.current && !transportRef.current.playing;
           if (liveNow()) {
             const edge = hls.liveSyncPosition;
             if (edge == null || !Number.isFinite(edge)) return;
             joined = true;
             video.currentTime = edge;
-          } else {
-            joined = true;
+            void video.play().catch(() => {});
+            return;
+          }
+          joined = true;
+          if (parked) {
+            video.currentTime = transportRef.current?.t ?? 0;
+            video.pause();
+            setStatus("ready");
+            return;
           }
           void video.play().catch(() => {});
         };
@@ -122,8 +140,17 @@ export function RunVideoPlayer({
       if (video.canPlayType(NATIVE)) {
         const onMeta = () => {
           if (cancelled) return;
+          const parked = transportRef.current && !transportRef.current.playing;
           if (liveNow() && video.seekable.length > 0) {
             video.currentTime = video.seekable.end(video.seekable.length - 1);
+            void video.play().catch(() => {});
+            return;
+          }
+          if (parked) {
+            video.currentTime = transportRef.current?.t ?? 0;
+            video.pause();
+            setStatus("ready");
+            return;
           }
           void video.play().catch(() => {});
         };
@@ -138,7 +165,10 @@ export function RunVideoPlayer({
     void attach();
     return () => {
       cancelled = true;
-      video.removeEventListener("playing", onPlaying);
+      video.removeEventListener("canplay", markReady);
+      video.removeEventListener("loadeddata", markReady);
+      video.removeEventListener("playing", markReady);
+      video.removeEventListener("ended", onEnded);
       video.pause();
       video.removeAttribute("src");
       video.load();
@@ -151,12 +181,9 @@ export function RunVideoPlayer({
     if (!video || !transport) return;
 
     const onTime = () => transportRef.current?.onTime(video.currentTime);
-    const onEnded = () => transportRef.current?.onEnded();
     video.addEventListener("timeupdate", onTime);
-    video.addEventListener("ended", onEnded);
     return () => {
       video.removeEventListener("timeupdate", onTime);
-      video.removeEventListener("ended", onEnded);
     };
   }, [transport]);
 
