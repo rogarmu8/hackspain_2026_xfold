@@ -121,6 +121,16 @@ BELT_SPEED = 0.35  # m/s
 BELT_ACCEL = 0.6  # m/s^2, both speeding up and braking
 # Cloth this close above the belt top rides with it.
 ON_BELT = 0.03
+# Below this the garment is on the floor, not on any machine: whatever the
+# line was doing, it lost the shirt (running fast enough makes this happen).
+DROPPED_Z = SURFACE_Z - 0.25
+# Phases where the garment belongs on a belt, the press or the folder, so
+# finding it on the floor means the line lost it. Afterwards it is sealed in
+# the bag and rides it down into the carton, and at SORT the QC arm is
+# carrying it over a tote on purpose.
+CARRIED_PHASES = frozenset(
+    {"LOAD", "ORIENT", "TO_PRESS", "PRESS", "TO_QC", "PHOTO", "TO_FOLDER", "FOLD"}
+)
 
 # Operator place (selector "skewed"): a T on the belt, pose drawn each cycle.
 # Yaw is any heading, plus visible crumple. Dual belts square the heading;
@@ -494,6 +504,10 @@ class Line:
     viewer, a headless run and the dashboard viewport all just call step().
     """
 
+    # Machine speed multiplier; see __init__. Here as well so the helpers work
+    # on a Line put together piecemeal (scripts/test-sim-observability.py).
+    speed = 1.0
+
     def __init__(
         self,
         model,
@@ -504,6 +518,8 @@ class Line:
         skewed: bool = False,
         flat: bool = False,
         seed: int = 0,
+        speed: float = 1.0,
+        garment: str | None = None,
         on_photo=None,
         on_event=None,
     ) -> None:
@@ -514,6 +530,16 @@ class Line:
         self.data = data
         self.repeat = repeat
         self.log = log
+        # How much faster than nominal the machinery runs. Every duration is
+        # divided by it and every speed multiplied, so the line does the same
+        # motions in less time: belts and accelerations included. Cloth is not
+        # asked to keep up — past some speed it slides off a belt or misses
+        # the folder, and the cycle ends as a drop (see ``_dropped``).
+        self.speed = max(0.1, float(speed))
+        # The SKU this cycle is for. Taken once: the active garment is
+        # process-wide state, and the QC decision must not follow a later
+        # change (the bridge runs several cycles at a time).
+        self.garment = garment or shirt_config().garment
         self.on_event = on_event
         self.phase = "LOAD"
         self.skewed = skewed
@@ -657,6 +683,17 @@ class Line:
             try:
                 next(self._program)
             except StopIteration:
+                self.finished = True
+            if not self.finished and self._dropped():
+                pos = self.positions()
+                self._enter(
+                    "DONE",
+                    f"garment off the line at {self.speed:g}x, {pos[:, 2].max() - SURFACE_Z:+.2f} m "
+                    f"from the surface; cycle abandoned",
+                    phase="DONE",
+                    operation="DROPPED",
+                )
+                self.outcome = "dropped"
                 self.finished = True
         if self._bagger is not None:
             try:
@@ -851,7 +888,7 @@ class Line:
         yield from self._belt_until(lambda pos: QC_X - float(pos[:, 0].mean()))
         yield from self._shoot()
 
-        reject = qc_reject_bin(shirt_config().garment)
+        reject = qc_reject_bin(self.garment)
         if reject:
             self.outcome = reject
             yield from self._reject(reject)
@@ -1163,10 +1200,12 @@ class Line:
             left = remaining(pos)
             if left <= 0.002:
                 break
+            top = BELT_SPEED * self.speed
+            accel = BELT_ACCEL * self.speed * self.speed
             self.belt_speed = min(
-                BELT_SPEED,
-                self.belt_speed + BELT_ACCEL * self.dt,
-                max(0.02, math.sqrt(2.0 * BELT_ACCEL * left)),
+                top,
+                self.belt_speed + accel * self.dt,
+                max(0.02, math.sqrt(2.0 * accel * left)),
             )
             yield
         self.belt_speed = 0.0
@@ -1411,10 +1450,12 @@ class Line:
             left = target - float(self.data.qpos[self._bag_qadr])
             if left <= 0.002:
                 break
+            top = BELT2_SPEED * self.speed
+            accel = BELT_ACCEL * self.speed * self.speed
             self.belt2_speed = min(
-                BELT2_SPEED,
-                self.belt2_speed + BELT_ACCEL * self.dt,
-                max(0.02, math.sqrt(2.0 * BELT_ACCEL * left)),
+                top,
+                self.belt2_speed + accel * self.dt,
+                max(0.02, math.sqrt(2.0 * accel * left)),
             )
             yield
         self.belt2_speed = 0.0
@@ -1509,7 +1550,10 @@ class Line:
     def _convey(self):
         """Run belt 2 until the bag is in the carton."""
         while self.data.qpos[self._bag_qadr + 2] > BOXED_Z:
-            self.belt2_speed = min(BELT2_SPEED, self.belt2_speed + BELT_ACCEL * self.dt)
+            self.belt2_speed = min(
+                BELT2_SPEED * self.speed,
+                self.belt2_speed + BELT_ACCEL * self.speed * self.speed * self.dt,
+            )
             yield
         self.belt2_speed = 0.0
         yield from self._hold("BOXED", "", 1.0, quiet=True)
@@ -1568,7 +1612,13 @@ class Line:
         self.data.mocap_pos[mocap] = pivot
 
     def _steps(self, seconds: float) -> int:
-        return max(1, int(round(seconds / self.dt)))
+        return max(1, int(round(seconds / (self.dt * self.speed))))
+
+    def _dropped(self) -> bool:
+        """Has the garment left the machine? Then the cycle is over."""
+        if self.phase not in CARRIED_PHASES:
+            return False
+        return bool(self.positions()[:, 2].max() < DROPPED_Z)
 
 
 def _rise(angle: float) -> float:
@@ -1798,6 +1848,13 @@ def main() -> None:
         action="store_true",
         help="skip the dual-belt turner even if --skewed",
     )
+    parser.add_argument(
+        "--speed",
+        type=float,
+        default=1.0,
+        help="machinery speed: 1 is nominal, 20 is twenty times (fast enough and "
+             "the garment is left behind and the cycle is abandoned)",
+    )
     add_garment_arguments(parser)
     parser.add_argument(
         "--shots", default="", help="headless: save a frame per stage into this directory"
@@ -1836,6 +1893,7 @@ def main() -> None:
         skewed=bool(args.skewed),
         flat=bool(args.flat),
         seed=int(args.seed),
+        speed=float(args.speed),
     )
     pose = "operator-skewed" if args.skewed and not args.flat else "square"
     print(

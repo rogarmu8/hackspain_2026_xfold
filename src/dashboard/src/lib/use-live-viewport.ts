@@ -64,6 +64,8 @@ export function useLiveViewport(opts: {
   enabled: boolean;
   /** Unused for primary path; reserved if we ever force direct bridge. */
   bridgeUrl?: string;
+  /** Which run's camera. Several runs simulate at once, each with its own. */
+  runId?: string | null;
   waitMs?: number;
 }): LiveViewportState {
   const waitMs = opts.waitMs ?? 1500;
@@ -139,7 +141,10 @@ export function useLiveViewport(opts: {
         }
 
         const after = seqRef.current;
-        const url = `${base}/viewport/frame?after_seq=${after}&wait_ms=${waitMs}`;
+        const path = opts.runId
+          ? `runs/${encodeURIComponent(opts.runId)}/viewport/frame`
+          : "viewport/frame";
+        const url = `${base}/${path}?after_seq=${after}&wait_ms=${waitMs}`;
 
         try {
           setState((s) =>
@@ -236,7 +241,7 @@ export function useLiveViewport(opts: {
         objectUrlRef.current = null;
       }
     };
-  }, [opts.enabled, opts.bridgeUrl, waitMs]);
+  }, [opts.enabled, opts.bridgeUrl, opts.runId, waitMs]);
 
   return state;
 }

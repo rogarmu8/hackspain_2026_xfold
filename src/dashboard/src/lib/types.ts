@@ -53,6 +53,10 @@ export type SimulatorCapabilities = {
   recordingSeek?: boolean;
   /** Runs are recorded to H.264; the viewport plays HLS instead of frames. */
   viewportVideo?: boolean;
+  /** Runs that simulate at once; further launches queue. */
+  maxConcurrentRuns?: number;
+  /** Machinery speed the launch form may ask for, [min, max]. */
+  speedRange?: [number, number];
   /** The recording can be watched live. False ⇒ live stays on JPEG frames, video is replay only. */
   liveVideo?: boolean;
   /** Physics engine stepping the line: "mujoco" or "isaac". */
@@ -152,6 +156,8 @@ export type RunSummary = {
   finishedAtIso: string | null;
   failReason: string | null;
   metrics: RunMetrics;
+  /** Machinery speed multiplier the run was launched with (1 = nominal). */
+  speed?: number;
 };
 
 export type RunDetail = RunSummary & {
@@ -231,6 +237,8 @@ export type LaunchRequest =
       clothTypeWeights?: ClothWeightMap;
       clothConditionWeights?: ConditionWeightMap;
       customDesign?: CustomDesignPayload;
+      /** Machinery speed multiplier: 1 nominal … 20. */
+      speed?: number;
     }
   | {
       mode: "batch";
@@ -246,4 +254,5 @@ export type LaunchRequest =
       clothTypeWeights?: ClothWeightMap;
       clothConditionWeights?: ConditionWeightMap;
       customDesign?: CustomDesignPayload;
+      speed?: number;
     };

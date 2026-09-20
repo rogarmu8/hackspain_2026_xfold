@@ -133,7 +133,20 @@ NEXT_PUBLIC_XFOLD_BRIDGE_URL=http://127.0.0.1:8765
 If unset, the UI still probes `http://127.0.0.1:8765`. If `/health` fails, it
 keeps using local **fixtures** (honest `provenance: "fixture"`).
 
-### Same bridge on Isaac Sim
+### Machine speed, and several runs at once
+
+`POST /runs` / `POST /batches` take `speed` (1 … 20): every duration in `xfold.line.Line` is divided
+by it and every belt speed multiplied, so the machinery does the same motions faster. The cloth is
+not asked to keep up — past some speed it is left behind, and the run fails
+(`dropped the … garment`, or `line did not keep up at Nx` when a phase stops progressing).
+`--speed` does the same for `moon run sim:run` and `xfold_isaac.run`.
+
+The bridge simulates `capabilities.maxConcurrentRuns` runs at once, one sim per worker
+(`XFOLD_BRIDGE_WORKERS`, default 3; Isaac is always 1, since Kit is one stage on one thread).
+Launching beyond that is accepted and `queued`; a worker takes the next queued run as it frees up,
+and `POST /runs` answers `{"ok": true, "id": …, "queued": true|false}`. Each live run has its own
+camera: `GET /runs/{id}/viewport/frame` (same long-poll contract as `/viewport/frame`, which stays
+as the focused run's). One video per run as before.
 
 ```bash
 moon run xfold:dev-isaac     # Isaac bridge on the GPU box (tunnelled to :8766) + dashboard (:3001)

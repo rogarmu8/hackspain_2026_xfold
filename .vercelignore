@@ -1,0 +1,15 @@
+.git
+.pixi
+.moon
+data
+shots
+src/isaac
+src/sim
+node_modules
+**/.next
+**/.next-isaac
+**/*.mp4
+**/*.usda
+**/*.pem
+.env
+.env.*

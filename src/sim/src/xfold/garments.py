@@ -113,6 +113,8 @@ def grade_line_outcome(
     Diverting a stained shirt into the stained tote is success. Packing it is
     failure. The garment mark (Stained / Torn / …) is independent.
     """
+    if outcome == "dropped":
+        return False, f"dropped the {garment_result_label(garment, cloth_condition).lower()} garment"
     actual = outcome if outcome in {"packed", "stained", "broken"} else "packed"
     expected = qc_reject_bin(garment) or "packed"
     if actual == expected:

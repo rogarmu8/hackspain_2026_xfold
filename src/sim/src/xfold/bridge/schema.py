@@ -105,6 +105,10 @@ class BridgeCapabilities(BaseModel):
     liveVideo: bool = True
     # Which physics engine steps the line: "mujoco" or "isaac".
     engine: str = "mujoco"
+    # Runs that can simulate at once; the rest queue.
+    maxConcurrentRuns: int = 1
+    # Machinery speed range the launch form may offer.
+    speedRange: tuple[float, float] = (1.0, 20.0)
     startRun: bool = True
     startBatch: bool = True
     commands: dict[str, bool] = Field(
@@ -137,6 +141,9 @@ class LaunchRunRequest(BaseModel):
     clothTypeWeights: dict[str, float] = Field(default_factory=dict)
     clothConditionWeights: dict[str, float] = Field(default_factory=dict)
     customDesign: CustomDesignPayload | None = None
+    # Machinery speed: 1 is nominal, 20 is twenty times the belts, flaps and
+    # peel. Fast enough and the garment does not keep up and the run fails.
+    speed: float = Field(default=1.0, ge=1.0, le=20.0)
 
 
 class LaunchBatchRequest(BaseModel):
@@ -152,6 +159,7 @@ class LaunchBatchRequest(BaseModel):
     clothTypeWeights: dict[str, float] = Field(default_factory=dict)
     clothConditionWeights: dict[str, float] = Field(default_factory=dict)
     customDesign: CustomDesignPayload | None = None
+    speed: float = Field(default=1.0, ge=1.0, le=20.0)
 
 
 class HealthResponse(BaseModel):

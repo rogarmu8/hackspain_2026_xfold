@@ -27,9 +27,7 @@ import type {
 export const DEFAULT_BRIDGE_URL = "http://127.0.0.1:8765";
 
 export function bridgeBaseUrl(): string {
-  const raw =
-    process.env.NEXT_PUBLIC_XFOLD_BRIDGE_URL?.trim() || DEFAULT_BRIDGE_URL;
-  return raw.replace(/\/$/, "");
+  return "/api/bridge";
 }
 
 export async function probeBridge(baseUrl: string = bridgeBaseUrl()): Promise<boolean> {
@@ -105,7 +103,7 @@ export class BridgeClient {
     this.openEventSource();
     if (this.pollTimer) clearInterval(this.pollTimer);
     this.pollTimer = setInterval(() => {
-      if (this._connection === "connected") void this.refreshSnapshot();
+      void this.refreshSnapshot();
     }, 1000);
     return true;
   }
@@ -294,6 +292,7 @@ export class BridgeClient {
           clothTypeWeights: request.clothTypeWeights,
           clothConditionWeights: request.clothConditionWeights,
           customDesign: request.customDesign,
+          speed: request.speed,
         };
         const res = await fetch(`${this.baseUrl}/runs`, {
           method: "POST",
@@ -318,6 +317,7 @@ export class BridgeClient {
         clothTypeWeights: request.clothTypeWeights,
         clothConditionWeights: request.clothConditionWeights,
         customDesign: request.customDesign,
+        speed: request.speed,
       };
       const res = await fetch(`${this.baseUrl}/batches`, {
         method: "POST",

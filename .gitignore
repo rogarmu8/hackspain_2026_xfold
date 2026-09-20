@@ -72,3 +72,4 @@ src/sim/models/garment_custom.obj
 # MuJoCo
 MUJOCO_LOG.TXT
 shots/
+.vercel

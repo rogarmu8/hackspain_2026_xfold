@@ -41,6 +41,8 @@ def _args() -> argparse.Namespace:
     parser.add_argument("--cycles", type=int, default=1, help="0 keeps going")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--flat", action="store_true", help="skip the dual-belt turner even if --skewed")
+    parser.add_argument("--speed", type=float, default=1.0,
+                        help="machinery speed: 1 is nominal, 20 is twenty times")
     add_garment_arguments(parser)
     parser.add_argument("--gui", action="store_true", help="open Isaac Sim's window (needs a display)")
     parser.add_argument("--events", type=Path, help="write Line events here (JSON lines)")
@@ -223,6 +225,7 @@ def main() -> None:
         skewed=skewed,
         flat=bool(args.flat),
         seed=int(args.seed),
+        speed=float(args.speed),
         on_photo=on_photo,
         on_event=on_event,
     )

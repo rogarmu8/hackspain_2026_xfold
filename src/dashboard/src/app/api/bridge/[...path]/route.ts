@@ -14,6 +14,7 @@ import { bridgeOrigin } from "@/lib/bridge-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -26,7 +27,20 @@ const HOP_BY_HOP = new Set([
   "upgrade",
   "host",
   "content-length",
+  // fetch() already decodes; forwarding these yields an empty body on Vercel.
+  "content-encoding",
 ]);
+
+function outboundHeaders(upstream: Response): Headers {
+  const out = new Headers();
+  upstream.headers.forEach((value, key) => {
+    if (!HOP_BY_HOP.has(key.toLowerCase())) {
+      out.set(key, value);
+    }
+  });
+  out.set("Cache-Control", "no-store");
+  return out;
+}
 
 async function proxy(
   req: NextRequest,
@@ -35,6 +49,7 @@ async function proxy(
   const path = pathParts.map(encodeURIComponent).join("/");
   const target = new URL(`${bridgeOrigin()}/${path}`);
   target.search = req.nextUrl.search;
+  const stream = path === "events/stream";
 
   const headers = new Headers();
   req.headers.forEach((value, key) => {
@@ -53,8 +68,8 @@ async function proxy(
           ? undefined
           : await req.arrayBuffer(),
       cache: "no-store",
-      // Long-poll frames can wait up to ~5s on the bridge.
-      signal: AbortSignal.timeout(12_000),
+      // Long-poll frames can wait up to ~5s; SSE is streamed until this fires.
+      signal: AbortSignal.timeout(stream ? 55_000 : 12_000),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "bridge unreachable";
@@ -64,15 +79,17 @@ async function proxy(
     );
   }
 
-  const out = new Headers();
-  upstream.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP.has(key.toLowerCase())) {
-      out.set(key, value);
-    }
-  });
-  out.set("Cache-Control", "no-store");
+  const out = outboundHeaders(upstream);
+  if (stream) {
+    return new Response(upstream.body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: out,
+    });
+  }
 
-  return new Response(upstream.body, {
+  const body = await upstream.arrayBuffer();
+  return new Response(body, {
     status: upstream.status,
     statusText: upstream.statusText,
     headers: out,

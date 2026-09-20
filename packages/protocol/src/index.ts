@@ -193,6 +193,10 @@ export type BridgeCapabilities = {
   recordingSeek?: boolean;
   /** Runs are recorded to H.264; the viewport plays HLS instead of frames. */
   viewportVideo?: boolean;
+  /** Runs that simulate at once; further launches queue. */
+  maxConcurrentRuns?: number;
+  /** Machinery speed the launch form may ask for, [min, max]. */
+  speedRange?: [number, number];
   /** The recording can be watched live. False ⇒ live stays on JPEG frames, video is replay only. */
   liveVideo?: boolean;
   /** Physics engine stepping the line: "mujoco" or "isaac". */
@@ -312,6 +316,8 @@ export type BridgeLaunchRun = {
   clothConditionWeights?: ConditionWeightMap;
   /** Photo printed on both faces of the chosen SKU. */
   customDesign?: CustomDesignPayload;
+  /** Machinery speed multiplier: 1 nominal … 20. */
+  speed?: number;
 };
 
 export type BridgeLaunchBatch = {
@@ -328,4 +334,6 @@ export type BridgeLaunchBatch = {
   clothTypeWeights?: ClothWeightMap;
   clothConditionWeights?: ConditionWeightMap;
   customDesign?: CustomDesignPayload;
+  /** Machinery speed multiplier: 1 nominal … 20. */
+  speed?: number;
 };

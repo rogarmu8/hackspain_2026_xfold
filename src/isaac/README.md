@@ -125,6 +125,12 @@ watching the video live left the viewport black for the first half minute. The b
 with `/capabilities.liveVideo = false`, and the dashboard switches to the video once the run
 ends. `--size`, `--video-size` and `--video-fps` on `xfold_isaac.bridge` change all of this.
 
+## Machine speed and concurrency
+
+Runs carry a machine speed (1 … 20) like the MuJoCo line: `xfold_isaac.run --speed 4`, or the
+dashboard's launch form. Isaac runs **one** experiment at a time (`maxConcurrentRuns` = 1): Kit is
+a single stage on a single thread, so further launches queue. The MuJoCo bridge runs three at once.
+
 ## Known gaps
 - Label stickers and the floor checker are flat colours: USD cubes carry no UVs.
 - Cloth stiffness and light gains are first guesses, tuned against the MuJoCo

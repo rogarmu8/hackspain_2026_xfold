@@ -1,8 +1,13 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Camera, Shirt } from "lucide-react";
+import { Camera, Download, Maximize2, Shirt } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { XFoldLoader } from "@/components/XFoldLoader";
 import type { RunDetail } from "@/lib/types";
 
@@ -68,22 +73,20 @@ export function ProductShotPanel({ run, embed = false }: { run: RunDetail; embed
     <>
       <div className="grid grid-cols-2 gap-3">
         <figure className="m-0 flex flex-col gap-1.5">
-          {/* eslint-disable-next-line @next/next/no-img-element -- bridge file, not a Next asset */}
-          <img
+          <HoverPhoto
             src={`/api/bridge/runs/${encodeURIComponent(run.id)}/photo`}
             alt={`Overhead garment photo for ${run.id}`}
-            className="aspect-square w-full border border-divider object-cover"
+            filename={`${run.id}-captured.jpg`}
           />
           <figcaption className="eyebrow">Captured</figcaption>
         </figure>
 
         <figure className="m-0 flex flex-col gap-1.5">
           {look ? (
-            // eslint-disable-next-line @next/next/no-img-element -- data URI from OpenAI
-            <img
+            <HoverPhoto
               src={look}
               alt={`Model wearing the garment from ${run.id}`}
-              className="aspect-square w-full border border-divider object-cover"
+              filename={`${run.id}-generated.png`}
             />
           ) : (
             <div className="flex aspect-square w-full items-center justify-center border border-dashed border-divider text-muted-foreground">
@@ -100,7 +103,12 @@ export function ProductShotPanel({ run, embed = false }: { run: RunDetail; embed
         </figure>
       </div>
 
-      <Button size="sm" onClick={generate} disabled={busy}>
+      <Button
+        variant="outline"
+        className="h-10 rounded-[var(--radius-sm)] px-3 text-sm font-semibold"
+        onClick={generate}
+        disabled={busy}
+      >
         {busy ? "Generating…" : look ? "Regenerate look" : "Generate look on a model"}
       </Button>
 
@@ -135,5 +143,91 @@ export function ProductShotPanel({ run, embed = false }: { run: RunDetail; embed
       </header>
       {inner}
     </aside>
+  );
+}
+
+function HoverPhoto({
+  src,
+  alt,
+  filename,
+}: {
+  src: string;
+  alt: string;
+  filename: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const download = useCallback(async () => {
+    try {
+      const res = await fetch(src);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.open(src, "_blank", "noopener,noreferrer");
+    }
+  }, [src, filename]);
+
+  return (
+    <>
+      <div className="group relative">
+        {/* eslint-disable-next-line @next/next/no-img-element -- bridge file or data URI */}
+        <img
+          src={src}
+          alt={alt}
+          className="aspect-square w-full border border-divider object-cover"
+        />
+        <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 transition-opacity duration-[var(--motion-feedback)] group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-xs"
+            className="size-7 bg-surface/95"
+            aria-label={`Download ${filename}`}
+            title="Download"
+            onClick={(event) => {
+              event.stopPropagation();
+              void download();
+            }}
+          >
+            <Download />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-xs"
+            className="size-7 bg-surface/95"
+            aria-label={`Maximize ${alt}`}
+            title="Maximize"
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpen(true);
+            }}
+          >
+            <Maximize2 />
+          </Button>
+        </div>
+      </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          className="max-w-[min(92vw,56rem)] p-3 sm:max-w-[min(92vw,56rem)]"
+          aria-describedby={undefined}
+        >
+          <DialogTitle className="sr-only">{alt}</DialogTitle>
+          {/* eslint-disable-next-line @next/next/no-img-element -- same source as the thumbnail */}
+          <img
+            src={src}
+            alt={alt}
+            className="max-h-[min(85vh,56rem)] w-full object-contain"
+          />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

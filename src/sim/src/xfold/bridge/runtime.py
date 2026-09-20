@@ -75,6 +75,10 @@ class RunRecord:
     customTexture: str | None = None
     customDesign: bool = False
     hasVideo: bool = False
+    # Machinery speed multiplier the operator launched with (1 = nominal).
+    speed: float = 1.0
+    # Which driver worker is simulating this run, if any.
+    worker: str | None = None
 
     def telemetry(self) -> dict[str, Any] | None:
         if self.currentState is None:
@@ -102,6 +106,7 @@ class RunRecord:
             "clothCondition": self.clothCondition,
             "skewed": self.skewed,
             "customDesign": self.customDesign,
+            "speed": self.speed,
             "currentState": self.currentState,
             "startedAtIso": self.startedAtIso,
             "finishedAtIso": self.finishedAtIso,
@@ -220,6 +225,9 @@ class Runtime:
         # Continue RUN-/B- numbering across bridge restarts when a store is present.
         self._run_counter = store.max_run_number() if store is not None else 0
         self._batch_counter = store.max_batch_number() if store is not None else 0
+        # How many runs may simulate at once (one driver worker each). The
+        # rest wait as `queued` and start as workers free up.
+        self.concurrency = 1
         self._seen_commands: dict[str, str] = {}  # clientCommandId -> status
         self._wake = threading.Event()
         # Set by app.py once a driver is chosen; shown as a run's `notes`.
@@ -439,6 +447,7 @@ class Runtime:
         cloth_weights: dict[str, float] | None = None,
         condition_weights: dict[str, float] | None = None,
         custom_design: CustomDesignPayload | None = None,
+        speed: float = 1.0,
     ) -> dict[str, Any]:
         cloth_mix = "random" if cloth_type == "random" else "same"
         cond_mix = "random" if cloth_condition == "random" else "same"
@@ -456,8 +465,6 @@ class Runtime:
         )
         custom_tex = self._bake_custom_design(custom_design, cloth)
         with self._lock:
-            if self.active_run_id and self.runs[self.active_run_id].lifecycle in {"running", "paused"}:
-                raise ValueError("A run is already active")
             run = self._create_run(
                 name=name or None,
                 seed=seed,
@@ -469,12 +476,13 @@ class Runtime:
                 skewed=pick.skewed,
                 seed_applied=cloth_mix == "random" or cond_mix == "random" or cond in {"notgood", "skewed"},
                 custom_texture=custom_tex,
+                speed=speed,
             )
-            self.active_run_id = run.id
-            self.active_batch_id = None
-            self._start_run_locked(run)
+            # Room now, or it waits its turn; either way the launch is accepted.
+            self._start_queued_locked()
+            queued = run.lifecycle == "queued"
             self.wake_driver()
-            return {"ok": True, "id": run.id}
+            return {"ok": True, "id": run.id, "queued": queued}
 
     def launch_batch(
         self,
@@ -490,6 +498,7 @@ class Runtime:
         cloth_weights: dict[str, float] | None = None,
         condition_weights: dict[str, float] | None = None,
         custom_design: CustomDesignPayload | None = None,
+        speed: float = 1.0,
     ) -> dict[str, Any]:
         types = list(cloth_types or [])
         conds = list(conditions or [])
@@ -566,6 +575,7 @@ class Runtime:
         skewed: bool = False,
         seed_applied: bool = False,
         custom_texture: str | None = None,
+        speed: float = 1.0,
     ) -> RunRecord:
         item = resolve_garment(garment)
         inputs = {
@@ -573,6 +583,7 @@ class Runtime:
             "garment": item.key, "mesh": item.mesh, "texture": item.texture,
             "clothType": cloth_type, "clothCondition": cloth_condition,
             "skewed": skewed, "seed": seed, "seedApplied": seed_applied,
+            "speed": speed,
         }
         run = RunRecord(
             id=self._next_run_id(),
@@ -589,6 +600,7 @@ class Runtime:
             skewed=skewed,
             customTexture=custom_texture,
             customDesign=bool(custom_texture),
+            speed=speed,
         )
         self.runs[run.id] = run
         return run
@@ -774,13 +786,76 @@ class Runtime:
     # --- facts from the mock / physics driver ---
 
     def driver_active_run(self) -> RunRecord | None:
+        """The focused run: what a single-run consumer (the viewport, the
+        mock driver) means by "the" run. With several going, the oldest."""
         with self._lock:
-            if not self.active_run_id:
-                return None
-            run = self.runs.get(self.active_run_id)
+            runs = self._live_runs_locked()
+            if self.active_run_id:
+                run = self.runs.get(self.active_run_id)
+                if run is not None and run.lifecycle in {"running", "paused"}:
+                    return run
+            return runs[0] if runs else None
+
+    def driver_run(self, run_id: str) -> RunRecord | None:
+        """One worker's run, whether or not it is the focused one."""
+        with self._lock:
+            run = self.runs.get(run_id)
             if not run or run.lifecycle not in {"running", "paused"}:
                 return None
             return run
+
+    def _live_runs_locked(self) -> list[RunRecord]:
+        return [
+            run
+            for run in self.runs.values()
+            if run.lifecycle in {"running", "paused"}
+        ]
+
+    def claim_run(self, worker: str) -> RunRecord | None:
+        """Take a run to simulate, or None. One worker per run, one run per worker."""
+        with self._lock:
+            for run in self.runs.values():
+                if run.lifecycle in {"running", "paused"} and run.worker is None:
+                    run.worker = worker
+                    return run
+            self._start_queued_locked()
+            for run in self.runs.values():
+                if run.lifecycle in {"running", "paused"} and run.worker is None:
+                    run.worker = worker
+                    return run
+            return None
+
+    def release_run(self, run_id: str) -> None:
+        with self._lock:
+            run = self.runs.get(run_id)
+            if run is not None:
+                run.worker = None
+            self._start_queued_locked()
+        self.wake_driver()
+
+    def _start_queued_locked(self) -> None:
+        """Start queued runs while there is room, oldest first.
+
+        Only runs of the garment already on the line start alongside it: the
+        mesh, the texture and the QC rules of a SKU are process-wide in
+        ``xfold.shirt``, so a different garment waits for the current ones to
+        finish rather than recompiling under them.
+        """
+        for run in self.runs.values():
+            live = self._live_runs_locked()
+            if len(live) >= max(1, self.concurrency):
+                return
+            if run.lifecycle != "queued" or run.cancel_requested:
+                continue
+            if any(other.garment != run.garment for other in live):
+                continue
+            batch = self.batches.get(run.batchId) if run.batchId else None
+            if batch is not None and (batch.paused or batch.lifecycle in {"paused", "cancelled"}):
+                continue
+            self._start_run_locked(run)
+            if batch is not None:
+                batch.activeRunId = run.id
+            self.active_run_id = self.active_run_id or run.id
 
     def emit_state(self, run_id: str, state: CellState | str, t: float) -> None:
         """Record an FSM stage transition (journal + snapshot).
@@ -949,6 +1024,7 @@ class Runtime:
         if run.lifecycle in {"succeeded", "failed", "cancelled"}:
             return
         run.lifecycle = lifecycle
+        run.worker = None
         run.finishedAtIso = _iso_now()
         run.failReason = reason
         run.paused = False

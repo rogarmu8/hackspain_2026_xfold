@@ -2,23 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Camera,
   CameraOff,
   ChevronLeft,
   ChevronRight,
-  History,
   Maximize2,
   Minimize2,
   Pause,
   Play,
-  Radio,
 } from "lucide-react";
 import { XFoldLoader } from "@/components/XFoldLoader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { RunStatusBadges } from "@/components/RunStatusBadges";
-import { STAGE_ICONS, DEFAULT_STAGE_ICON } from "@/lib/stage-icons";
-import { formatFlatness, formatSeconds, operatorStepTitle, runGarmentLabel, runGarmentTone } from "@/lib/format";
+import { formatSeconds, runGarmentLabel, runGarmentTone } from "@/lib/format";
 import {
   useLiveViewport,
   type ViewportStatus,
@@ -26,15 +22,6 @@ import {
 import { RunVideoPlayer, type Status as VideoStatus } from "@/components/RunVideoPlayer";
 import type { RunReplay } from "@/lib/use-run-replay";
 import type { DataProvenance, RunDetail } from "@/lib/types";
-
-function EmptyView({ message }: { message: string }) {
-  return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center font-mono text-[12px] uppercase tracking-[0.12em] text-hud-dim">
-      <CameraOff className="size-6 opacity-60" strokeWidth={1.5} aria-hidden />
-      <span>{message}</span>
-    </div>
-  );
-}
 
 export function SimulationViewport({
   run,
@@ -93,12 +80,12 @@ export function SimulationViewport({
     Boolean(bridgeUrl) &&
     provenance !== "fixture";
   const live = running && !replay;
-  const stage = replay ? replay.active : run?.currentState ?? null;
-  const StageIcon = stage ? STAGE_ICONS[stage] ?? DEFAULT_STAGE_ICON : null;
 
   const viewport = useLiveViewport({
     enabled: showJpeg,
     bridgeUrl,
+    // Each live run has its own camera; a finished one has no frames.
+    runId: running ? run?.id ?? null : null,
     waitMs: 1500,
   });
 
@@ -144,11 +131,8 @@ export function SimulationViewport({
 
       <div
         ref={stageRef}
-        className="hud-corners viewport-focus relative min-h-[200px] flex-1 overflow-hidden bg-viewport text-hud"
+        className="relative min-h-[200px] flex-1 overflow-hidden bg-viewport text-hud"
       >
-        <span className="hud-corner" aria-hidden />
-        {live ? <div className="scanline" aria-hidden /> : null}
-
         {showVideo && run ? (
           <RunVideoPlayer
             runId={run.id}
@@ -172,129 +156,31 @@ export function SimulationViewport({
             <XFoldLoader size={72} decorative tone="dark" surface="var(--viewport)" />
           </div>
         ) : null}
-        {videoUp || videoBuffering ? null : replay ? (
-          replay.frameSrc ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={replay.frameSrc}
-              alt={`${engineName} frame at t=${formatSeconds(replay.t)}`}
-              className="absolute inset-0 h-full w-full object-contain"
-            />
-          ) : (
-            <EmptyView message={replay.loading ? "Loading replay…" : "No replay frame"} />
-          )
-        ) : showJpeg ? (
-          viewport.src ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={viewport.src}
-              alt={`${engineName} view of the XFold cell`}
-              className="absolute inset-0 h-full w-full object-contain"
-            />
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center font-mono text-[12px] uppercase tracking-[0.12em] text-hud-dim">
-              {viewport.status !== "offline" ? (
-                <XFoldLoader size={72} decorative tone="dark" surface="var(--viewport)" />
-              ) : (
-                <CameraOff className="size-6 opacity-60" strokeWidth={1.5} aria-hidden />
-              )}
-              <span>
-                {viewport.status === "offline"
-                  ? viewport.error ?? "No viewport signal"
-                  : "Loading 3D view…"}
-              </span>
-              {viewport.error && viewport.status !== "offline" ? (
-                <span className="normal-case tracking-normal text-hud-dim/70">
-                  {viewport.error}
-                </span>
-              ) : null}
-            </div>
-          )
-        ) : (
-          <EmptyView
-            message={
-              !run
-                ? "No run selected"
-                : provenance === "absent" || !streamAvailable
-                  ? "Bridge offline · no camera"
-                  : "Waiting for camera"
-            }
+        {videoUp || videoBuffering ? null : replay?.frameSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={replay.frameSrc}
+            alt={`${engineName} frame at t=${formatSeconds(replay.t)}`}
+            className="absolute inset-0 h-full w-full object-contain"
           />
+        ) : showJpeg && viewport.src ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={viewport.src}
+            alt={`${engineName} view of the XFold cell`}
+            className="absolute inset-0 h-full w-full object-contain"
+          />
+        ) : showJpeg && viewport.status !== "offline" ? (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <XFoldLoader size={72} decorative tone="dark" surface="var(--viewport)" />
+          </div>
+        ) : (
+          <p className="absolute inset-0 flex items-center justify-center font-mono text-[12px] uppercase tracking-[0.14em] text-hud-dim">
+            VIDEO UNAVAILABLE
+          </p>
         )}
 
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between px-6 py-5">
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em]">
-            {StageIcon ? (
-              <span
-                key={stage}
-                className="hud-flash flex items-center gap-2 border border-hud/40 bg-black/50 px-2 py-1"
-              >
-                <StageIcon className="size-3.5" strokeWidth={1.75} aria-hidden />
-                {stage ? operatorStepTitle(stage, run?.stages) : null}
-              </span>
-            ) : (
-              <span className="text-hud-dim">standby</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em]">
-            {videoUp ? (
-              <>
-                {running ? (
-                  <span className="pulse-dot size-2 rounded-full bg-danger text-danger" aria-hidden />
-                ) : (
-                  <History className="size-3.5" strokeWidth={1.75} aria-hidden />
-                )}
-                <span>{running ? "live" : "replay"}</span>
-              </>
-            ) : replay ? (
-              <>
-                <History className="size-3.5" strokeWidth={1.75} aria-hidden />
-                <span>replay{replay.hasTrajectory ? run?.config.inputs?.driver === "line" ? " partial · qpos" : " · mujoco" : " · phases"}</span>
-              </>
-            ) : live ? (
-              <>
-                <span className="pulse-dot size-2 rounded-full bg-danger text-danger" aria-hidden />
-                <span>live</span>
-              </>
-            ) : showJpeg ? (
-              <>
-                <Camera className="size-3.5" strokeWidth={1.75} aria-hidden />
-                <span>
-                  {engine} · long-poll
-                  {viewport.seq ? ` · #${viewport.seq}` : ""}
-                </span>
-              </>
-            ) : (
-              <>
-                <CameraOff className="size-3.5 text-hud-dim" strokeWidth={1.75} aria-hidden />
-                <span className="text-hud-dim">schematic</span>
-              </>
-            )}
-          </div>
-        </div>
-
-        {!replay && run?.telemetry?.operation ? (
-          <div className="pointer-events-none absolute inset-x-6 top-16 z-20 max-w-xl bg-black/50 px-2 py-1 font-mono text-[11px] text-hud">
-            <p>{run.telemetry.operation.message}</p>
-            {run.telemetry.activities?.map((activity) => <p key={activity.station} className="text-hud-dim">{activity.station} · last parallel hit: {activity.message}</p>)}
-          </div>
-        ) : null}
-        {replay ? (
-          <ReplayControls replay={replay} />
-        ) : run?.telemetry && !videoUp ? (
-          <dl className="pointer-events-none absolute inset-x-0 bottom-0 grid grid-cols-5 gap-x-3 border-t border-hud/15 bg-black/60 px-6 py-2.5 text-left backdrop-blur-[2px]">
-            <Metric label="operation" value={run.telemetry.operation?.id ?? operatorStepTitle(run.telemetry.state, run.stages)} />
-            <Metric label="cycle" value={String(run.telemetry.cycle)} />
-            <Metric label="flatness" value={formatFlatness(run.telemetry.flatness)} />
-            <Metric label="in bag" value={run.telemetry.shirt_in_bag == null ? "not measured" : run.telemetry.shirt_in_bag ? "yes" : "no"} />
-            <Metric label="sim t" value={formatSeconds(run.telemetry.t)} />
-          </dl>
-        ) : !run && !showJpeg ? (
-          <p className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-2 px-6 py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-hud-dim">
-            <Radio className="size-3.5" strokeWidth={1.75} aria-hidden />
-            Launch an experiment to see the cell
-          </p>
-        ) : null}
+        {replay ? <ReplayControls replay={replay} /> : null}
       </div>
     </section>
   );
@@ -360,13 +246,3 @@ function ViewportStatusBadge({ status }: { status: ViewportStatus }) {
   return null;
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <dt className="font-mono text-[10px] uppercase tracking-[0.12em] text-hud-dim">{label}</dt>
-      <dd key={value} className="value-tick truncate font-mono text-[13px] tabular text-hud">
-        {value}
-      </dd>
-    </div>
-  );
-}

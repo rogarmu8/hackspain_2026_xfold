@@ -112,6 +112,30 @@
 @keyframes rail-flow { to { background-position: 16px 0; } }
 .rail-active { background-image: repeating-linear-gradient(90deg, var(--active) 0 8px, transparent 8px 16px); background-size: 16px 100%; animation: rail-flow .9s linear infinite; }
 
+@property --row-flow {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes row-fill-flow {
+  to { --row-flow: 160px; }
+}
+.row-fill-live {
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--active-surface) var(--row-flow),
+    color-mix(in srgb, var(--active) 7%, var(--active-surface)) calc(var(--row-flow) + 80px),
+    var(--active-surface) calc(var(--row-flow) + 160px)
+  );
+  background-size: var(--row-fill) 100%;
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  animation: row-fill-flow 2.4s linear infinite;
+}
+.row-fill-live:hover {
+  background-color: var(--background);
+}
+
 @keyframes chart-bar-in {
   from { transform: scaleY(0); }
 }

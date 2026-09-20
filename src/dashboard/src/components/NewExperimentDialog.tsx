@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { PlusIcon } from "lucide-react";
+import { DicesIcon, PlusIcon } from "lucide-react";
 import {
   useId,
   useState,
@@ -34,7 +34,6 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDashboard } from "@/lib/dashboard-context";
 import {
   clothConditionLabel,
@@ -47,6 +46,13 @@ import { DesignPreview } from "@/components/DesignPreview";
 import { cutOutGarment } from "@/lib/garment-cutout";
 
 const WEIGHT_MAX = 10;
+const SEED_MAX = 999;
+const CONTROL =
+  "h-10 rounded-[var(--radius-sm)] border border-input bg-surface px-3 text-sm [background-color:var(--color-surface)]";
+
+function randomSeed(): number {
+  return Math.floor(Math.random() * (SEED_MAX + 1));
+}
 
 function evenWeights<T extends string>(keys: readonly T[]): Record<T, number> {
   return Object.fromEntries(keys.map((key) => [key, 1])) as Record<T, number>;
@@ -87,6 +93,7 @@ export type NewExperimentDefaults = {
   mode?: "individual" | "batch";
   name?: string;
   seed?: number;
+  speed?: number;
   count?: number;
   clothMix?: ClothMix;
   clothTypes?: ClothType[];
@@ -121,7 +128,7 @@ function asCondition(value: string | null | undefined): ClothCondition | undefin
 
 export function NewExperimentDialog({
   trigger,
-  triggerVariant = "default",
+  triggerVariant = "outline",
   triggerClassName,
   defaults,
   open: openProp,
@@ -136,7 +143,10 @@ export function NewExperimentDialog({
       {openProp === undefined ? (
         <DialogTrigger asChild>
           {trigger ?? (
-            <Button variant={triggerVariant} className={triggerClassName}>
+            <Button
+              variant={triggerVariant}
+              className={cn("h-10 rounded-[var(--radius-sm)] px-3 text-sm font-semibold", triggerClassName)}
+            >
               <PlusIcon data-icon="inline-start" />
               New experiment
             </Button>
@@ -144,14 +154,16 @@ export function NewExperimentDialog({
         </DialogTrigger>
       ) : null}
       <DialogContent
-        className="overflow-hidden sm:max-w-3xl"
+        className="gap-4 overflow-hidden rounded-[var(--radius-sm)] border border-divider bg-surface p-5 ring-0 sm:max-w-2xl"
         showCloseButton
       >
-        <NewExperimentDialogBody
-          key={open ? "open" : "closed"}
-          defaults={defaults}
-          onClose={() => setOpen(false)}
-        />
+        {open ? (
+          <NewExperimentDialogBody
+            key="open"
+            defaults={defaults}
+            onClose={() => setOpen(false)}
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   );
@@ -171,7 +183,12 @@ function NewExperimentDialogBody({
   const initialCount =
     defaults?.count ?? (defaults?.mode === "batch" ? 5 : 1);
   const [name, setName] = useState(defaults?.name ?? "");
-  const [seed, setSeed] = useState(defaults?.seed ?? 42);
+  const [seed, setSeed] = useState(() =>
+    defaults?.seed != null ? defaults.seed : randomSeed(),
+  );
+  // Machinery speed. Fast enough and the garment is left behind, which the
+  // line reports as a failed run — that is the experiment.
+  const [speed, setSpeed] = useState(defaults?.speed ?? 1);
   const [count, setCount] = useState(initialCount);
   const [clothMix, setClothMix] = useState<ClothMix>(defaults?.clothMix ?? "same");
   const [clothTypes, setClothTypes] = useState<ClothType[]>(
@@ -219,7 +236,8 @@ function NewExperimentDialogBody({
   if (appliedKey !== defaultsKey) {
     setAppliedKey(defaultsKey);
     setName(defaults?.name ?? "");
-    setSeed(defaults?.seed ?? 42);
+    setSeed(defaults?.seed != null ? defaults.seed : randomSeed());
+    setSpeed(defaults?.speed ?? 1);
     setCount(defaults?.count ?? (defaults?.mode === "batch" ? 5 : 1));
     setClothMix(defaults?.clothMix ?? "same");
     setClothTypes(defaults?.clothTypes?.length ? defaults.clothTypes : ["tee"]);
@@ -273,6 +291,7 @@ function NewExperimentDialogBody({
     ? catalogConditions
     : DEFAULT_CLOTH_CONDITIONS;
   const selectedType = clothTypes[0] ?? typePool[0] ?? "tee";
+  const maxSpeed = snapshot.capabilities.speedRange?.[1] ?? 20;
   const customGarment = clothMix === "same" && selectedType === "custom";
 
   function summarizeMix(
@@ -417,6 +436,7 @@ function NewExperimentDialogBody({
                 condPool,
                 conditionWeights,
               ),
+              speed,
               customDesign:
                 customGarment && designAttached
                   ? designPayload ?? undefined
@@ -436,6 +456,7 @@ function NewExperimentDialogBody({
                 condPool,
                 conditionWeights,
               ),
+              speed,
               customDesign:
                 customGarment && designAttached
                   ? designPayload ?? undefined
@@ -458,49 +479,61 @@ function NewExperimentDialogBody({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>New experiment</DialogTitle>
-        <DialogDescription>
+        <DialogTitle className="text-[17px] font-semibold tracking-[-0.01em]">New experiment</DialogTitle>
+        <DialogDescription className="text-[13px]">
           Garment, condition, and how many runs · {process?.scenario ?? "active simulator process"}
         </DialogDescription>
       </DialogHeader>
 
       {snapshot.connection === "disconnected" || snapshot.provenance === "absent" ? (
-        <p className="rounded-[var(--radius-sm)] bg-muted/50 px-3 py-2 text-[13px] text-muted-foreground">
-          <span className="font-semibold text-foreground">Bridge offline.</span>{" "}
-          Launch is disabled until the simulator is connected.
+        <p className="text-[13px] text-muted-foreground">
+          Bridge offline — launch is disabled until the simulator is connected.
         </p>
       ) : null}
 
-      <form id={formId} onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
-        <FieldGroup className="grid grid-cols-1 gap-x-5 gap-y-3 sm:grid-cols-6 sm:gap-y-3">
-          <Field className="sm:col-span-2">
-            <FieldLabel htmlFor={`${formId}-name`}>Name (optional)</FieldLabel>
-            <Input
+      <form id={formId} onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+        <FieldGroup className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-12">
+          <Field className="sm:col-span-4">
+            <FieldLabel htmlFor={`${formId}-name`} className="text-[13px] font-semibold">Name</FieldLabel>
+            <input
               id={`${formId}-name`}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Cycle check"
+              placeholder="Optional"
+              className={`${CONTROL} w-full`}
             />
           </Field>
 
           <Field className="sm:col-span-2">
-            <FieldLabel htmlFor={`${formId}-seed`}>
+            <FieldLabel htmlFor={`${formId}-seed`} className="text-[13px] font-semibold">
               {batch ? "Base seed" : "Seed"}
             </FieldLabel>
-            <Input
-              id={`${formId}-seed`}
-              type="number"
-              min={0}
-              step={1}
-              value={seed}
-              onChange={(e) => setSeed(Number(e.target.value))}
-              required
-            />
+            <div className={`${CONTROL} flex items-center gap-1 pr-1.5`}>
+              <input
+                id={`${formId}-seed`}
+                type="number"
+                min={0}
+                step={1}
+                value={seed}
+                onChange={(e) => setSeed(Number(e.target.value))}
+                required
+                className="min-w-0 flex-1 bg-transparent outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setSeed(randomSeed())}
+                aria-label="Draw a random seed"
+                title="Random seed"
+                className="inline-flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <DicesIcon className="size-3.5" />
+              </button>
+            </div>
           </Field>
 
           <Field className="sm:col-span-2">
-            <FieldLabel htmlFor={`${formId}-count`}>N runs</FieldLabel>
-            <Input
+            <FieldLabel htmlFor={`${formId}-count`} className="text-[13px] font-semibold">Runs</FieldLabel>
+            <input
               id={`${formId}-count`}
               type="number"
               min={1}
@@ -514,17 +547,33 @@ function NewExperimentDialogBody({
                 }
               }}
               required
+              className={`${CONTROL} w-full`}
             />
-            <FieldDescription>
-              More than one queues a batch.
-            </FieldDescription>
+          </Field>
+
+          <Field className="sm:col-span-4">
+            <FieldLabel htmlFor={`${formId}-speed`} className="text-[13px] font-semibold">Speed</FieldLabel>
+            <div className={`${CONTROL} flex items-center gap-2`}>
+              <input
+                id={`${formId}-speed`}
+                type="range"
+                min={1}
+                max={maxSpeed}
+                step={0.5}
+                value={speed}
+                onChange={(e) => setSpeed(Number(e.target.value))}
+                className="min-w-0 flex-1 accent-[var(--color-active)]"
+              />
+              <span className="w-8 shrink-0 text-right font-mono text-[13px] tabular">
+                {speed}x
+              </span>
+            </div>
           </Field>
 
           <MixField
-            className="sm:col-span-3"
+            className="sm:col-span-6"
             formId={formId}
             axis="garment"
-            batch={batch}
             mix={clothMix}
             onMixChange={(mix) => {
               setClothMix(mix);
@@ -533,7 +582,7 @@ function NewExperimentDialogBody({
                 if (clothTypes[0] === "custom") setClothTypes(["tee"]);
               }
             }}
-            options={clothMix === "same" ? typePool : catalogPool}
+            options={typePool}
             selected={clothTypes}
             onSelectedChange={(next) => {
               setClothTypes(next);
@@ -542,7 +591,6 @@ function NewExperimentDialogBody({
             labelOf={clothTypeLabel}
             pickHint="One garment for every run. Custom = cut-out from the photo."
             randomHint="Each run draws a type from the weights and seed."
-            listHint="Each run is drawn from the types you mark."
             weights={clothWeights}
             onWeightChange={(key, value) =>
               setClothWeights((prev) => ({ ...prev, [key]: value }))
@@ -550,10 +598,9 @@ function NewExperimentDialogBody({
           />
 
           <MixField
-            className="sm:col-span-3"
+            className="sm:col-span-6"
             formId={`${formId}-cond`}
             axis="condition"
-            batch={batch}
             mix={conditionMix}
             onMixChange={setConditionMix}
             options={condPool}
@@ -562,7 +609,6 @@ function NewExperimentDialogBody({
             labelOf={clothConditionLabel}
             pickHint="The same condition for every run."
             randomHint="Each run draws a condition from the weights."
-            listHint="Each run is drawn from the conditions you mark."
             weights={conditionWeights}
             onWeightChange={(key, value) =>
               setConditionWeights((prev) => ({ ...prev, [key]: value }))
@@ -570,14 +616,15 @@ function NewExperimentDialogBody({
           />
 
           {customGarment ? (
-          <Field className="sm:col-span-3">
-            <FieldLabel htmlFor={`${formId}-design`}>Garment photo</FieldLabel>
+          <Field className="sm:col-span-12">
+            <FieldLabel htmlFor={`${formId}-design`} className="text-[13px] font-semibold">Garment photo</FieldLabel>
             <Input
               key={designInputKey}
               id={`${formId}-design`}
               type="file"
               accept="image/png,image/jpeg,image/webp,image/gif"
               onChange={(event) => void onPickDesign(event.target.files?.[0])}
+              className={`${CONTROL} py-1.5`}
             />
             <FieldDescription>
               {detecting
@@ -614,37 +661,7 @@ function NewExperimentDialogBody({
             ) : null}
           </Field>
           ) : null}
-
-          <details className="border-t border-border pt-2 sm:col-span-6">
-            <summary className="cursor-pointer text-sm font-semibold">
-              Advanced options
-            </summary>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {process?.stages
-                ? process.stages
-                    .map((s) => s.label ?? s.state)
-                    .filter((label, i, all) => all[i - 1] !== label)
-                    .join(" → ")
-                : "Phases and parameters come from the active simulator."}
-            </p>
-          </details>
         </FieldGroup>
-
-        <div className="rounded-[var(--radius-sm)] bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-          <p className="font-semibold text-foreground">Summary</p>
-          <p className="mt-1">
-            {count === 1 ? "1 run" : `${count} runs`} · seed {seed} · {scenario}
-            {" · "}
-            {summarizeMix(clothMix, clothTypes, clothTypeLabel, "catalogue")}
-            {" · "}
-            {summarizeMix(
-              conditionMix,
-              conditions,
-              clothConditionLabel,
-              "all",
-            )}
-          </p>
-        </div>
 
         {error ? (
           <p className="text-sm text-destructive" role="alert">
@@ -659,28 +676,40 @@ function NewExperimentDialogBody({
         ) : null}
       </form>
 
-      <DialogFooter>
-        <DialogClose asChild>
-          <Button type="button" variant="outline">
-            Cancel
+      <DialogFooter className="-mx-5 -mb-5 flex-col items-stretch gap-3 rounded-none border-t border-divider bg-surface px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="min-w-0 text-[13px] text-muted-foreground">
+          {count === 1 ? "1 run" : `${count} runs`} · seed {seed} · {speed}x
+          {" · "}
+          {summarizeMix(clothMix, clothTypes, clothTypeLabel, "catalogue")}
+          {" · "}
+          {summarizeMix(conditionMix, conditions, clothConditionLabel, "all")}
+        </p>
+        <div className="flex justify-end gap-2">
+          <DialogClose asChild>
+            <Button type="button" variant="outline" className="h-10 rounded-[var(--radius-sm)] px-3 text-sm">
+              Cancel
+            </Button>
+          </DialogClose>
+          <Button
+            type="submit"
+            form={formId}
+            variant="outline"
+            disabled={submitting || !canLaunch}
+            className="h-10 rounded-[var(--radius-sm)] px-3 text-sm font-semibold"
+          >
+            {submitting ? "Launching…" : "Launch"}
           </Button>
-        </DialogClose>
-        <Button
-          type="submit"
-          form={formId}
-          disabled={submitting || !canLaunch}
-        >
-          {submitting ? "Launching…" : "Launch"}
-        </Button>
+        </div>
       </DialogFooter>
     </>
   );
 }
 
+const MIX_RANDOM = "__random__";
+
 function MixField<T extends string>({
   formId,
   axis,
-  batch,
   mix,
   onMixChange,
   options,
@@ -689,14 +718,12 @@ function MixField<T extends string>({
   labelOf,
   pickHint,
   randomHint,
-  listHint,
   weights,
   onWeightChange,
   className,
 }: {
   formId: string;
   axis: string;
-  batch: boolean;
   mix: ClothMix;
   onMixChange: (mix: ClothMix) => void;
   options: T[];
@@ -705,125 +732,84 @@ function MixField<T extends string>({
   labelOf: (key: string) => string;
   pickHint: string;
   randomHint: string;
-  listHint: string;
   weights: Record<string, number>;
   onWeightChange: (key: T, value: number) => void;
   className?: string;
 }) {
   const title = axis === "garment" ? "Garment type" : "Condition";
+  const selectId = `${formId}-${axis}`;
+  const weightOptions = options.filter((key) => key !== "custom");
+  const selectValue =
+    mix === "random" ? MIX_RANDOM : (selected[0] ?? options[0] ?? "");
 
-  function toggle(key: T) {
-    onSelectedChange(
-      selected.includes(key)
-        ? selected.filter((item) => item !== key)
-        : [...selected, key],
-    );
+  function onSelect(value: string) {
+    if (value === MIX_RANDOM) {
+      onMixChange("random");
+      return;
+    }
+    onMixChange("same");
+    onSelectedChange([value as T]);
   }
 
   return (
-    <Field className={className}>
-      <FieldLabel>{title}</FieldLabel>
-      <ToggleGroup
-        type="single"
-        variant="outline"
-        value={mix === "list" && !batch ? "same" : mix}
-        onValueChange={(value: string) => {
-          if (value === "same" || value === "random" || value === "list") {
-            onMixChange(value);
-          }
-        }}
-        aria-label={title}
-        className="flex-wrap"
+    <Field
+      className={cn(
+        "rounded-[var(--radius-sm)] border border-divider bg-card/50 p-3",
+        className,
+      )}
+    >
+      <FieldLabel htmlFor={selectId} className="text-[13px] font-semibold">
+        {title}
+      </FieldLabel>
+      <select
+        id={selectId}
+        className={`${CONTROL} mt-0 w-full`}
+        value={selectValue}
+        onChange={(e) => onSelect(e.target.value)}
       >
-        <ToggleGroupItem value="same">
-          {batch ? "Same" : "Pick"}
-        </ToggleGroupItem>
-        <ToggleGroupItem value="random">Random</ToggleGroupItem>
-        {batch ? (
-          <ToggleGroupItem value="list">Select</ToggleGroupItem>
-        ) : null}
-      </ToggleGroup>
+        {options.map((key) => (
+          <option key={key} value={key}>
+            {labelOf(key)}
+          </option>
+        ))}
+        <option value={MIX_RANDOM}>Random</option>
+      </select>
 
-      {mix === "same" ? (
-        <>
-          <select
-            id={`${formId}-${axis}`}
-            className="mt-1 block h-10 w-full rounded-[var(--radius-sm)] border border-input bg-surface px-3 text-sm"
-            value={selected[0] ?? options[0] ?? ""}
-            onChange={(e) => onSelectedChange([e.target.value as T])}
-          >
-            {options.map((key) => (
-              <option key={key} value={key}>
-                {labelOf(key)}
-              </option>
-            ))}
-          </select>
-          <FieldDescription>{pickHint}</FieldDescription>
-        </>
-      ) : null}
+      {mix === "same" ? <FieldDescription>{pickHint}</FieldDescription> : null}
 
       {mix === "random" ? (
         <>
-          <div className="mt-1 grid grid-cols-1 gap-1">
-            {options.map((key) => {
+          <div className="grid grid-cols-1 gap-y-2">
+            {weightOptions.map((key) => {
               const value = Math.max(0, Number(weights[key] ?? 1));
               return (
                 <label
                   key={key}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-sm"
+                  className="grid grid-cols-[minmax(0,1fr)_minmax(0,5.5rem)_2.25rem] items-center gap-2 text-sm"
                 >
                   <span className="min-w-0 truncate">{labelOf(key)}</span>
-                  <span className="flex items-center gap-2">
-                    <input
-                      type="range"
-                      min={0}
-                      max={WEIGHT_MAX}
-                      step={1}
-                      value={value}
-                      aria-label={`Weight ${labelOf(key)}`}
-                      onChange={(event) =>
-                        onWeightChange(key, Number(event.target.value))
-                      }
-                      className="w-24 accent-foreground"
-                    />
-                    <span className="w-4 text-right font-mono tabular-nums text-muted-foreground">
-                      {value}
-                    </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={WEIGHT_MAX}
+                    step={1}
+                    value={value}
+                    aria-label={`Weight ${labelOf(key)}`}
+                    onChange={(event) =>
+                      onWeightChange(key, Number(event.target.value))
+                    }
+                    className="w-full accent-[var(--color-active)]"
+                  />
+                  <span className="w-9 shrink-0 text-right font-mono text-[13px] tabular">
+                    {value}x
                   </span>
                 </label>
               );
             })}
           </div>
           <FieldDescription>
-            {randomHint} 0 = never.
+            {randomHint} 0x = never.
           </FieldDescription>
-        </>
-      ) : null}
-
-      {mix === "list" && batch ? (
-        <>
-          <div className="flex flex-wrap gap-1.5">
-            {options.map((key) => {
-              const on = selected.includes(key);
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => toggle(key)}
-                  className={cn(
-                    "rounded-lg border px-2.5 py-1.5 text-sm transition-colors",
-                    on
-                      ? "border-foreground bg-muted font-semibold text-foreground"
-                      : "border-input bg-card text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {labelOf(key)}
-                </button>
-              );
-            })}
-          </div>
-          <FieldDescription>{listHint}</FieldDescription>
         </>
       ) : null}
     </Field>

@@ -77,18 +77,32 @@ _RANK: dict[CellState, int] = {
 _TRACK_EVERY = 16  # ~30 Hz at timestep 0.002
 # The UI flags a stall after 8 s without an event; keep well under it.
 _HEARTBEAT_S = 5.0
-# A cycle is ~45 s of sim time. Well past that, something is wedged.
+# A cycle is ~45 s of sim time at nominal speed, and proportionally less as
+# the machines speed up. Well past that, the line is not doing the cycle any
+# more — usually cloth that stopped being carried — so the run is failed
+# rather than left dragging.
 _SIM_TIME_CAP_S = 240.0
 
 
 class LineDriver:
-    """Steps xfold.line.Line on the shared SimSession and journals it."""
+    """Steps xfold.line.Line on a SimSession and journals it.
 
-    def __init__(self, runtime: Runtime, session: SimSession) -> None:
+    One worker per session: each claims a run from the Runtime, simulates its
+    cycle on its own session, and releases it. With several sessions the
+    bridge runs that many experiments at once and queues the rest; with one
+    (the default, and all Isaac can do) it behaves as it always did.
+    """
+
+    def __init__(self, runtime: Runtime, session: SimSession, *, sessions=None) -> None:
         self.runtime = runtime
-        self.session = session
+        self.sessions = list(sessions) if sessions else [session]
+        # The first session is "the" one for callers that need a single sim
+        # (recording seek, the focused viewport).
+        self.session = self.sessions[0]
+        runtime.concurrency = len(self.sessions)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._threads: list[threading.Thread] = []
         from dataclasses import asdict
         from xfold.line import LINE_PHASES
         from xfold.shirt import shirt_config
@@ -103,10 +117,18 @@ class LineDriver:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
-        self._thread = threading.Thread(
-            target=self._loop, name="xfold-line-driver", daemon=True
-        )
-        self._thread.start()
+        self._threads = [
+            threading.Thread(
+                target=self._loop,
+                args=(f"w{index}", session),
+                name=f"xfold-line-driver-{index}",
+                daemon=True,
+            )
+            for index, session in enumerate(self.sessions)
+        ]
+        for thread in self._threads:
+            thread.start()
+        self._thread = self._threads[0]
 
     def run_here(self) -> None:
         """Run the driver loop on the calling thread, until ``stop()``.
@@ -115,38 +137,39 @@ class LineDriver:
         caller keeps the main thread for this and serves HTTP elsewhere.
         """
         self._stop.clear()
-        self._loop()
+        self._loop("w0", self.session)
 
     def stop(self) -> None:
         self._stop.set()
         self.runtime.wake_driver()
-        if self._thread:
-            self._thread.join(timeout=2.0)
+        for thread in self._threads or ([self._thread] if self._thread else []):
+            thread.join(timeout=2.0)
 
-    def _loop(self) -> None:
+    def _loop(self, worker: str, session: SimSession) -> None:
         while not self._stop.is_set():
-            run = self.runtime.driver_active_run()
+            run = self.runtime.claim_run(worker)
             if run is None:
                 self.runtime.wait_wake(0.5)
                 continue
-            if run.paused or run.lifecycle == "paused":
-                self.runtime.wait_wake(0.25)
-                continue
-            self._run_cycle(run)
+            try:
+                self._run_cycle(run, session)
+            finally:
+                self.runtime.release_run(run.id)
 
     # --- journal helpers ------------------------------------------------
 
-    def _log(self, run_id: str, message: str, level: str = "info") -> None:
+    def _log(self, run_id: str, message: str, level: str = "info", session: SimSession | None = None) -> None:
         """stdout for the operator terminal + journal ``log`` for the console."""
-        print(f"[line-driver] {message}", flush=True)
+        print(f"[line-driver] {run_id} {message}", flush=True)
         self.runtime.emit_log(
-            run_id, message, level=level, source="line", t=self.session.sim_time()
+            run_id, message, level=level, source="line",
+            t=(session or self.session).sim_time(),
         )
 
     def _active(self, run_id: str):
-        """The run if it is still ours and not cancelled, else None."""
-        run = self.runtime.driver_active_run()
-        if run is None or run.id != run_id:
+        """The run if it is still going and not cancelled, else None."""
+        run = self.runtime.driver_run(run_id)
+        if run is None:
             return None
         if run.cancel_requested or run.lifecycle == "cancelled":
             return None
@@ -177,8 +200,8 @@ class LineDriver:
         if observation["measurements"]:
             self.runtime.emit_metrics(run_id, observation["t"], observation["measurements"])
 
-    def _capture_photo(self, run_id: str, line) -> str | None:
-        got = self.session.render_photo("qc_cam")
+    def _capture_photo(self, run_id: str, line, session: SimSession | None = None) -> str | None:
+        got = (session or self.session).render_photo("qc_cam")
         if not got:
             line._observe("PHOTO_UNAVAILABLE", "product photo unavailable (no GL)", level="warning")
             return None
@@ -189,7 +212,7 @@ class LineDriver:
 
     # --- the cycle -------------------------------------------------------
 
-    def _run_cycle(self, run) -> None:
+    def _run_cycle(self, run, session: SimSession | None = None) -> None:
         from xfold.shirt import shirt_config
 
         run_id = run.id
@@ -197,8 +220,9 @@ class LineDriver:
         garment = getattr(run, "garment", None) or shirt_config().garment
         skewed = bool(getattr(run, "skewed", False))
         custom_tex = getattr(run, "customTexture", None)
+        speed = float(getattr(run, "speed", 1.0) or 1.0)
         recorder = TrajectoryRecorder(run_id, sample_hz=10.0)
-        session = self.session
+        session = session or self.session
         dt = float(session.model.opt.timestep) if session.ok else 0.002
 
         # Line.log fires inside session.lock; emit_log takes the runtime lock.
@@ -215,7 +239,7 @@ class LineDriver:
                 Only touches `pending` / `shot`; the journal call happens on
                 the driver loop once the lock is released.
                 """
-                name = self._capture_photo(run_id, line)
+                name = self._capture_photo(run_id, line, session)
                 if name:
                     shot.append(name)
 
@@ -224,6 +248,8 @@ class LineDriver:
             dt = float(session.model.opt.timestep)
             with session.lock:
                 line = session.make_line(
+                    speed=speed,
+                    garment=garment,
                     repeat=False,
                     log=lambda message: None,
                     skewed=skewed,
@@ -237,8 +263,10 @@ class LineDriver:
                 f"cycle started · {cfg.garment} ({cfg.mesh}) · "
                 f"{'custom garment (cut-out, both faces)' if custom_tex else cfg.texture} · "
                 f"{'placed skewed' if skewed else 'placed square'} · "
+                f"machines at {speed:g}x · "
                 f"seed {seed} ({'applied to infeed' if run.inputs.get('seedApplied') else 'fixed infeed'}) · "
                 f"nq={session.model.nq} · timestep {dt:g}s",
+                session=session,
             )
 
             stage = ""
@@ -279,20 +307,24 @@ class LineDriver:
                 if finished:
                     break
 
-                if t > _SIM_TIME_CAP_S:
+                if t > _SIM_TIME_CAP_S / speed:
                     self._log(
                         run_id,
-                        f"cycle abandoned after {t:.0f}s of simulation in {stage or '?'}",
+                        f"cycle abandoned after {t:.0f}s of simulation in {stage or '?'} "
+                        f"(machines at {speed:g}x)",
                         level="error",
+                        session=session,
                     )
-                    self.runtime.finish_failed(run_id, t, reason="cycle did not finish")
+                    self.runtime.finish_failed(
+                        run_id, t, reason=f"line did not keep up at {speed:g}x"
+                    )
                     return
 
                 now = time.monotonic()
                 if now - last_event > _HEARTBEAT_S:
                     # Keep the console's stall watchdog quiet during a long,
                     # legitimate phase (steam dwell, belt run).
-                    self._log(run_id, f"{stage or '?'} in progress · t={t:.1f}s", level="debug")
+                    self._log(run_id, f"{stage or '?'} in progress · t={t:.1f}s", level="debug", session=session)
                     last_event = time.monotonic()
 
                 leftover = clock + steps * dt - time.perf_counter()
@@ -315,19 +347,17 @@ class LineDriver:
             ok, reason = grade_line_outcome(outcome, garment, condition)
             mark = garment_result_label(garment, condition)
             if ok:
-                self._log(run_id, f"cycle complete · {mark.lower()} · {t:.1f}s of simulation")
+                self._log(run_id, f"cycle complete · {mark.lower()} · {t:.1f}s of simulation", session=session)
                 self.runtime.finish_success(run_id, t)
             else:
-                self._log(run_id, f"cycle failed · {reason} · {t:.1f}s of simulation", level="error")
+                self._log(run_id, f"cycle failed · {reason} · {t:.1f}s of simulation", level="error", session=session)
                 self.runtime.finish_failed(run_id, t, reason=reason)
         except Exception as exc:  # noqa: BLE001
-            self._log(run_id, f"cycle failed: {exc}", level="error")
+            self._log(run_id, f"cycle failed: {exc}", level="error", session=session)
             final = self.runtime.driver_active_run()
             if final and final.id == run_id and final.lifecycle == "running":
-                self.runtime.finish_failed(
-                    run_id, self.session.sim_time(), reason=str(exc)
-                )
+                self.runtime.finish_failed(run_id, session.sim_time(), reason=str(exc))
         finally:
             path = recorder.finalize()
             if path:
-                self._log(run_id, f"trajectory → {path}", level="debug")
+                self._log(run_id, f"trajectory → {path}", level="debug", session=session)

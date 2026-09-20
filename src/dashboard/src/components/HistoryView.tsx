@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { ArrowUpRight } from "lucide-react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "./ui/table";
 import { AppShell } from "@/components/AppShell";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
@@ -11,6 +10,7 @@ import { GraphsView, conditionFilterLabel } from "@/components/GraphsView";
 import { NewExperimentDialog } from "@/components/NewExperimentDialog";
 import { RunStatusBadges } from "@/components/RunStatusBadges";
 import { XFoldLoader } from "@/components/XFoldLoader";
+import { cycleFill, groupOperatorSteps } from "@/lib/cycle-progress";
 import { useDashboard } from "@/lib/dashboard-context";
 import { formatIso, formatSeconds, clothTypeLabel } from "@/lib/format";
 import { filterChartRuns, GRAPH_GROUPS, GRAPH_MEASURES, uniqueValues, type ChartMetric, type GraphGroup } from "@/lib/run-charts";
@@ -42,11 +42,13 @@ export function HistoryView() {
   const [metric, setMetric] = useState<ChartMetric>("cycle");
   const [group, setGroup] = useState<GraphGroup>("clothType");
 
-  const active = snapshot.activeRun;
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return history.filter((run) => {
-      if (run.id === active?.id) return false;
+    // Running first, then queued, then the rest as the bridge ordered them
+    // (newest first): the live ones sit at the top of the same list.
+    const rank = (run: RunSummary) =>
+      run.lifecycle === "running" || run.lifecycle === "paused" ? 0 : run.lifecycle === "queued" ? 1 : 2;
+    const matches = history.filter((run) => {
       if (lifecycle !== "all" && run.lifecycle !== lifecycle) return false;
       if (!q) return true;
       return (
@@ -58,7 +60,11 @@ export function HistoryView() {
         (run.batchId?.toLowerCase().includes(q) ?? false)
       );
     });
-  }, [history, lifecycle, query, active?.id]);
+    return matches
+      .map((run, index) => ({ run, index }))
+      .sort((a, b) => rank(a.run) - rank(b.run) || a.index - b.index)
+      .map(({ run }) => run);
+  }, [history, lifecycle, query]);
 
   const graphRows = useMemo(
     () => filterChartRuns(history, { lifecycle, query, clothType, clothCondition, batchId: "all" }),
@@ -137,20 +143,6 @@ export function HistoryView() {
         </>
       }
     >
-      {active && view === "list" ? (
-        <Link
-          href={`/historial/${active.id}`}
-          className="mb-3 flex shrink-0 flex-wrap items-center gap-3 border border-active/40 bg-surface px-4 py-2 no-underline hover:border-active"
-        >
-          <RunStatusBadges run={active} />
-          <span className="font-mono font-semibold tabular">{active.id}</span>
-          {active.name ? <span className="text-sm text-muted-foreground">{active.name}</span> : null}
-          <span className="ml-auto inline-flex items-center gap-1 text-sm font-semibold">
-            Open control <ArrowUpRight className="size-3.5" aria-hidden />
-          </span>
-        </Link>
-      ) : null}
-
       <div className="mb-3 flex shrink-0 items-end gap-3 overflow-x-auto">
         <div>
           <p className="text-[13px] font-semibold" id="history-view-label">View</p>
@@ -255,9 +247,28 @@ export function HistoryView() {
 }
 
 function RunRow({ run, onOpen }: { run: RunSummary; onOpen: () => void }) {
+  const { getRun } = useDashboard();
+  const live = run.lifecycle === "running" || run.lifecycle === "paused";
+  const stages = live ? getRun(run.id)?.stages ?? [] : [];
+  const fill = stages.length ? cycleFill(groupOperatorSteps(stages)) : 0;
+  const pct = `${Math.round(fill * 1000) / 10}%`;
+
   return (
     <TableRow
-      className="cursor-pointer border-b border-divider hover:bg-canvas"
+      className={`cursor-pointer border-b border-divider hover:bg-canvas ${
+        live && fill > 0 && run.lifecycle === "running" ? "row-fill-live" : ""
+      }`}
+      style={
+        live && fill > 0
+          ? ({
+              "--row-fill": pct,
+              ...(run.lifecycle === "paused"
+                ? { backgroundImage: `linear-gradient(90deg, var(--active-surface) ${pct}, transparent ${pct})` }
+                : null),
+            } as CSSProperties)
+          : undefined
+      }
+      aria-busy={run.lifecycle === "running" || undefined}
       onClick={onOpen}
     >
       <TableCell className="px-4 py-3">
@@ -285,6 +296,9 @@ function RunRow({ run, onOpen }: { run: RunSummary; onOpen: () => void }) {
         ) : "—"}
       </TableCell>
       <TableCell className="px-4 py-3 font-mono tabular">{run.seed}</TableCell>
+      <TableCell className="px-4 py-3 font-mono tabular">
+        {run.speed && run.speed !== 1 ? `${run.speed}x` : "—"}
+      </TableCell>
       <TableCell className="px-4 py-3 text-right font-mono tabular">{formatSeconds(run.metrics.cycleTimeSimS)}</TableCell>
       <TableCell className="px-4 py-3 text-muted-foreground">{formatIso(run.startedAtIso)}</TableCell>
     </TableRow>

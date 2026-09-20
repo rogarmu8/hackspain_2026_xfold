@@ -2,7 +2,8 @@
 
 import type { PhaseId } from "@xfold/protocol";
 import { Check, X, type LucideIcon } from "lucide-react";
-import { operatorStepTitle, formatSeconds } from "@/lib/format";
+import { cycleFill, groupOperatorSteps } from "@/lib/cycle-progress";
+import { formatSeconds } from "@/lib/format";
 import { STAGE_ICONS, DEFAULT_STAGE_ICON } from "@/lib/stage-icons";
 import type { StageProgress } from "@/lib/types";
 
@@ -118,22 +119,6 @@ export function StageStepper({
   );
 }
 
-function cycleFill(items: OperatorStep[]): number {
-  if (items.length === 0) return 0;
-  let units = 0;
-  for (const step of items) {
-    if (step.status === "completed" || step.status === "skipped") {
-      units += 1;
-      continue;
-    }
-    if (step.status === "active" || step.status === "failed") {
-      units += 0.55;
-    }
-    break;
-  }
-  return units / items.length;
-}
-
 function FillRail({ filled, from }: { filled: number; from: "left" | "right" }) {
   return (
     <span className="relative h-px flex-1 overflow-hidden bg-divider" aria-hidden>
@@ -145,56 +130,6 @@ function FillRail({ filled, from }: { filled: number; from: "left" | "right" }) 
       />
     </span>
   );
-}
-
-type OperatorStep = {
-  label: string;
-  state: PhaseId;
-  states: PhaseId[];
-  status: StageProgress["status"];
-  durationSimS: number | null;
-};
-
-function groupOperatorSteps(stages: StageProgress[]): OperatorStep[] {
-  const groups: OperatorStep[] = [];
-  for (const stage of stages) {
-    const label = operatorStepTitle(stage.state, stages);
-    const prev = groups.at(-1);
-    if (prev && prev.label === label) {
-      prev.states.push(stage.state);
-      prev.status = combineStatus(prev.status, stage.status);
-      prev.durationSimS = sumDuration(prev.durationSimS, stage);
-      if (stage.status === "active") prev.state = stage.state;
-      continue;
-    }
-    groups.push({
-      label,
-      state: stage.state,
-      states: [stage.state],
-      status: stage.status,
-      durationSimS: stage.status === "completed" ? stage.durationSimS : null,
-    });
-  }
-  return groups;
-}
-
-function combineStatus(
-  a: StageProgress["status"],
-  b: StageProgress["status"],
-): StageProgress["status"] {
-  if (a === "failed" || b === "failed") return "failed";
-  if (a === "active" || b === "active") return "active";
-  if (a === "completed" && b === "pending") return "active";
-  if (a === "pending" && b === "completed") return "active";
-  if (a === "completed" && (b === "completed" || b === "skipped")) return "completed";
-  if (a === "skipped" && b === "completed") return "completed";
-  if (a === "skipped" && b === "skipped") return "skipped";
-  return b;
-}
-
-function sumDuration(current: number | null, stage: StageProgress): number | null {
-  if (stage.status !== "completed" || stage.durationSimS == null) return current;
-  return (current ?? 0) + stage.durationSimS;
 }
 
 function statusLabel(stage: { status: StageProgress["status"]; durationSimS: number | null }): string {

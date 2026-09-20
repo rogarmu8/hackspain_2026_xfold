@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import os
 import queue
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -49,6 +50,9 @@ def _repo_data_dir() -> Path:
 # Render rate for both the video and the JPEG hub. The line runs at about
 # realtime, so this is also the video's frame rate.
 VIEWPORT_FPS = 12.0
+# Sims side by side, so several experiments run at once (the rest queue).
+# Each is a MuJoCo scene of its own and about one core while it runs.
+DEFAULT_WORKERS = max(1, int(os.environ.get("XFOLD_BRIDGE_WORKERS", "3")))
 
 
 def create_app(
@@ -56,41 +60,80 @@ def create_app(
     persist: bool = True,
     session: SimSession | None = None,
     start_driver: bool = True,
+    workers: int = DEFAULT_WORKERS,
 ) -> FastAPI:
     """The bridge. ``session`` swaps the engine (default: MuJoCo SimSession).
 
+    ``workers`` sims run side by side, so that many experiments simulate at
+    once and the rest queue (``/capabilities.maxConcurrentRuns``). Each worker
+    owns a session, a viewport and its run's video; an injected ``session``
+    (Isaac, whose Kit is one stage on one thread) means exactly one.
+
     With ``start_driver=False`` the driver is created but not started: the
-    caller runs ``app.state.driver.run_here()`` on a thread of its choosing
-    (Isaac Sim's Kit only works on the main thread; see xfold_isaac.bridge).
+    caller runs ``app.state.driver.run_here()`` on a thread of its choosing.
     """
     journal = Journal(persist_dir=_repo_data_dir() if persist else None)
     store = ExperimentStore(default_db_path() if persist else ":memory:")
     runtime = Runtime(journal, store=store)
-    session = session if session is not None else SimSession()
-    viewport_hub = ViewportHub()
+    sessions = [session] if session is not None else [SimSession() for _ in range(max(1, workers))]
+    session = sessions[0]
+    hubs = [ViewportHub() for _ in sessions]
+    viewport_hub = hubs[0]
+
+    def worker_run(worker: str):
+        """The run that worker is simulating, if it is live."""
+        for run in list(runtime.runs.values()):
+            if run.worker == worker and run.lifecycle == "running":
+                return run
+        return None
+
+    def live_run_for(worker: str):
+        run = worker_run(worker)
+        return run.id if run is not None else None
+
     # One render per frame feeds the run's H.264 video and the JPEG hub. The
     # producer has no notion of runs, so it asks the runtime which one is live.
-    video_width, video_height = session.video_size or (session.width, session.height)
-    video = VideoManager(
-        video_width,
-        video_height,
-        session.video_fps or VIEWPORT_FPS,
-        on_open=runtime.mark_video,
-        clock=session.video_clock,
-    )
+    videos: list[VideoManager] = []
+    producers: list[MujocoViewportProducer] = []
+    for index, worker_session in enumerate(sessions):
+        video_width, video_height = worker_session.video_size or (
+            worker_session.width,
+            worker_session.height,
+        )
+        worker_video = VideoManager(
+            video_width,
+            video_height,
+            worker_session.video_fps or VIEWPORT_FPS,
+            on_open=runtime.mark_video,
+            clock=worker_session.video_clock,
+        )
+        name = f"w{index}"
+        active = (lambda worker: lambda: live_run_for(worker))(name)
+        videos.append(worker_video)
+        producers.append(
+            MujocoViewportProducer(
+                worker_session, hubs[index], fps=VIEWPORT_FPS, video=worker_video, active_run=active
+            )
+        )
+        worker_session.attach_video(worker_video, active)
+    video = videos[0]
+    viewport_producer = producers[0]
 
-    def live_run() -> str | None:
+    def hub_for_run(run_id: str | None) -> ViewportHub | None:
+        """The viewport of whichever worker holds this run."""
+        if run_id is None:
+            return None
+        run = runtime.runs.get(run_id)
+        if run is None or run.worker is None:
+            return None
+        index = int(run.worker[1:]) if run.worker[1:].isdigit() else 0
+        return hubs[index] if index < len(hubs) else None
+
+    def focused_hub() -> ViewportHub:
+        """What `/viewport/frame` (no run id) shows: the focused run's worker."""
         run = runtime.driver_active_run()
-        return run.id if run is not None and run.lifecycle == "running" else None
-
-    viewport_producer = MujocoViewportProducer(
-        session,
-        viewport_hub,
-        fps=VIEWPORT_FPS,
-        video=video,
-        active_run=live_run,
-    )
-    session.attach_video(video, live_run)
+        hub = hub_for_run(run.id) if run is not None else None
+        return hub or viewport_hub
 
     # Driver chosen at startup once SimSession tries to load MuJoCo.
     driver: LineDriver | PressBridgeDriver | MockDriver | None = None
@@ -132,10 +175,13 @@ def create_app(
         #   anything else -> MockDriver
         started = session.start()
         kind = session.kind if started else "none"
+        # The extra sims only matter for the line; anything else runs one.
+        extra = [s for s in sessions[1:] if kind == "line" and s.start()]
+        live_sessions = [session, *extra]
 
         if kind in ("line", "press_cell"):
             driver = (
-                LineDriver(runtime, session)
+                LineDriver(runtime, session, sessions=live_sessions)
                 if kind == "line"
                 else PressBridgeDriver(runtime, session)
             )
@@ -146,9 +192,12 @@ def create_app(
             # without it, MuJoCo aborts the process rather than raising.
             if session.probe_render() and viewport_producer.start():
                 runtime.capabilities.viewportStream = True
+                for index, extra_session in enumerate(extra, start=1):
+                    if extra_session.probe_render():
+                        producers[index].start()
                 print(
-                    "[viewport] long-poll JPEG at /viewport/frame "
-                    "(MJPEG legacy at /viewport/stream)",
+                    "[viewport] long-poll JPEG at /viewport/frame and "
+                    "/runs/{id}/viewport/frame (MJPEG legacy at /viewport/stream)",
                     flush=True,
                 )
             else:
@@ -164,6 +213,13 @@ def create_app(
             )
             runtime.capabilities.liveVideo = bool(session.live_video)
             runtime.capabilities.engine = session.engine
+            runtime.capabilities.maxConcurrentRuns = len(live_sessions)
+            if len(live_sessions) > 1:
+                print(
+                    f"[bridge] {len(live_sessions)} sims side by side; "
+                    "further launches queue",
+                    flush=True,
+                )
             if runtime.capabilities.viewportVideo:
                 print(
                     "[video] H.264 per run at /runs/{id}/video/index.m3u8 "
@@ -208,12 +264,15 @@ def create_app(
 
     @app.on_event("shutdown")
     def _shutdown() -> None:
-        viewport_producer.stop()
-        video.close()
+        for producer in producers:
+            producer.stop()
+        for manager in videos:
+            manager.close()
         d = getattr(app.state, "driver", None)
         if d is not None:
             d.stop()
-        session.stop()
+        for worker_session in sessions:
+            worker_session.stop()
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
@@ -224,8 +283,8 @@ def create_app(
         caps = runtime.capabilities.model_dump()
         # viewportStream = producer started (UI may long-poll even before first frame).
         caps["viewportStream"] = bool(runtime.capabilities.viewportStream)
-        caps["viewportReady"] = bool(viewport_hub.available)
-        caps["viewportSource"] = viewport_hub.source
+        caps["viewportReady"] = any(hub.available for hub in hubs)
+        caps["viewportSource"] = focused_hub().source
         caps["viewportTransport"] = "long-poll"
         caps["recordingSeek"] = bool(runtime.capabilities.recordingSeek)
         active = getattr(app.state, "driver", None)
@@ -244,7 +303,7 @@ def create_app(
         snap["capabilities"] = {
             **snap["capabilities"],
             "viewportStream": bool(runtime.capabilities.viewportStream),
-            "viewportReady": bool(viewport_hub.available),
+            "viewportReady": any(hub.available for hub in hubs),
             "recordingSeek": bool(runtime.capabilities.recordingSeek),
         }
         return snap
@@ -252,28 +311,15 @@ def create_app(
     @app.get("/viewport/meta")
     def viewport_meta() -> dict:
         """Cheap status for the Control UI (no JPEG body)."""
-        meta = viewport_hub.meta()
+        meta = focused_hub().meta()
         meta["enabled"] = bool(runtime.capabilities.viewportStream)
         return meta
 
-    @app.get("/viewport/frame")
-    def viewport_frame(
-        after_seq: int = Query(0, ge=0, alias="after_seq"),
-        wait_ms: int = Query(0, ge=0, le=5000, alias="wait_ms"),
-    ) -> Response:
-        """Latest JPEG, optionally long-polling until ``seq > after_seq``.
-
-        Dashboard primary path. Use ``wait_ms`` (e.g. 1500) to avoid busy loops.
-        """
-        if not runtime.capabilities.viewportStream:
-            raise HTTPException(503, "viewport unavailable")
-
+    def _frame_response(hub: ViewportHub, after_seq: int, wait_ms: int) -> Response:
         if wait_ms > 0:
-            got = viewport_hub.wait_newer(
-                after_seq=after_seq, timeout=wait_ms / 1000.0
-            )
+            got = hub.wait_newer(after_seq=after_seq, timeout=wait_ms / 1000.0)
         else:
-            got = viewport_hub.latest()
+            got = hub.latest()
             if got is not None and got[2] <= after_seq:
                 # Immediate poll, no newer frame → 304 so client keeps last paint.
                 return Response(
@@ -282,7 +328,7 @@ def create_app(
                         "Cache-Control": "no-store",
                         "ETag": f'"{got[2]}"',
                         "X-Viewport-Seq": str(got[2]),
-                        "X-Viewport-Source": viewport_hub.source,
+                        "X-Viewport-Source": hub.source,
                     },
                 )
 
@@ -290,7 +336,7 @@ def create_app(
             raise HTTPException(503, "viewport not ready")
 
         payload, mime, seq = got
-        age_ms = viewport_hub.meta().get("ageMs")
+        age_ms = hub.meta().get("ageMs")
         return Response(
             content=payload,
             media_type=mime,
@@ -298,10 +344,38 @@ def create_app(
                 "Cache-Control": "no-store",
                 "ETag": f'"{seq}"',
                 "X-Viewport-Seq": str(seq),
-                "X-Viewport-Source": viewport_hub.source,
+                "X-Viewport-Source": hub.source,
                 "X-Viewport-Age-Ms": str(age_ms if age_ms is not None else ""),
             },
         )
+
+    @app.get("/viewport/frame")
+    def viewport_frame(
+        after_seq: int = Query(0, ge=0, alias="after_seq"),
+        wait_ms: int = Query(0, ge=0, le=5000, alias="wait_ms"),
+    ) -> Response:
+        """Latest JPEG of the focused run, long-polling until ``seq > after_seq``.
+
+        With several runs going, each has its own camera; ask for a run by id
+        with ``/runs/{id}/viewport/frame``.
+        """
+        if not runtime.capabilities.viewportStream:
+            raise HTTPException(503, "viewport unavailable")
+        return _frame_response(focused_hub(), after_seq, wait_ms)
+
+    @app.get("/runs/{run_id}/viewport/frame")
+    def run_viewport_frame(
+        run_id: str,
+        after_seq: int = Query(0, ge=0, alias="after_seq"),
+        wait_ms: int = Query(0, ge=0, le=5000, alias="wait_ms"),
+    ) -> Response:
+        """The camera of the sim running this run (503 once it is over)."""
+        if not runtime.capabilities.viewportStream:
+            raise HTTPException(503, "viewport unavailable")
+        hub = hub_for_run(run_id)
+        if hub is None:
+            raise HTTPException(503, "run is not simulating")
+        return _frame_response(hub, after_seq, wait_ms)
 
     @app.get("/viewport/stream")
     def viewport_stream() -> StreamingResponse:
@@ -312,13 +386,13 @@ def create_app(
                 "viewport stream unavailable (MuJoCo env / Renderer not started)",
             )
         return StreamingResponse(
-            viewport_hub.mjpeg_sync(fps=12.0),
+            focused_hub().mjpeg_sync(fps=12.0),
             media_type="multipart/x-mixed-replace; boundary=frame",
             headers={
                 "Cache-Control": "no-cache, private",
                 "Pragma": "no-cache",
                 "X-Accel-Buffering": "no",
-                "X-Viewport-Source": viewport_hub.source,
+                "X-Viewport-Source": focused_hub().source,
                 "X-Viewport-Deprecated": "use-long-poll-/viewport/frame",
             },
         )
@@ -490,6 +564,7 @@ def create_app(
                 cloth_weights=body.clothTypeWeights,
                 condition_weights=body.clothConditionWeights,
                 custom_design=body.customDesign,
+                speed=body.speed,
             )
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
@@ -509,6 +584,7 @@ def create_app(
                 cloth_weights=body.clothTypeWeights,
                 condition_weights=body.clothConditionWeights,
                 custom_design=body.customDesign,
+                speed=body.speed,
             )
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
