@@ -146,8 +146,10 @@ not asked to keep up — past some speed it is left behind, and the run fails
 
 The bridge simulates `capabilities.maxConcurrentRuns` runs at once, one sim per worker
 (`XFOLD_BRIDGE_WORKERS`, default 3; Isaac is always 1, since Kit is one stage on one thread).
-Launching beyond that is accepted and `queued`; a worker takes the next queued run as it frees up,
-and `POST /runs` answers `{"ok": true, "id": …, "queued": true|false}`. Each live run has its own
+Launching beyond that is accepted and `queued` — single runs **and** batches (a batch
+no longer fails with “A run is already active”). A worker takes the next queued run as
+it frees up, and `POST /runs` / `POST /batches` answer
+`{"ok": true, "id": …, "queued": true|false}`. Each live run has its own
 camera: `GET /runs/{id}/viewport/frame` (same long-poll contract as `/viewport/frame`, which stays
 as the focused run's). One video per run as before.
 

@@ -561,13 +561,11 @@ class Runtime:
             self._bake_custom_design(custom_design, "custom") if wants_custom else None
         )
         with self._lock:
-            if self.active_run_id and self.runs[self.active_run_id].lifecycle in {"running", "paused"}:
-                raise ValueError("A run is already active")
             batch_id = self._next_batch_id()
             batch = BatchRecord(
                 id=batch_id,
                 name=name or f"Batch ×{count}",
-                lifecycle="running",
+                lifecycle="queued",
                 total=count,
                 pending=count,
                 seedStrategy="sequential",
@@ -575,7 +573,6 @@ class Runtime:
                 startedAtIso=_iso_now(),
             )
             self.batches[batch_id] = batch
-            self.active_batch_id = batch_id
             for i in range(count):
                 pick, cloth, cond = resolve_launch(
                     cloth_mix=cloth_mix,
@@ -601,16 +598,27 @@ class Runtime:
                     or cond in {"notgood", "skewed"}
                     or pick.skewed,
                     custom_texture=custom_tex if cloth == "custom" else None,
+                    speed=speed,
                 )
                 batch.run_ids.append(run.id)
-            first = self.runs[batch.run_ids[0]]
-            batch.activeRunId = first.id
-            batch.pending = count - 1
-            self.active_run_id = first.id
-            self._start_run_locked(first)
+            # Room now, or the whole batch waits; either way the launch is accepted.
+            self._start_queued_locked()
+            live = [
+                self.runs[rid]
+                for rid in batch.run_ids
+                if self.runs[rid].lifecycle in {"running", "paused"}
+            ]
+            batch.activeRunId = live[0].id if live else None
+            batch.pending = sum(
+                1 for rid in batch.run_ids if self.runs[rid].lifecycle == "queued"
+            )
+            if live:
+                batch.lifecycle = "running"
+                self.active_batch_id = self.active_batch_id or batch_id
+                self.active_run_id = self.active_run_id or live[0].id
             self._emit_batch_updated(batch)
             self.wake_driver()
-            return {"ok": True, "id": batch_id}
+            return {"ok": True, "id": batch_id, "queued": not bool(live)}
 
     def _create_run(
         self,
@@ -902,11 +910,21 @@ class Runtime:
             if any(other.garment != run.garment for other in live):
                 continue
             batch = self.batches.get(run.batchId) if run.batchId else None
-            if batch is not None and (batch.paused or batch.lifecycle in {"paused", "cancelled"}):
+            if batch is not None and (
+                batch.paused or batch.lifecycle in {"paused", "cancelled"}
+            ):
                 continue
             self._start_run_locked(run)
             if batch is not None:
                 batch.activeRunId = run.id
+                if batch.lifecycle == "queued":
+                    batch.lifecycle = "running"
+                batch.pending = sum(
+                    1
+                    for rid in batch.run_ids
+                    if self.runs[rid].lifecycle == "queued"
+                )
+                self.active_batch_id = self.active_batch_id or batch.id
             self.active_run_id = self.active_run_id or run.id
 
     def emit_state(self, run_id: str, state: CellState | str, t: float) -> None:
@@ -1110,29 +1128,41 @@ class Runtime:
             elif lifecycle == "failed":
                 batch.failed += 1
             # cancelled counts as finished but not success/fail rate denominator in UI docs
-            next_queued = next(
-                (self.runs[rid] for rid in batch.run_ids if self.runs[rid].lifecycle == "queued"),
+            if batch.activeRunId == run.id:
+                batch.activeRunId = None
+            if batch.cancel_requested or batch.lifecycle == "cancelled":
+                batch.pending = 0
+            elif batch.finished >= batch.total:
+                if batch.failed and batch.succeeded:
+                    batch.lifecycle = "partial"
+                elif batch.failed:
+                    batch.lifecycle = "failed"
+                else:
+                    batch.lifecycle = "succeeded"
+                if self.active_batch_id == batch.id:
+                    self.active_batch_id = None
+            batch.pending = sum(
+                1 for rid in batch.run_ids if self.runs[rid].lifecycle == "queued"
+            )
+            self._emit_batch_updated(batch)
+
+        # Free slot: start the oldest queued run (this batch or another launch).
+        self._start_queued_locked()
+        if run.batchId and run.batchId in self.batches and emit_batch:
+            batch = self.batches[run.batchId]
+            live = next(
+                (
+                    self.runs[rid]
+                    for rid in batch.run_ids
+                    if self.runs[rid].lifecycle in {"running", "paused"}
+                ),
                 None,
             )
-            if batch.cancel_requested or batch.lifecycle == "cancelled":
-                batch.activeRunId = None
-                batch.pending = 0
-            elif next_queued and not batch.paused:
-                batch.activeRunId = next_queued.id
-                self.active_run_id = next_queued.id
-                self._start_run_locked(next_queued)
-            else:
-                batch.activeRunId = None
-                if batch.finished >= batch.total:
-                    if batch.failed and batch.succeeded:
-                        batch.lifecycle = "partial"
-                    elif batch.failed:
-                        batch.lifecycle = "failed"
-                    else:
-                        batch.lifecycle = "succeeded"
-                    if self.active_batch_id == batch.id:
-                        self.active_batch_id = None
-            batch.pending = sum(1 for rid in batch.run_ids if self.runs[rid].lifecycle == "queued")
+            if live is not None:
+                batch.activeRunId = live.id
+            batch.pending = sum(
+                1 for rid in batch.run_ids if self.runs[rid].lifecycle == "queued"
+            )
             self._emit_batch_updated(batch)
 
     def _emit_batch_updated(self, batch: BatchRecord) -> None:

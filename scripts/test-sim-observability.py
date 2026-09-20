@@ -307,6 +307,39 @@ class ObservabilityTests(unittest.TestCase):
             self.assertEqual(started.inputs, run.inputs)
             runtime.finish_success(run.id, 1)
 
+    def test_launch_queues_while_a_run_is_active(self):
+        """Operators can keep launching; extras wait for a free worker."""
+        runtime = Runtime(Journal())
+        runtime.configure_process(LINE_PHASES, scenario="line", config={"seedApplied": True})
+        runtime.concurrency = 1
+        first = runtime.launch_run(name="live", seed=1, scenario="line", cloth_type="tee")
+        self.assertFalse(first["queued"])
+        second = runtime.launch_run(name="wait", seed=2, scenario="line", cloth_type="tee")
+        self.assertTrue(second["queued"])
+        self.assertEqual(runtime.runs[second["id"]].lifecycle, "queued")
+        batch = runtime.launch_batch(
+            name="also-wait",
+            count=2,
+            base_seed=10,
+            scenario="line",
+            cloth_mix="same",
+            cloth_types=["tee"],
+        )
+        self.assertTrue(batch["queued"])
+        batch_rec = runtime.batches[batch["id"]]
+        self.assertEqual(batch_rec.lifecycle, "queued")
+        self.assertEqual(batch_rec.pending, 2)
+        runtime.finish_success(first["id"], 1.0)
+        self.assertEqual(runtime.runs[second["id"]].lifecycle, "running")
+        runtime.finish_success(second["id"], 2.0)
+        started = [
+            rid
+            for rid in batch_rec.run_ids
+            if runtime.runs[rid].lifecycle == "running"
+        ]
+        self.assertEqual(len(started), 1)
+        self.assertEqual(batch_rec.lifecycle, "running")
+
     def test_unknown_phase_is_not_silently_hidden(self):
         with self.assertRaises(ValueError):
             self.runtime.emit_state(self.run_id, "NEW_UNDECLARED_PHASE", 1)
