@@ -3,10 +3,10 @@ import { PitchDeck } from "@/components/PitchDeck";
 
 export const metadata: Metadata = {
   title: "Pitch",
-  description: "XFOLD in ten slides: the manual folding station, automated end to end.",
+  description: "XFOLD en cinco diapositivas: la estación manual de plegado, automatizada de punta a punta.",
 };
 
-/** The demo-day deck. Space / → next, ← back, F for fullscreen. */
+/** The demo-day deck (Spanish copy). Space / → next, ← back, F for fullscreen. */
 export default function PitchPage() {
   return <PitchDeck />;
 }

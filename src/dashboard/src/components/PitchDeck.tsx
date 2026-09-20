@@ -113,7 +113,7 @@ export function PitchDeck() {
       <section
         key={slide.id}
         aria-roledescription="slide"
-        aria-label={`${index + 1} of ${SLIDES.length}: ${slide.label}`}
+        aria-label={`${index + 1} de ${SLIDES.length}: ${slide.label}`}
         className="flex flex-1 items-center justify-center px-6 py-16 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 motion-safe:slide-in-from-bottom-4 sm:px-12 lg:px-20"
       >
         <div className="w-full max-w-5xl">
@@ -134,7 +134,7 @@ export function PitchDeck() {
               type="button"
               onClick={() => go(index - 1)}
               disabled={index === 0}
-              aria-label="Previous slide"
+              aria-label="Diapositiva anterior"
               className="rounded-[var(--radius)] p-2 opacity-55 transition-opacity hover:opacity-100 disabled:opacity-15"
             >
               <ChevronLeft size={18} aria-hidden />
@@ -143,7 +143,7 @@ export function PitchDeck() {
               type="button"
               onClick={() => go(index + 1)}
               disabled={index === SLIDES.length - 1}
-              aria-label="Next slide"
+              aria-label="Diapositiva siguiente"
               className="rounded-[var(--radius)] p-2 opacity-55 transition-opacity hover:opacity-100 disabled:opacity-15"
             >
               <ChevronRight size={18} aria-hidden />
@@ -161,7 +161,7 @@ export function PitchDeck() {
 
       {index === 0 ? (
         <p className="pointer-events-none absolute inset-x-0 bottom-16 text-center font-mono text-[11px] tracking-[0.16em] uppercase opacity-40 motion-safe:animate-pulse">
-          Press space to start
+          Pulsa espacio
         </p>
       ) : null}
     </main>
