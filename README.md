@@ -1,196 +1,114 @@
-<p align="center"><img src="src/dashboard/public/brand/xfold-logo-primary.svg" alt="XFOLD" width="320"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="src/dashboard/public/brand/xfold-logo-reverse.svg">
+    <img src="src/dashboard/public/brand/xfold-logo-primary.svg" alt="XFOLD" width="320">
+  </picture>
+</p>
 
-# XFOLD
+<p align="center">HackSpain '26 · THEKER — a simulated industrial line that presses, folds and bags shirts, with a live control-room dashboard.</p>
 
-HackSpain '26 · THEKER — automate the shirt press, ninja fold, and bag line.
+---
 
-The current simulation runs a **robot-free line**: a flat shirt rides a belt through a press, a flap folder, a bagger, a seal/label station and into a carton. The simulator's `xfold.line.LINE_PHASES` and observations are the source of truth for the live dashboard. Arm/ninja-fold descriptions below are earlier design context, not the current implementation.
+## What it is
 
-- Plan (source of truth): [SOLUTION.md](SOLUTION.md)
-- Brief: [CHALLENGE.md](CHALLENGE.md)
+A shirt lands flat on a belt. It rides under a hot platen press, onto a
+FlipFold-style folder that creases it in three flaps, onto a peel that slides
+the pack into a plastic bag, past a seal bar and an RFID stamp, and off the end
+of belt 2 into a carton. No human, no robot arm — machines do the geometry.
 
-Monorepo: MuJoCo cell in `src/sim`, Next.js monitor in `src/dashboard`, shared telemetry in `packages/protocol`. **Pixi** pins Python + Node. **moon** runs every day-to-day command.
+All of it is **simulated physics**, not an animation: the cloth is real
+deformable fabric, the flaps really push it, and the fold either comes out
+square or it doesn't. Every cycle is recorded — phases, timings, measurements,
+a product photo and a video — and streamed to a web dashboard you watch it on.
 
-## Layout
+## Architecture
 
 ```
-src/dashboard      Next.js monitor (@xfold/dashboard)
-src/sim            Python cell + mock cycle + MJCF
-packages/protocol  Shared telemetry types (@xfold/protocol)
-.moon              moon workspace + toolchain
-pixi.toml          Shared conda/PyPI env (Python 3.12, Node 22)
-CHALLENGE.md       THEKER brief
-SOLUTION.md        Technical plan
+  ┌──────────────┐   journal    ┌──────────────┐   REST + SSE   ┌──────────────┐
+  │  simulation  │ ───events──► │    bridge    │ ─────────────► │  dashboard   │
+  │  (physics)   │ ◄──commands─ │ (Python API) │ ◄───launch──── │  (browser)   │
+  └──────────────┘              └──────────────┘                └──────────────┘
+   MuJoCo or Isaac Sim           run history, video              Next.js UI
 ```
 
-## Robot
+Three pieces, one contract:
 
-**Enactic OpenArm v2** — dual-arm, 7-DOF × 2 + grippers, MuJoCo MJCF.
+- **Simulation** (`src/sim`) — the plant is an XML model (belts, press, folder,
+  bagger, cameras); the process is Python (`xfold/line.py`), a state machine
+  that walks a shirt through the phases and measures the result.
+- **Bridge** (`src/sim/.../bridge`) — the only thing the browser talks to. It
+  keeps an append-only journal of every run, serves it over plain HTTP
+  (REST for commands, SSE for live events), and records video per run.
+- **Dashboard** (`src/dashboard`) — a Next.js control room: launch a run, watch
+  the camera live, scrub the replay, read the measurements. If the bridge is
+  down it falls back to fixtures instead of lying.
 
-Control / sim stack we vendor from: [Manas-arumalla/openarm-control](https://github.com/Manas-arumalla/openarm-control) (Apache-2.0).
+The same line runs on **two physics engines**: MuJoCo on a laptop, and NVIDIA
+**Isaac Sim / PhysX** on a GPU box (`src/isaac`) for RTX-quality pictures. The
+process code is identical — only the engine underneath is swapped.
 
-| We take | We skip |
-|---------|---------|
-| Bimanual MJCF + meshes | RL (SAC / PPO), ACT |
-| IK, Cartesian, trajectories | Catching, throwing, language agent |
-| Bimanual coordination | Webcam mimic, YOLO |
-| Cloth flex tunings + grasp-on-cloth | Their single-arm `openarm cloth` *motion* as the fold |
+## Toolchain
 
-Their cloth demo uses **one arm** on a **two-arm** robot. Our cycle uses both arms for taut; the ninja fold prefers both hands and falls back to sequential creases if they collide. Details in [SOLUTION.md](SOLUTION.md).
+Two tools, and they install everything else. Nothing is global, no
+`pip install`, no Node version juggling.
 
-## Install tools (once per machine)
-
-Install the two binaries. Moon runs in a non-interactive shell, so it will **not** see PATH changes from `~/.zshrc`. It looks for Pixi in `~/.pixi/bin` and Homebrew via `scripts/pixi-path.sh`. After installing, you can keep using moon immediately.
-
-### macOS / Linux
+| Tool | What it does for us | Install |
+|---|---|---|
+| **[pixi](https://pixi.sh)** | Pins Python 3.12, Node 22, MuJoCo, Isaac Sim — one locked env per machine, from `pixi.toml` / `pixi.lock`. | [pixi.sh/latest/installation](https://pixi.sh/latest/installation/) |
+| **[moon](https://moonrepo.dev)** | Runs every command in the monorepo (`moon run <task>`), in the right project, with the pixi env already loaded. | [moonrepo.dev/docs/install](https://moonrepo.dev/docs/install) |
 
 ```bash
-# Pixi — moon uses this for the shared Python/Node env
-curl -fsSL https://pixi.sh/install.sh | sh
-
-# moon — this is the only command you use day to day
-bash <(curl -fsSL https://moonrepo.dev/install/moon.sh)
-echo 'export PATH="$HOME/.moon/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
+pixi --version && moon --version   # check both are on PATH
 ```
 
-Homebrew for Pixi if you prefer:
-
-```bash
-brew install pixi
-# moon has no brew formula; use the script above
-```
-
-### Windows (PowerShell)
-
-```powershell
-powershell -ExecutionPolicy Bypass -c "irm -useb https://pixi.sh/install.ps1 | iex"
-irm https://moonrepo.dev/install/moon.ps1 | iex
-```
-
-Check:
-
-```bash
-pixi --version
-moon --version
-```
-
-## First-time setup (this repo)
+## Run it
 
 ```bash
 git clone https://github.com/rogarmu8/hackspain_2026_xfold.git
 cd hackspain_2026_xfold
-moon run setup
+moon run setup             # pixi env + npm workspaces
+moon run install-mujoco    # physics
 ```
 
-`moon run setup` creates the Pixi env from `pixi.lock` and installs npm workspaces.
+Then start the app:
 
-Physics stack (MuJoCo). Required to open the viewer:
-
-```bash
-moon run install-mujoco
-```
-
-## Run
-
-Always from the repo root.
-
-| What | Command |
-|------|---------|
-| **Everything (bridge + dashboard)** | `moon run pack` · `npm run pack` |
-| Same as pack | `moon run dev` · `npm run dev` |
-| Dashboard only ([localhost:3000](http://localhost:3000)) | `moon run dashboard:dev` |
-| **Bridge** only (journal + REST/SSE on :8765) | `moon run sim:bridge` |
-| **The line — belt, press, folder, bagger, carton (no robots)** | `moon run sim:run` |
-| Shared plant stub only (`models/cell.xml`: floor, bin, shirt) | `moon run sim:view` |
-| Shirt playground (ninja-fold T — drag it) | `moon run sim:shirt-play` |
-| Mock cell cycle (JSON lines to stdout) | `moon run sim:mock` |
-| Dashboard lint | `moon run dashboard:lint` |
-| Production dashboard build | `moon run dashboard:build` |
-| List projects / tasks | `moon query projects` · `moon query tasks` |
-
-On macOS the windowed tasks run under `mjpython` (Cocoa main thread) via `scripts/run-mjpython.sh`; elsewhere it is plain `python`. Keep them in a second terminal — they are not part of `pack` / `dev`.
-
-### What goes down the line
-
-`moon run sim:run` asks for the cloth type, its condition, then whether
-it is laid square or skewed; `-g` skips the list and `--list-garments`
-prints all 30 SKUs.
-
-| Condition | What it is | Example |
+| | Command | Opens |
 |---|---|---|
-| clean | the SKU as designed | `-g tee` |
-| torn | a hole / torn hem, as real geometry | `-g tee_damaged` (alias `tee_torn`) |
-| stained | coffee, grease or mud on the base mesh | `-g tee_notgood1..3` (alias `tee_stain1..3`) |
-| off square | flat on the belt, heading from the seed | `--skewed` (and `--seed`), or launch condition `skewed` |
+| **The app, on Isaac Sim** (GPU box) | **`moon run xfold:dev-isaac`** | http://localhost:3001 |
+| The app, on MuJoCo (any laptop) | `moon run xfold:dev` | http://localhost:3000 |
+| The line in a 3D viewer, no UI | `moon run sim:run` | MuJoCo window |
 
-Six clean SKUs — `tee`, `work_tee`, `jersey`, `tank`, `polo`, `dress` — times
-four conditions. The pose is separate from the SKU, so `-g dress_damaged
---skewed --seed 7` is a torn pinafore put on the belt at a seeded heading.
+`xfold:dev-isaac` needs the GPU box configured once — copy `.env.example` to
+`.env` and fill in the host and key. It opens an SSH tunnel to the bridge
+running on the box and serves the dashboard locally. Both stacks can run side
+by side. `moon query tasks` lists everything else.
 
-The dashboard launch form picks type and condition (exact or random, with
-weights). Random draws and the skewed heading use `seed`. `XFOLD_GARMENT`
-is still the compile-time default for the bridge process.
+## Compute
 
-### Product shot → try-on
+Isaac Sim runs on a dedicated Linux GPU box; the laptops only drive it.
 
-Just past the press the belt stops the garment, the line's lights dip and a
-flash fires: `qc_cam` takes a square top-down product shot. It lands in
-`data/photos/{run}.jpg`, the bridge serves it at `GET /runs/{id}/photo`, and the
-run view shows it under **Foto de producto** — the hole in a `_damaged` tee or
-the stain on a `_notgood` one is plainly visible.
+| | |
+|---|---|
+| GPU | NVIDIA L4, 24 GB — RTX-class required |
+| OS | Ubuntu 22.04+ (glibc 2.35+), NVIDIA driver 580+ |
+| Disk | ~40 GB free (Isaac Sim 6.1 + shader cache is ~25 GB) |
+| Runtime | Python 3.12, Isaac Sim 6.1, CUDA torch — installed by `moon run isaac:install-sim` |
+| Speed | ~1x realtime: a 47 s cycle in 45 s, plus ~1 min of Isaac start-up |
 
-**Generar look con modelo** sends that shot to OpenAI's image edit endpoint
-(`gpt-image-1`) and shows the garment on a model beside it. The call runs
-server-side so the key never reaches the browser:
+Everything except Isaac itself runs fine on a laptop — MuJoCo, the bridge, the
+dashboard and the full test suite need no GPU.
 
-```bash
-cp src/dashboard/.env.example src/dashboard/.env.local
-# put your key in OPENAI_API_KEY, then restart the dashboard
+## Where things are
+
+```
+src/sim         physics line + bridge (Python, MuJoCo)
+src/isaac       the same line on Isaac Sim / PhysX
+src/dashboard   Next.js control room
+packages/protocol   shared wire types (TS ↔ Python)
+models/ robots/     MJCF plant + robot assets
 ```
 
-Without `OPENAI_API_KEY` the rest of the dashboard is unaffected — the button
-just reports that the key is missing. `OPENAI_IMAGE_MODEL`, `OPENAI_IMAGE_SIZE`,
-`OPENAI_IMAGE_QUALITY`, `TRYON_PROMPT` and `OPENAI_BASE_URL` override the call.
-
-`gpt-image-1` returns base64 rather than a hosted URL, so the route hands the
-browser a data URI; nothing is stored. Note that OpenAI gates `gpt-image-1`
-behind organisation verification — if the button reports a 403, that is what it
-means.
-
-### Run video
-
-Each run is recorded to H.264 while it runs. The viewport plays that instead of
-polling for stills — a few seconds behind live, and far better looking. The
-recording is written to `data/video/{run}/` as HLS; when the run ends the same
-playlist becomes a VOD, so the finished run scrubs like an ordinary video.
-
-The encoder comes from `imageio-ffmpeg` (installed with the `mujoco` env, no
-system ffmpeg needed); an `ffmpeg` on PATH is used if present. Without either,
-the viewport falls back to the previous JPEG long-poll and everything else
-works unchanged.
-
-**Live monitor:** `moon run pack` starts bridge + dashboard together. The UI probes `http://127.0.0.1:8765` (override with `NEXT_PUBLIC_XFOLD_BRIDGE_URL`). If the bridge is down, the dashboard keeps honest **fixtures**.
-
-- **Binding contract (teammates & agents):** [docs/INTEGRATION_CONTRACT.md](docs/INTEGRATION_CONTRACT.md)
-- Transport detail: [docs/BRIDGE.md](docs/BRIDGE.md) · OpenAPI: http://127.0.0.1:8765/docs
-
-### What runs today
-
-- **Bridge:** append-only run journal; mock FSM drives `PICK → … → BAG`; REST commands + SSE events for the control room.
-- **Mock CLI:** same cycle printed as JSON lines to stdout (`shirt_in_bag`, same shape as `@xfold/protocol`) — offline / piping.
-- **Viewer / Control 3D:** ninja-fold flex T (`shirt_t.obj`) in `cell.xml`, and the line (`line.xml`). The bridge viewport renders the line when MuJoCo is available.
-- **The line** (`sim:run`, `xfold/line.py`): a flat shirt rides a belt under the press, the platen presses it on the belt, the belt runs it onto a FlipFold-style folder, and three flaps fold it (left, right, hem up) into a ~33 × 33 cm pack. The plate under the pack is a peel: it slides between rails into an open plastic bag and pulls back out, the top film drops, a seal bar closes the mouth while a stamp sticks an RFID label on top, and belt 2 carries the bag off its end into a carton. No arms. The camera follows the shirt (`--camera overview|press_cam|fold_cam|bag_cam` for fixed views).
-
-Build order for cloth + dual-arm: [SOLUTION.md §9](SOLUTION.md#9-build-order-hackathon).
-
-## Who works where
-
-- **Sim / control** — `src/sim/src/xfold` and `src/sim/models`
-- **Bridge (sim↔UI)** — `src/sim/src/xfold/bridge` + [docs/BRIDGE.md](docs/BRIDGE.md)
-- **Monitor UI** — `src/dashboard/src`
-- **Contract** — `packages/protocol/src/index.ts` (keep the Python bridge schema in sync)
-
-**Cycle the cell must complete unattended:**
-
-**bin → two-hand taut → press → ninja fold → tilt / chute → bag**
+- Plan and build order: [SOLUTION.md](SOLUTION.md) · Brief: [CHALLENGE.md](CHALLENGE.md) · Log: [TRACKING.md](TRACKING.md)
+- Sim ↔ UI contract: [docs/INTEGRATION_CONTRACT.md](docs/INTEGRATION_CONTRACT.md) · [docs/BRIDGE.md](docs/BRIDGE.md)
+- Isaac port: [src/isaac/README.md](src/isaac/README.md)
+- Working on this repo (or pointing an agent at it): [AGENTS.md](AGENTS.md)
