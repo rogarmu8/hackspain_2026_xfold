@@ -187,6 +187,27 @@ class LineDriver:
             return True
         return False
 
+    def _force_quit(self, run_id: str, line, session: SimSession | None = None) -> None:
+        """Stop the Line now. Cancel does not wait for the current phase."""
+        session = session or self.session
+        try:
+            with session.lock:
+                abort = getattr(line, "abort", None)
+                if callable(abort):
+                    abort()
+                else:
+                    line.finished = True
+        except Exception:  # noqa: BLE001 — the run is already cancelled
+            pass
+        video = getattr(session, "_video", None)
+        end = getattr(video, "end", None)
+        if callable(end):
+            try:
+                end(run_id)
+            except Exception:  # noqa: BLE001
+                pass
+        self._log(run_id, "cycle force-quit", session=session)
+
     def _publish(self, run_id: str, observation: dict) -> None:
         if self._active(run_id) is None:
             return
@@ -257,6 +278,9 @@ class LineDriver:
                     seed=seed,
                     on_photo=take_photo,
                 )
+                if session.follow is not None:
+                    session.follow.reset()
+                    session.track_camera(line.positions(), 0.0)
             cfg = shirt_config()
             self._log(
                 run_id,
@@ -279,6 +303,7 @@ class LineDriver:
 
             while True:
                 if not self._wait_unpaused(run_id):
+                    self._force_quit(run_id, line, session)
                     return
 
                 track = steps % _TRACK_EVERY == 0
@@ -290,6 +315,9 @@ class LineDriver:
                     qpos = np.asarray(session.data.qpos, dtype=np.float64).copy()
                     cloth = line.positions() if (track and session.follow) else None
                 steps += 1
+                if self._active(run_id) is None:
+                    self._force_quit(run_id, line, session)
+                    return
 
                 for observation in pending:
                     self._publish(run_id, observation)
@@ -329,7 +357,10 @@ class LineDriver:
 
                 leftover = clock + steps * dt - time.perf_counter()
                 if leftover > 0:
-                    time.sleep(leftover)
+                    self.runtime.wait_wake(leftover)
+                    if self._active(run_id) is None:
+                        self._force_quit(run_id, line, session)
+                        return
                 elif leftover < -1.0:
                     # Far behind (an engine slower than realtime): pace from
                     # here rather than sprinting to catch up.
@@ -337,6 +368,7 @@ class LineDriver:
 
             t = session.sim_time()
             if self._active(run_id) is None:
+                self._force_quit(run_id, line, session)
                 return
             with session.lock:
                 recorder.maybe_sample(t, line.phase, session.data.qpos)

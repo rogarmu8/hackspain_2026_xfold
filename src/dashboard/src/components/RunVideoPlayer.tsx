@@ -9,7 +9,9 @@ import { useEffect, useRef, useState } from "react";
  * ENDLIST turns the same file into a VOD. Prefer hls.js whenever MSE works —
  * Chromium's native HLS does not play this fMP4 live playlist.
  *
- * The viewport keeps the fold loader up until `ready`. Replay transport
+ * The viewport keeps the fold loader up until the file can play (`ready`).
+ * A parked VOD (paused at t=0) is still ready — do not wait for Play.
+ * Replay transport
  * (seek / play / pause) is driven by the HUD, not the native video bar.
  */
 
@@ -70,6 +72,7 @@ export function RunVideoPlayer({
     video.addEventListener("loadeddata", markReady);
     video.addEventListener("playing", markReady);
     video.addEventListener("ended", onEnded);
+    if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) markReady();
 
     async function attach() {
       const minSeg = liveRef.current ? 2 : 1;

@@ -1,9 +1,9 @@
-"""Bake the bag's top label: the product type as a title, a fixed barcode below.
-
-One PNG per garment (models/label_<key>.png), 10 x 7 cm on the bag. The
-barcode is the same on every label.
+"""Bake the bag SKU sticker: garment title on top, a QR code below.
 
     pixi run -e mujoco python -P -m xfold.generate_label
+
+The sticker geom is 10 × 7 cm (see bag_sticker in line.xml). The PNG matches
+that 10:7 frame. Payload is a short product URL so the code scans as a SKU.
 """
 
 from __future__ import annotations
@@ -12,78 +12,75 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from xfold.generate_shirt_mesh import MODELS
+from xfold.qr_label import qr_image
 
-WIDTH, HEIGHT = 640, 448  # 10 x 7 cm
-PAPER = (250, 250, 247)
-INK = (16, 16, 18)
+ROOT = Path(__file__).resolve().parents[2]
+MODELS = ROOT / "models"
 
+# Short titles that fit the 10 cm sticker. Keys match line.xml label_* assets.
 TITLES = {
     "tee": "T-SHIRT",
     "work_tee": "WORK TEE",
     "jersey": "JERSEY",
-    "tank": "TANK TOP",
-    "polo": "POLO SHIRT",
+    "tank": "TANK",
+    "polo": "POLO",
     "dress": "DRESS",
     "custom": "CUSTOM",
 }
 
-# Same code on every label. Module widths in order, bar first, then space.
-BARCODE_DIGITS = "8435012340017"
-BARCODE_MODULES = (
-    "1 1 1 3 2 1 1 2 1 3 2 2 1 1 3 1 2 1 1 2 3 1 1 3 2 1 2 2 1 1 "
-    "1 3 1 2 2 1 3 1 1 1 2 3 1 2 1 1 3 2 2 1 1 3 1 1 2 2 1 3 1 1 "
-    "2 1 1 2 3 1 1 3 2 1 1 1 2 2 1 3 1 2 1 1 2 3 1 1 1 1 1"
-)
-FONTS = (
-    "/System/Library/Fonts/Helvetica.ttc",
-    "/System/Library/Fonts/HelveticaNeue.ttc",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-)
+WIDTH, HEIGHT = 640, 448
+MARGIN = 28
+INK = (22, 22, 22)
+PAPER = (250, 248, 242)
+RULE = (200, 196, 186)
 
 
 def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    for path in FONTS:
+    for path in (
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ):
         try:
-            return ImageFont.truetype(path, size, index=1 if path.endswith(".ttc") else 0)
+            return ImageFont.truetype(path, size)
         except OSError:
             continue
-    return ImageFont.load_default(size)
+    return ImageFont.load_default()
 
 
-def _centered(draw: ImageDraw.ImageDraw, text: str, y: int, size: int, max_w: int) -> None:
-    font = _font(size)
-    while draw.textlength(text, font=font) > max_w and size > 12:
-        size -= 2
-        font = _font(size)
-    draw.text((WIDTH // 2, y), text, font=font, fill=INK, anchor="mm")
+def payload_for(key: str) -> str:
+    return f"xfold:{key}"
 
 
-def make_label(title: str, out: Path) -> None:
-    image = Image.new("RGB", (WIDTH, HEIGHT), PAPER)
-    draw = ImageDraw.Draw(image)
-    draw.rectangle((6, 6, WIDTH - 7, HEIGHT - 7), outline=INK, width=5)
+def make_label(key: str) -> Image.Image:
+    title = TITLES[key]
+    img = Image.new("RGB", (WIDTH, HEIGHT), PAPER)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle((1, 1, WIDTH - 2, HEIGHT - 2), outline=RULE, width=2)
 
-    _centered(draw, title, 92, 92, WIDTH - 80)
-    draw.rectangle((40, 158, WIDTH - 41, 164), fill=INK)
+    font = _font(54)
+    left, top, right, bottom = draw.textbbox((0, 0), title, font=font)
+    tw, th = right - left, bottom - top
+    title_y = 26
+    draw.text(((WIDTH - tw) / 2 - left, title_y - top), title, font=font, fill=INK)
+    rule_y = title_y + th + 12
+    draw.line((MARGIN, rule_y, WIDTH - MARGIN, rule_y), fill=RULE, width=2)
 
-    widths = [int(w) for w in BARCODE_MODULES.split()]
-    module = (WIDTH - 120) // sum(widths)
-    x = (WIDTH - module * sum(widths)) // 2
-    for index, width in enumerate(widths):
-        if index % 2 == 0:
-            draw.rectangle((x, 186, x + module * width - 1, 350), fill=INK)
-        x += module * width
-    _centered(draw, " ".join((BARCODE_DIGITS[0], BARCODE_DIGITS[1:7], BARCODE_DIGITS[7:])), 388, 40, WIDTH - 80)
-
-    image.save(out, format="PNG", optimize=True)
+    top_qr = rule_y + 16
+    avail = HEIGHT - MARGIN - top_qr
+    qr_size = min(WIDTH - 2 * MARGIN, avail)
+    qr = qr_image(payload_for(key), qr_size, ink=INK, paper=PAPER)
+    img.paste(qr, ((WIDTH - qr_size) // 2, top_qr + (avail - qr_size) // 2))
+    return img
 
 
 def main() -> None:
-    for key, title in TITLES.items():
-        out = MODELS / f"label_{key}.png"
-        make_label(title, out)
-        print(f"wrote {out}")
+    MODELS.mkdir(parents=True, exist_ok=True)
+    for key in TITLES:
+        path = MODELS / f"label_{key}.png"
+        make_label(key).save(path)
+        print(path)
 
 
 if __name__ == "__main__":

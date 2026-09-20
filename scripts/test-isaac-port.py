@@ -124,6 +124,11 @@ class UsdSceneTests(unittest.TestCase):
             # A box keeps MuJoCo's half-extents as its scale.
             belt = stage.GetPrimAtPath(scene.geom_paths[model.geom("belt_top").id])
             np.testing.assert_allclose(belt.GetAttribute("xformOp:scale").Get(), model.geom_size[model.geom("belt_top").id])
+            # Bag sticker is a UV mesh so the title + QR texture actually shows.
+            sticker = stage.GetPrimAtPath(scene.geom_paths[model.geom("bag_sticker").id])
+            self.assertEqual(sticker.GetTypeName(), "Mesh")
+            self.assertTrue(UsdGeom.PrimvarsAPI(sticker).GetPrimvar("st").HasValue())
+            self.assertTrue(stage.GetPrimAtPath(f"{scene.material_paths[model.geom('bag_sticker').id]}/image"))
 
 
 @unittest.skipUnless(os.environ.get("XFOLD_TEST_PHYSICS"), "set XFOLD_TEST_PHYSICS=1 for full cycles")

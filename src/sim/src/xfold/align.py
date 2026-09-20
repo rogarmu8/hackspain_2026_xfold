@@ -60,6 +60,34 @@ def _wrap(angle: float) -> float:
     return float((angle + math.pi) % (2.0 * math.pi) - math.pi)
 
 
+def _shortest_delta(yaw0: float, yaw1: float) -> float:
+    """Signed angle in (−π, π] from ``yaw0`` to ``yaw1``."""
+    return _wrap(yaw1 - yaw0)
+
+
+def _orbit(shoulder, start, end, blend: float) -> np.ndarray:
+    """Cup pose along the shortest yaw about ``shoulder``.
+
+    A straight lerp between the cups walks one wrist through the other arm.
+    Swinging each turret the short way keeps the links on their own side.
+    """
+    start = np.asarray(start, dtype=float)
+    end = np.asarray(end, dtype=float)
+    origin = np.asarray(shoulder[:2], dtype=float)
+    rs = start[:2] - origin
+    re = end[:2] - origin
+    r0 = float(math.hypot(float(rs[0]), float(rs[1])))
+    r1 = float(math.hypot(float(re[0]), float(re[1])))
+    if r0 < 1e-4 or r1 < 1e-4:
+        return start + (end - start) * blend
+    a0 = math.atan2(float(rs[1]), float(rs[0]))
+    a1 = a0 + _shortest_delta(a0, math.atan2(float(re[1]), float(re[0])))
+    a = a0 + (a1 - a0) * blend
+    r = r0 + (r1 - r0) * blend
+    z = float(start[2] + (end[2] - start[2]) * blend)
+    return np.array([origin[0] + r * math.cos(a), origin[1] + r * math.sin(a), z])
+
+
 def _heading(pos: np.ndarray, rest: np.ndarray | None = None) -> float:
     """Live heading: 0 when the neck/collar side leads downstream (+X).
 
@@ -269,10 +297,11 @@ class AlignStation:
         self._grip_local = self._pick_grips(pos, center0)
         self._set_pose(0.0, center0, 0.0)
 
+        turn = _shortest_delta(0.0, -yaw0)
         line._enter(
             "ORIENT",
             f"arms take the garment {GRIP_SPAN:.2f} of its width apart, "
-            f"{-math.degrees(yaw0):+.0f} deg to turn",
+            f"{math.degrees(turn):+.0f} deg to turn",
             measurements={"headingRad": float(yaw0)},
         )
         yield from self._reach_to_grips(line, 0.55)
@@ -283,9 +312,12 @@ class AlignStation:
         yield from self._raise(line, CARRY_Z - GRIP_Z, 0.45)
 
         goal = np.array([SPAWN_X, 0.0])
-        # One bite per MAX_BITE of turn: a half-turn in a single sweep would
-        # walk a cup right across the belt and through the other arm.
-        turn = -yaw0
+        # Shortest yaw that puts the collar downstream. A long way around
+        # walks one cup through the other arm.
+        # Near a half-turn both signs are the same length; keep each cup on
+        # its own half of the belt so the links do not cross.
+        if abs(abs(turn) - math.pi) <= math.radians(12.0):
+            turn = self._uncrossed_half_turn()
         bites = max(1, int(math.ceil(abs(turn) / MAX_BITE)))
         for index in range(bites):
             span = turn / bites
@@ -301,13 +333,14 @@ class AlignStation:
 
         leftover = _heading(self._posed_world(), self._rest_local)
         if abs(leftover) > HEADING_OK:
+            trim = _shortest_delta(0.0, -leftover)
             line._enter(
                 "ORIENT",
-                f"arms trim the last {-math.degrees(leftover):+.0f} deg",
+                f"arms trim the last {math.degrees(trim):+.0f} deg",
                 measurements={"headingRad": float(leftover)},
             )
             yield from self._tween(
-                line, self._yaw, self._yaw - leftover, self._center, goal, 0.40
+                line, self._yaw, self._yaw + trim, self._center, goal, 0.40
             )
 
         line._enter("ORIENT", "arms lay it back down, square on the belt")
@@ -330,8 +363,8 @@ class AlignStation:
 
         One per arm, on the transverse axis (shoulder to shoulder across the
         garment) so the pair has leverage on the heading. Each arm gets the
-        side that is nearer to it once the garment is square, which is also
-        the side it is nearer to now — the turn never swaps them.
+        side that is nearer to it once the garment is square (rest +Y is
+        left), so the shortest turn never swaps them.
         """
         rest = self._rest_local
         rel = pos[:, :2] - np.asarray(center, dtype=float)
@@ -339,10 +372,11 @@ class AlignStation:
         across = rest[:, 1]
         hi = float(np.quantile(across, 0.90))
         lo = float(np.quantile(across, 0.10))
+        # Rest +Y is the left arm's side once the collar leads downstream.
+        # Do not swap onto whoever is nearer in world Y now: that sends the
+        # pair through each other on the way to the squared pose.
         left = rel[across >= hi].mean(axis=0)
         right = rel[across <= lo].mean(axis=0)
-        if left[1] < right[1]:
-            left, right = right, left
         return np.array([left * GRIP_SPAN, right * GRIP_SPAN])
 
     def _grip_world(self) -> np.ndarray:
@@ -381,6 +415,19 @@ class AlignStation:
             return 0.0
         return max(arm.reach(cup) for arm, cup in zip(self.arms, self._grip_world()))
 
+    def _uncrossed_half_turn(self) -> float:
+        """±π, choosing the sign whose midpoint keeps each cup on its side."""
+        if self._grip_local is None:
+            return math.pi
+        left, right = self._grip_local
+        def side_cost(turn: float) -> float:
+            th = 0.5 * turn
+            c, s = math.cos(th), math.sin(th)
+            ly = left[0] * s + left[1] * c
+            ry = right[0] * s + right[1] * c
+            return max(0.0, -ly) + max(0.0, ry)
+        return math.pi if side_cost(math.pi) <= side_cost(-math.pi) else -math.pi
+
     def _reach_to_grips(self, line, seconds: float):
         """Both wrists from park down onto their grip points, over the top."""
         targets = self._grip_world()
@@ -388,7 +435,7 @@ class AlignStation:
         over = [np.array([t[0], t[1], PARK_Z]) for t in targets]
         for blend in line._tween(0.55 * seconds):
             for arm, start, above in zip(self.arms, starts, over):
-                arm.pose(start + (above - start) * blend)
+                arm.pose(_orbit(arm.shoulder, start, above, blend))
             yield
         for blend in line._tween(0.45 * seconds):
             for arm, above, target in zip(self.arms, over, targets):
@@ -404,7 +451,7 @@ class AlignStation:
             yield
         for blend in line._tween(0.55 * seconds):
             for arm, above in zip(self.arms, over):
-                arm.pose(above + (arm.home - above) * blend)
+                arm.pose(_orbit(arm.shoulder, above, arm.home, blend))
             yield
 
     def _raise(self, line, by: float, seconds: float):
@@ -417,10 +464,11 @@ class AlignStation:
         """Swing the pair from one pose to the next; the cups follow the sheet."""
         c0 = np.asarray(c0, dtype=float)
         c1 = np.asarray(c1, dtype=float)
+        delta = _shortest_delta(yaw0, yaw1)
         for blend in line._tween(seconds):
-            self._set_pose(yaw0 + blend * (yaw1 - yaw0), c0 + blend * (c1 - c0), self._lift)
+            self._set_pose(yaw0 + blend * delta, c0 + blend * (c1 - c0), self._lift)
             yield
-        self._set_pose(yaw1, c1, self._lift)
+        self._set_pose(yaw0 + delta, c1, self._lift)
 
     def _hold(self, line, seconds: float):
         for _ in range(line._steps(seconds)):

@@ -17,6 +17,7 @@ export const OFFLINE_CAPABILITIES: SimulatorCapabilities = {
   recordingSeek: false,
   startRun: false,
   startBatch: false,
+  deleteRun: false,
   commands: {},
   ...DEFAULT_CATALOG,
 };
@@ -31,6 +32,7 @@ export const FIXTURE_CAPABILITIES: SimulatorCapabilities = {
   recordingSeek: false,
   startRun: true,
   startBatch: true,
+  deleteRun: true,
   commands: {
     pause_run: true,
     resume_run: true,
@@ -51,6 +53,7 @@ export function fromBridgeCapabilities(
     recordingSeek: caps.recordingSeek ?? false,
     startRun: caps.startRun,
     startBatch: caps.startBatch,
+    deleteRun: caps.deleteRun ?? false,
     commands: { ...caps.commands },
     clothTypes: caps.clothTypes?.length ? caps.clothTypes : DEFAULT_CATALOG.clothTypes,
     clothConditions: caps.clothConditions?.length

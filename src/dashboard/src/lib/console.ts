@@ -63,6 +63,7 @@ export function lineFromJournal(event: JournalEvent): ConsoleLine | null {
       };
     case "metric_sample":
     case "batch_updated":
+    case "run_deleted":
       return null;
   }
 }

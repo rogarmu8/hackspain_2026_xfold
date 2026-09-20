@@ -99,6 +99,40 @@ class ExperimentStoreTests(unittest.TestCase):
         store2.close()
         self.store = ExperimentStore(self.db)
 
+    def test_delete_run_drops_catalogue_and_events(self) -> None:
+        run_id = self.runtime.launch_run(name="drop-me", seed=3, scenario="line")["id"]
+        self.runtime.finish_success(run_id, 4.0)
+        self.assertIsNotNone(self.store.get_run(run_id))
+        self.assertTrue(any(r["id"] == run_id for r in self.runtime.list_runs()))
+
+        out = self.runtime.delete_run(run_id)
+        self.assertEqual(out["id"], run_id)
+        self.assertIsNone(self.store.get_run(run_id))
+        self.assertFalse(any(r["id"] == run_id for r in self.runtime.list_runs()))
+        self.assertFalse(any(e["id"] == run_id for e in self.runtime.list_experiments()))
+        self.assertEqual(self.store.events_for_run(run_id), [])
+        types = [e.type for e in self.journal.since(0)]
+        self.assertIn("run_deleted", types)
+        with self.assertRaises(KeyError):
+            self.runtime.delete_run(run_id)
+
+    def test_cancel_force_quits_and_delete_still_works(self) -> None:
+        from xfold.bridge.schema import CommandRequest
+
+        run_id = self.runtime.launch_run(name="force-quit", seed=4, scenario="line")["id"]
+        run = self.runtime.runs[run_id]
+        self.assertEqual(run.lifecycle, "running")
+        ack = self.runtime.handle_command(
+            CommandRequest(clientCommandId="c1", kind="cancel_run", runId=run_id)
+        )
+        self.assertEqual(ack["status"], "accepted")
+        self.assertTrue(run.cancel_requested)
+        self.assertEqual(run.lifecycle, "cancelled")
+        out = self.runtime.delete_run(run_id)
+        self.assertEqual(out["id"], run_id)
+        self.assertIsNone(self.store.get_run(run_id))
+        self.assertFalse(any(r["id"] == run_id for r in self.runtime.list_runs()))
+
     def test_memory_store_for_ephemeral_bridge(self) -> None:
         store = ExperimentStore(":memory:")
         runtime = Runtime(Journal(), store=store)

@@ -123,6 +123,9 @@ systemctl --user enable --now xfold-isaac-bridge.service
 The trycloudflare hostname is stable until `cloudflared` itself is killed; do not restart
 that tmux session (`xfold-tunnel`) unless you are ready to paste a new URL into Vercel.
 
+Two browser tabs (Vercel + localhost) can share one Isaac. Do not start a second
+sim: `moon run isaac:bridge` now opens an SSH tunnel only when `:8765` is already up.
+
 `moon run isaac:bridge` syncs the working copy, starts `python -m xfold_isaac.bridge` on the
 box's 127.0.0.1:8765 and forwards it here to 127.0.0.1:8766 over SSH; `dashboard:dev-isaac`
 points the dashboard at that (or at `XFOLD_ISAAC_BRIDGE_URL` if set). The live view, the run
@@ -147,7 +150,6 @@ dashboard's launch form. Isaac runs **one** experiment at a time (`maxConcurrent
 a single stage on a single thread, so further launches queue. The MuJoCo bridge runs three at once.
 
 ## Known gaps
-- Label stickers and the floor checker are flat colours: USD cubes carry no UVs.
 - Cloth stiffness and light gains are first guesses, tuned against the MuJoCo
   render, not measured.
 - Pixels only when asked (`--video`, `--photo`); the headless default renders

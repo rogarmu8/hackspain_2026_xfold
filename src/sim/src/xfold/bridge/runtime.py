@@ -371,6 +371,34 @@ class Runtime:
         items.sort(key=lambda x: x.get("startedAtIso") or "", reverse=True)
         return items
 
+    def delete_run(self, run_id: str) -> dict[str, Any]:
+        """Remove a run from memory, SQLite and on-disk media.
+
+        A live or queued cycle is force-quit first so the driver lets go.
+        Cancelled, succeeded and failed rows delete the same way. The journal
+        stays append-only: ``run_deleted`` is the fact; the store row is what
+        the list reads after a restart.
+        """
+        with self._lock:
+            run = self.runs.get(run_id)
+            in_memory = run is not None
+            if run is not None and run.lifecycle in {"running", "paused", "queued"}:
+                run.cancel_requested = True
+                self._finish_run_locked(run, "cancelled", "Deleted by the operator")
+            stored = self.store.get_run(run_id) is not None if self.store is not None else False
+            if not in_memory and not stored:
+                raise KeyError(run_id)
+            self.runs.pop(run_id, None)
+            if self.active_run_id == run_id:
+                self.active_run_id = None
+            self.journal.append("run_deleted", run_id=run_id)
+            if self.store is not None:
+                self.store.delete_run(run_id)
+            self._start_queued_locked()
+        self.wake_driver()
+        _purge_run_media(run_id)
+        return {"ok": True, "id": run_id}
+
     def events_for_run(self, run_id: str) -> list[dict[str, Any]]:
         """Journal events for a run: live journal first, then the durable store."""
         live = [
@@ -748,7 +776,9 @@ class Runtime:
             run.paused = False
             self._ui_event(run, "Resume applied")
         elif kind == "cancel_run" and run_id and run_id in self.runs:
-            self._finish_run_locked(self.runs[run_id], "cancelled", "Cancelled by the operator")
+            run = self.runs[run_id]
+            run.cancel_requested = True
+            self._finish_run_locked(run, "cancelled", "Cancelled by the operator")
         elif kind == "pause_batch" and batch_id and batch_id in self.batches:
             batch = self.batches[batch_id]
             batch.lifecycle = "paused"
@@ -1088,3 +1118,25 @@ class Runtime:
             activeRunId=batch.activeRunId,
         )
         self._persist_batch(batch)
+
+
+def _purge_run_media(run_id: str) -> None:
+    """Best-effort delete of photo, video and trajectory files for a run."""
+    import shutil
+
+    from xfold.bridge.photo import find_photo
+    from xfold.bridge.trajectory import trajectory_path
+    from xfold.bridge.video import run_dir
+
+    try:
+        photo = find_photo(run_id)
+        if photo is not None and photo.exists():
+            photo.unlink()
+        path = trajectory_path(run_id)
+        if path.exists():
+            path.unlink()
+        folder = run_dir(run_id)
+        if folder.exists():
+            shutil.rmtree(folder, ignore_errors=True)
+    except Exception as exc:  # noqa: BLE001 — delete must not fail the catalogue drop
+        print(f"[experiments] failed to purge media for {run_id}: {exc}", flush=True)

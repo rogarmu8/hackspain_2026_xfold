@@ -184,6 +184,7 @@ curl -sN 'http://127.0.0.1:8765/events/stream?after_seq=0'
 | `GET` | `/experiments` | Launch list for Experimentos (durable across bridge restarts; `data/experiments.sqlite`, schema via `PRAGMA user_version`) |
 | `GET` | `/experiments/{id}` | Durable experiment detail (`kind: run\|batch`) |
 | `POST` | `/runs`, `/batches` | Launch individual / batch |
+| `DELETE` | `/runs/{id}` | Drop a run from the catalogue (`deleteRun`; force-quits if live). Cancelled rows always delete. |
 | `POST` | `/commands` | Operator command (`202` / `409`) |
 | `GET` | `/viewport/meta` | Readiness: `seq`, `ageMs`, `source`, `available` |
 | `GET` | `/viewport/frame?after_seq=&wait_ms=` | **Primary** live view — long-poll JPEG (+ `X-Viewport-Seq`) |
@@ -248,6 +249,7 @@ Python models live in [`src/sim/src/xfold/bridge/schema.py`](../src/sim/src/xfol
 | `command_applied` | Side effects applied |
 | `batch_updated` | Batch counters / active child run |
 | `log` | Free-form simulator line for the dashboard **console** (`level`, `message`, `source`, `t`). Emit via `runtime.emit_log(...)`; never per physics step, never pixels/verts |
+| `run_deleted` | Operator removed the run from the catalogue (`DELETE /runs/{id}`) |
 
 Envelope on every event: `seq`, `tsIso`, `runId`, `batchId`.
 

@@ -73,23 +73,31 @@ class FollowCam:
     as a pose for a USD camera instead of an MjvCamera."""
 
     def __init__(self) -> None:
-        from xfold.line import FollowCam as Reference
+        from xfold.line import FollowCam as Reference, SPAWN_X, SURFACE_Z
 
         self.ref = Reference
-        self.lookat: np.ndarray | None = None
+        self.lookat = np.array([SPAWN_X, 0.0, SURFACE_Z + 0.08], dtype=float)
+
+    def reset(self) -> None:
+        from xfold.line import SPAWN_X, SURFACE_Z
+
+        self.lookat = np.array([SPAWN_X, 0.0, SURFACE_Z + 0.08], dtype=float)
+
+    def eye(self) -> tuple[np.ndarray, np.ndarray]:
+        az, el = math.radians(self.ref.AZIMUTH), math.radians(self.ref.ELEVATION)
+        forward = np.array([math.cos(el) * math.cos(az), math.cos(el) * math.sin(az), math.sin(el)])
+        return self.lookat - self.ref.DISTANCE * forward, forward
 
     def pose(self, cloth: np.ndarray, dt: float) -> tuple[np.ndarray, np.ndarray]:
         from xfold.line import SURFACE_Z
 
         rest_z = SURFACE_Z + 0.08
         goal = np.array([cloth[:, 0].mean(), 0.0, 0.65 * rest_z + 0.35 * cloth[:, 2].mean()])
-        if self.lookat is None:
+        if dt <= 0.0:
             self.lookat = goal
         else:
             self.lookat = self.lookat + (goal - self.lookat) * (1.0 - math.exp(-dt / self.ref.TAU))
-        az, el = math.radians(self.ref.AZIMUTH), math.radians(self.ref.ELEVATION)
-        forward = np.array([math.cos(el) * math.cos(az), math.cos(el) * math.sin(az), math.sin(el)])
-        return self.lookat - self.ref.DISTANCE * forward, forward
+        return self.eye()
 
 
 def kit_args() -> list[str]:
@@ -237,6 +245,8 @@ def main() -> None:
     writer = None
     follow = FollowCam() if args.camera == "follow" else None
     camera = "follow" if follow is not None else args.camera
+    if follow is not None:
+        backend.set_camera("follow", *follow.pose(line.positions(), 0.0))
     if args.video:
         import imageio_ffmpeg
 

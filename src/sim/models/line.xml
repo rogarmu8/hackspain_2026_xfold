@@ -86,7 +86,7 @@
     <material name="film_stack" rgba="0.80 0.90 0.98 0.60"/>
     <material name="suction" rgba="0.10 0.10 0.11 1"/>
     <material name="air" rgba="0.85 0.93 1.00 0"/>
-    <!-- Bag label: product type as the title, a fixed barcode below. -->
+    <!-- Bag label: garment title on top, QR (SKU) below. -->
     <texture name="label_tee" type="2d" file="label_tee.png"/>
     <texture name="label_work_tee" type="2d" file="label_work_tee.png"/>
     <texture name="label_jersey" type="2d" file="label_jersey.png"/>
@@ -125,7 +125,7 @@
     <body name="bagger_center" pos="1.40 0.20 0.62"/>
     <body name="align_center" pos="-1.55 0 0.60"/>
 
-    <camera name="overview" pos="0.45 -4.30 2.60" mode="targetbody" target="line_center"/>
+    <camera name="overview" pos="-1.55 -2.80 2.00" mode="targetbody" target="align_center"/>
     <camera name="press_cam" pos="-1.35 -1.55 1.35" mode="targetbody" target="press_platen"/>
     <camera name="fold_cam" pos="0.90 -1.15 1.70" mode="targetbody" target="fold_center"/>
     <camera name="bag_cam" pos="1.60 -1.35 1.60" mode="targetbody" target="bag_center"/>

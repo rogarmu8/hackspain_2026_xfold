@@ -9,6 +9,7 @@ import { AppShell } from "@/components/AppShell";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
 import { GraphsView, conditionFilterLabel } from "@/components/GraphsView";
 import { NewExperimentDialog } from "@/components/NewExperimentDialog";
+import { RunRowMenu } from "@/components/RunRowMenu";
 import { RunStatusBadges } from "@/components/RunStatusBadges";
 import { XFoldLoader } from "@/components/XFoldLoader";
 import { cycleFill, groupOperatorSteps } from "@/lib/cycle-progress";
@@ -173,13 +174,14 @@ export function HistoryView() {
     <div className="min-h-0 flex-1 overflow-auto border border-divider bg-surface">
       <Table className="w-full min-w-[880px] table-fixed border-collapse text-left text-sm">
         <colgroup>
-          <col className="w-[16%]" />
-          <col className="w-[22%]" />
-          <col className="w-[12%]" />
-          <col className="w-[8%]" />
-          <col className="w-[8%]" />
-          <col className="w-[14%]" />
+          <col className="w-[15%]" />
           <col className="w-[20%]" />
+          <col className="w-[11%]" />
+          <col className="w-[8%]" />
+          <col className="w-[8%]" />
+          <col className="w-[13%]" />
+          <col className="w-[19%]" />
+          <col className="w-10" />
         </colgroup>
         <TableHeader>
           <TableRow className="border-b border-divider text-[13px] text-muted-foreground">
@@ -190,6 +192,7 @@ export function HistoryView() {
             <SortHead label="Speed" column="speed" active={sortKey} dir={sortDir} onSort={toggleSort} />
             <SortHead label="Duration" column="cycle" active={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
             <SortHead label="Started" column="started" active={sortKey} dir={sortDir} onSort={toggleSort} />
+            <TableHead className="w-10 px-2 py-3"><span className="sr-only">Actions</span></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody className="[&_tr:last-child]:border-b [&_tr:last-child]:border-divider">
@@ -372,6 +375,9 @@ function RunRow({ run, onOpen }: { run: RunSummary; onOpen: () => void }) {
       </TableCell>
       <TableCell className="px-4 py-3 text-right font-mono tabular">{formatSeconds(run.metrics.cycleTimeSimS)}</TableCell>
       <TableCell className="px-4 py-3 text-muted-foreground">{formatIso(run.startedAtIso)}</TableCell>
+      <TableCell className="w-10 px-2 py-3">
+        <RunRowMenu run={run} />
+      </TableCell>
     </TableRow>
   );
 }

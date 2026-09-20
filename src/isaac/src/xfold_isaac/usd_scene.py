@@ -19,7 +19,8 @@ up in Isaac the next run.
     the bag off colliders that only the cloth may touch, as in MuJoCo.
   * The cloth is a triangle mesh in flex vertex order, textured with the
     garment's print. Its physics (a PhysX surface deformable) is added by the
-    Isaac backend, which needs PhysX's own schemas.
+    Isaac backend, which needs PhysX's own schemas. Textured boxes (bag
+    stickers, the floor checker) are UV meshes; UsdGeom.Cube has no UVs.
   * Lights and cameras keep their MuJoCo names and poses.
 
 Only ``pxr`` is needed: usd-core on a laptop, or the copy inside Isaac Sim.
@@ -156,8 +157,44 @@ def set_geom_shape(prim: Usd.Prim, kind: int, size: np.ndarray) -> None:
         cap.GetHeightAttr().Set(2.0 * float(size[1]))
 
 
-def _define_geom(stage: Usd.Stage, path: str, kind: int) -> Usd.Prim | None:
+def _geom_texture(model, geom: int) -> int:
+    mat = int(model.geom_matid[geom])
+    if mat < 0:
+        return -1
+    return int(model.mat_texid[mat].max())
+
+
+def _unit_box_mesh(stage: Usd.Stage, path: str) -> Usd.Prim:
+    """Unit cube [-1, 1] with UVs on every face (UsdGeom.Cube has none)."""
+    faces = (
+        ((-1, -1, 1), (1, -1, 1), (1, 1, 1), (-1, 1, 1)),
+        ((1, -1, -1), (-1, -1, -1), (-1, 1, -1), (1, 1, -1)),
+        ((1, -1, -1), (1, 1, -1), (1, 1, 1), (1, -1, 1)),
+        ((-1, 1, -1), (-1, -1, -1), (-1, -1, 1), (-1, 1, 1)),
+        ((-1, 1, -1), (-1, 1, 1), (1, 1, 1), (1, 1, -1)),
+        ((-1, -1, 1), (1, -1, 1), (1, -1, -1), (-1, -1, -1)),
+    )
+    # Title is at the top of the PNG; USD v=0 is the bottom of the image.
+    uvs = ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
+    points = [p for face in faces for p in face]
+    st = [uv for _ in faces for uv in uvs]
+    mesh = UsdGeom.Mesh.Define(stage, path)
+    mesh.CreatePointsAttr([Gf.Vec3f(*p) for p in points])
+    mesh.CreateFaceVertexCountsAttr([4] * 6)
+    mesh.CreateFaceVertexIndicesAttr(list(range(24)))
+    mesh.CreateSubdivisionSchemeAttr(UsdGeom.Tokens.none)
+    mesh.CreateDoubleSidedAttr(True)
+    primvar = UsdGeom.PrimvarsAPI(mesh).CreatePrimvar(
+        "st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.faceVarying
+    )
+    primvar.Set([Gf.Vec2f(*uv) for uv in st])
+    return mesh.GetPrim()
+
+
+def _define_geom(stage: Usd.Stage, path: str, kind: int, *, textured: bool = False) -> Usd.Prim | None:
     if kind in (_GEOM.mjGEOM_BOX, _GEOM.mjGEOM_PLANE):
+        if textured:
+            return _unit_box_mesh(stage, path)
         cube = UsdGeom.Cube.Define(stage, path)
         cube.GetSizeAttr().Set(2.0)  # unit half-extent, sized by scale
         return cube.GetPrim()
@@ -190,7 +227,8 @@ def _preview_material(stage: Usd.Stage, path: str, rgba, *, roughness: float = 0
 
 def set_material_color(stage: Usd.Stage, path: str, rgba) -> None:
     shader = UsdShade.Shader(stage.GetPrimAtPath(f"{path}/shader"))
-    shader.GetInput("diffuseColor").Set(Gf.Vec3f(*(float(c) for c in rgba[:3])))
+    if not stage.GetPrimAtPath(f"{path}/image"):
+        shader.GetInput("diffuseColor").Set(Gf.Vec3f(*(float(c) for c in rgba[:3])))
     shader.GetInput("opacity").Set(float(rgba[3]))
 
 
@@ -303,7 +341,9 @@ def build_stage(stage: Usd.Stage, model, data, *, texture_dir: Path) -> SceneMap
                 scale = geom_scale(kind, size)
 
             gpath = f"{visual_path}/{gname}"
-            gprim = _define_geom(stage, gpath, kind)
+            tex = _geom_texture(model, geom)
+            textured = tex >= 0 and kind in (_GEOM.mjGEOM_BOX, _GEOM.mjGEOM_PLANE)
+            gprim = _define_geom(stage, gpath, kind, textured=textured)
             if gprim is None:
                 print(f"usd_scene: skipped geom {gname} of unsupported type {kind}", flush=True)
                 continue
@@ -313,7 +353,11 @@ def build_stage(stage: Usd.Stage, model, data, *, texture_dir: Path) -> SceneMap
             scene.geom_kind[geom] = kind
             rgba = geom_color(model, geom)
             mpath = f"{LOOKS}/{name}_{gname}"
-            UsdShade.MaterialBindingAPI.Apply(gprim).Bind(_preview_material(stage, mpath, rgba))
+            material = _preview_material(stage, mpath, rgba)
+            if textured:
+                png = write_texture(model, tex, texture_dir / f"{model.texture(tex).name or gname}.png")
+                _texture_material(stage, material, png)
+            UsdShade.MaterialBindingAPI.Apply(gprim).Bind(material)
             scene.material_paths[geom] = mpath
             if not geom_visible(model, geom, rgba):
                 UsdGeom.Imageable(gprim).MakeInvisible()

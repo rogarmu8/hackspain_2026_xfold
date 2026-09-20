@@ -552,6 +552,14 @@ def create_app(
             return {"kind": "batch", **batch}
         raise HTTPException(404, "experiment not found")
 
+    @app.delete("/runs/{run_id}")
+    def delete_run(run_id: str) -> dict:
+        """Drop a finished (or cancelled live) run from the catalogue."""
+        try:
+            return runtime.delete_run(run_id)
+        except KeyError as exc:
+            raise HTTPException(404, "run not found") from exc
+
     @app.post("/runs", status_code=201)
     def post_run(body: LaunchRunRequest) -> dict:
         try:

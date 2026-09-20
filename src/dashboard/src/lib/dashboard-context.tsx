@@ -58,6 +58,13 @@ type DashboardContextValue = {
     | { ok: true; id: string }
     | { ok: false; reason: string }
     | Promise<{ ok: true; id: string } | { ok: false; reason: string }>;
+  deleteRun: (
+    runId: string,
+  ) => Promise<{ ok: true; id: string } | { ok: false; reason: string }>;
+  stopRun: (
+    runId: string,
+    batchId?: string | null,
+  ) => Promise<{ ok: true; id: string } | { ok: false; reason: string }>;
   getRun: (id: string) => RunDetail | null;
   getBatch: (id: string) => BatchSummary | null;
   /** Journal facts for a run (live only). */
@@ -199,6 +206,39 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     [source, bridge, bump],
   );
 
+  const deleteRun = useCallback(
+    (runId: string) => {
+      if (source !== "live" || !bridge) {
+        return Promise.resolve({
+          ok: false as const,
+          reason: "Bridge offline — connect the simulator before deleting.",
+        });
+      }
+      return bridge.deleteRun(runId).then((result) => {
+        bump();
+        return result;
+      });
+    },
+    [source, bridge, bump],
+  );
+
+  const stopRun = useCallback(
+    (runId: string, batchId?: string | null) => {
+      if (source !== "live" || !bridge) {
+        return Promise.resolve({
+          ok: false as const,
+          reason: "Bridge offline — connect the simulator before stopping.",
+        });
+      }
+      return bridge.requestCommand("cancel_run", runId, batchId ?? null).then((result) => {
+        bump();
+        if (!result.ok) return result;
+        return { ok: true as const, id: runId };
+      });
+    },
+    [source, bridge, bump],
+  );
+
   const getRun = useCallback(
     (id: string) => {
       void version;
@@ -236,6 +276,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       history,
       requestCommand,
       launch,
+      deleteRun,
+      stopRun,
       getRun,
       getBatch,
       getJournal,
@@ -250,6 +292,8 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       history,
       requestCommand,
       launch,
+      deleteRun,
+      stopRun,
       getRun,
       getBatch,
       getJournal,

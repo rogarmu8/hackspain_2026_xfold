@@ -446,6 +446,17 @@ class ExperimentStore:
         items.sort(key=lambda x: x.get("startedAtIso") or "", reverse=True)
         return items
 
+    def delete_run(self, run_id: str) -> bool:
+        """Drop a run and its journal rows. Returns whether a row existed."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id FROM experiments WHERE id = ?",
+                (run_id,),
+            ).fetchone()
+            self._conn.execute("DELETE FROM journal_events WHERE run_id = ?", (run_id,))
+            self._conn.execute("DELETE FROM experiments WHERE id = ?", (run_id,))
+            return row is not None
+
     def events_for_run(self, run_id: str) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._conn.execute(

@@ -30,6 +30,7 @@ JournalEventType = Literal[
     "command_applied",
     "batch_updated",
     "log",
+    "run_deleted",
 ]
 
 LogLevel = Literal["debug", "info", "warning", "error"]
@@ -111,6 +112,7 @@ class BridgeCapabilities(BaseModel):
     speedRange: tuple[float, float] = (1.0, 20.0)
     startRun: bool = True
     startBatch: bool = True
+    deleteRun: bool = True
     commands: dict[str, bool] = Field(
         default_factory=lambda: {
             "pause_run": True,

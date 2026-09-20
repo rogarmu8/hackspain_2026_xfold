@@ -189,8 +189,9 @@ class IsaacSession(_session_base()):
         self.shim = None
         cfg = shirt_config()
         self._garment_key = f"{cfg.garment}:{cfg.texture}"
-        # Something for the viewport before the first run.
-        self.backend.set_camera("follow", *self.follow.pose(self._rest_cloth(), 0.0))
+        # Idle viewport looks at the infeed (garment spawn), not the rest pose.
+        self.follow.reset()
+        self.backend.set_camera("follow", *self.follow.eye())
         self._grab(fresh=True)
 
     def _rest_cloth(self):
@@ -217,6 +218,9 @@ class IsaacSession(_session_base()):
         from xfold_isaac.engine import EngineShim
 
         line = Line(self.model, self.data, **kwargs)
+        if self.follow is not None and self.backend is not None:
+            self.follow.reset()
+            self.backend.set_camera("follow", *self.follow.pose(line.positions(), 0.0))
         dt = float(self.model.opt.timestep)
         every = max(1, round(1.0 / (self.video_fps * dt)))
         self.shim = shim = EngineShim(line, self.backend, render_every=every)

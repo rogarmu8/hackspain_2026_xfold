@@ -200,6 +200,9 @@ FLASH_DIFFUSE = (0.34, 0.34, 0.33)
 # The shirt's centre when it is put on the belt, and where the press is.
 SPAWN_X = -1.55
 PRESS_X = -0.75
+# press_rig.xml geom "platen" half-extents. Flattening only runs when the
+# garment's centre is on this footprint — not at spawn, not past the press.
+PLATEN_HALF = (0.34, 0.37)
 # The press's columns move out this far from press_rig.xml's +/-0.46, so the
 # belt between them (+/-0.485) is wider than the sleeves (+/-0.456).
 PRESS_WIDEN = 0.08
@@ -748,6 +751,18 @@ class Line:
 
     # --- stepping -----------------------------------------------------
 
+    def abort(self) -> None:
+        """Force-quit the cycle. The operator cancelled; do not finish the phase."""
+        if self.finished:
+            return
+        self.finished = True
+        if self.outcome is None:
+            self.outcome = "cancelled"
+        self.belt_speed = 0.0
+        self.belt2_speed = 0.0
+        self._program = iter(())
+        self._bagger = None
+
     def step(self) -> None:
         """Advance the line by one physics step."""
         if not self.finished:
@@ -974,10 +989,12 @@ class Line:
         self._enter("BELT", "carry the shirt under the press", phase="TO_PRESS")
         yield from self._belt_until(lambda pos: PRESS_X - float(pos[:, 0].mean()))
 
+        held = self._held_world()
         self._enter("PRESS", "platen down on the belt", phase="PRESS",
-                    measurements={"flatnessPreM": float(np.std(self.positions()[:, 2]))})
+                    measurements={"flatnessPreM": float(np.std(held[:, 2]))})
         yield from self._press_down(2.5)
-        self._enter("STEAM", "steam irons the wrinkles out")
+        if self._under_press():
+            self._enter("STEAM", "steam irons the wrinkles out")
         yield from self._iron_to_flat(3.0)
         self._enter("LIFT", "platen up")
         yield from self._ramp_stroke(STROKE_OPEN, 2.0)
@@ -1304,6 +1321,26 @@ class Line:
         for _ in range(self._steps(seconds)):
             yield
 
+    def _held_world(self) -> np.ndarray:
+        """The garment as the line is carrying it, not a post-physics settle.
+
+        After load the align station pins the sheet (``_align._world``). Isaac
+        can write that pose and then read a cloth that never left rest; using
+        ``positions()`` here would flatten the rest T, which is not under the
+        press.
+        """
+        if self._align._world is not None:
+            return np.asarray(self._align._world, dtype=float)
+        return np.asarray(self.positions(), dtype=float)
+
+    def _under_press(self, pos: np.ndarray | None = None) -> bool:
+        """True when the garment's centre sits on the platen footprint."""
+        cloth = self._held_world() if pos is None else np.asarray(pos, dtype=float)
+        return (
+            abs(float(cloth[:, 0].mean()) - PRESS_X) <= PLATEN_HALF[0]
+            and abs(float(cloth[:, 1].mean())) <= PLATEN_HALF[1]
+        )
+
     def _belt_until(self, remaining):
         """Run the belt until ``remaining(positions)`` metres reach zero.
 
@@ -1311,12 +1348,7 @@ class Line:
         a line stops a part at a station.
         """
         while True:
-            pos = (
-                self._align._world
-                if self._align._world is not None
-                else self.positions()
-            )
-            left = remaining(pos)
+            left = remaining(self._held_world())
             if left <= 0.002:
                 break
             top = BELT_SPEED * self.speed
@@ -1338,18 +1370,18 @@ class Line:
             yield
 
     def _press_down(self, seconds: float):
-        """Close the platen; squash Z folds under it, keep the XY crumple."""
-        start = np.asarray(self.positions(), dtype=float)
+        """Close the platen; squash Z folds only if the garment is under it."""
+        start = self._held_world()
+        flatten = self._under_press(start)
         z0 = SURFACE_Z + SHIRT_RADIUS
         start_stroke = float(self.data.ctrl[self._stroke])
         steps = self._steps(seconds)
-        pin = self._align._world is not None or self.skewed
         for index in range(steps):
             blend = smoothstep((index + 1) / steps)
             self.data.ctrl[self._stroke] = start_stroke + (
                 STROKE_PRESSED - start_stroke
             ) * blend
-            if pin:
+            if flatten:
                 world = start.copy()
                 world[:, 2] = start[:, 2] + blend * (z0 - start[:, 2])
                 self._align._world = world
@@ -1357,7 +1389,14 @@ class Line:
 
     def _iron_to_flat(self, seconds: float):
         """Steam + morph the crumpled sheet onto the square T under the press."""
-        start = np.asarray(self.positions(), dtype=float)
+        start = self._held_world()
+        if not self._under_press(start):
+            self._enter(
+                "STEAM",
+                "garment not under the press; wrinkles kept",
+            )
+            yield from self._hold("STEAM", "", 0.2, quiet=True)
+            return
         target = flat_shirt(PRESS_X)
         set_steam(self.model, True)
         steps = self._steps(seconds)
@@ -1851,6 +1890,12 @@ class FollowCam:
         self.cam = mujoco.MjvCamera()
         self.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
         self.setup(self.cam)
+        self._started = False
+
+    def reset(self) -> None:
+        """Home on the infeed so a new cycle starts on the garment, not the bag."""
+        self.lookat[:] = (SPAWN_X, 0.0, SURFACE_Z + 0.08)
+        self.cam.lookat[:] = self.lookat
         self._started = False
 
     def setup(self, cam) -> None:

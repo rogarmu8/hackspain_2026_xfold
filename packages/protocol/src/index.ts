@@ -108,6 +108,7 @@ export const JOURNAL_EVENT_TYPES = [
   "command_applied",
   "batch_updated",
   "log",
+  "run_deleted",
 ] as const;
 
 export const LOG_LEVELS = ["debug", "info", "warning", "error"] as const;
@@ -203,6 +204,8 @@ export type BridgeCapabilities = {
   engine?: string;
   startRun: boolean;
   startBatch: boolean;
+  /** Catalogue delete (`DELETE /runs/{id}`). Absent ⇒ UI hides the action. */
+  deleteRun?: boolean;
   commands: Partial<Record<CommandKind, boolean>>;
   /** Live catalogue for the launch form. Empty ⇒ UI uses protocol defaults. */
   clothTypes?: CatalogOption[];
@@ -282,6 +285,9 @@ export type JournalEvent =
       failed: number;
       pending: number;
       activeRunId: string | null;
+    })
+  | (JournalEnvelope & {
+      type: "run_deleted";
     })
   | (JournalEnvelope & {
       /** Free-form simulator log line for the live console (never pixels / verts). */

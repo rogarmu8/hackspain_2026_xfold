@@ -63,6 +63,7 @@ export type SimulatorCapabilities = {
   engine?: string;
   startRun: boolean;
   startBatch: boolean;
+  deleteRun?: boolean;
   commands: Partial<Record<CommandKind, boolean>>;
   clothTypes?: CatalogOption[];
   clothConditions?: CatalogOption[];

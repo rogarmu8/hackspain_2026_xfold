@@ -330,6 +330,14 @@ class VideoManager:
                     self.on_open(run_id)
             current.write(rgb)
 
+    def end(self, run_id: str) -> None:
+        """Force-close this run's recorder so delete can purge the folder."""
+        with self._lock:
+            current = self._current
+            if current is not None and current.run_id == run_id:
+                current.close()
+                self._current = None
+
     def sync(self, run_id: str | None) -> None:
         """Close the recording if its run is no longer the live one.
 

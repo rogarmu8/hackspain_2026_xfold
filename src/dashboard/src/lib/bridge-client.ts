@@ -163,6 +163,10 @@ export class BridgeClient {
         this._pendingKind = null;
       }
     }
+    if (event.type === "run_deleted" && event.runId) {
+      this._runs.delete(event.runId);
+      this._experiments = this._experiments.filter((item) => item.id !== event.runId);
+    }
   }
 
   refreshSnapshot(): Promise<ControlSnapshot | null> {
@@ -213,7 +217,9 @@ export class BridgeClient {
       ]);
       if (runsRes.ok) {
         const runs = (await runsRes.json()) as RunDetail[];
-        for (const run of runs) this._runs.set(run.id, run);
+        const next = new Map<string, RunDetail>();
+        for (const run of runs) next.set(run.id, run);
+        this._runs = next;
       }
       if (expRes.ok) {
         this._experiments = (await expRes.json()) as ExperimentListItem[];
@@ -328,6 +334,27 @@ export class BridgeClient {
       if (!res.ok) return { ok: false, reason: data.detail ?? `HTTP ${res.status}` };
       await this.refreshSnapshot();
       return { ok: true, id: data.id! };
+    } catch (err) {
+      return {
+        ok: false,
+        reason: err instanceof Error ? err.message : "Network error",
+      };
+    }
+  }
+
+  async deleteRun(
+    runId: string,
+  ): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
+    try {
+      const res = await fetch(`${this.baseUrl}/runs/${encodeURIComponent(runId)}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json()) as { ok?: boolean; id?: string; detail?: string };
+      if (!res.ok) return { ok: false, reason: data.detail ?? `HTTP ${res.status}` };
+      this._runs.delete(runId);
+      this._experiments = this._experiments.filter((item) => item.id !== runId);
+      await this.refreshSnapshot();
+      return { ok: true, id: data.id ?? runId };
     } catch (err) {
       return {
         ok: false,
