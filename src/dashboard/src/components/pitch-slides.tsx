@@ -1,9 +1,14 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { XFoldLoader } from "@/components/XFoldLoader";
 
 export type SlideTone = "light" | "dark";
+
+export type SlideProps = {
+  /** Move the deck on; the cover uses it to hand over by itself. */
+  onAdvance: () => void;
+};
 
 export type Slide = {
   id: string;
@@ -11,7 +16,7 @@ export type Slide = {
   tone: SlideTone;
   /** Short name for the footer and the screen-reader announcement. */
   label: string;
-  Content: () => ReactNode;
+  Content: (props: SlideProps) => ReactNode;
 };
 
 export const DARK_SURFACE = "#2a170f";
@@ -73,6 +78,91 @@ function Stations({ items }: { items: string[] }) {
   );
 }
 
+
+/* --- The cover's cadence ---------------------------------------------- */
+
+/** Beat before the first line, so the mark can finish its fold. */
+const FIRST_BEAT_MS = 1100;
+/** Each line lands sooner than the last. */
+const BEAT_FACTOR = 0.78;
+/** Once the beats are this tight the joke has landed; hand over to slide 2. */
+const LAST_BEAT_MS = 110;
+const VISIBLE_LINES = 4;
+/** The cover hands over once per load; coming back to it replays without leaving. */
+let handedOver = false;
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+
+function useReducedMotion() {
+  return useSyncExternalStore(
+    (listener) => {
+      const query = window.matchMedia(REDUCED_MOTION);
+      query.addEventListener("change", listener);
+      return () => query.removeEventListener("change", listener);
+    },
+    () => window.matchMedia(REDUCED_MOTION).matches,
+    () => false,
+  );
+}
+
+/**
+ * "Una camiseta más." then "Y otra.", each one faster, until the pile is going
+ * quicker than anyone could work — at which point the deck moves on by itself.
+ * Reduced motion gets the three lines at rest and keeps the keyboard in charge.
+ */
+function Cadence({ onAdvance }: SlideProps) {
+  const [count, setCount] = useState(1);
+  const still = useReducedMotion();
+  const advanceRef = useRef(onAdvance);
+  useEffect(() => {
+    advanceRef.current = onAdvance;
+  }, [onAdvance]);
+
+  useEffect(() => {
+    if (still) return;
+    let timer = 0;
+    let beat = FIRST_BEAT_MS;
+    const tick = () => {
+      setCount((current) => current + 1);
+      beat *= BEAT_FACTOR;
+      if (beat <= LAST_BEAT_MS) {
+        if (handedOver) return;
+        handedOver = true;
+        advanceRef.current();
+        return;
+      }
+      timer = window.setTimeout(tick, beat);
+    };
+    timer = window.setTimeout(tick, beat);
+    return () => window.clearTimeout(timer);
+  }, [still]);
+
+  const lineClass =
+    "text-[clamp(1.1rem,2.4vw,1.9rem)] leading-tight whitespace-nowrap";
+  if (still) {
+    return (
+      <p className={`${lineClass} opacity-80`}>Una camiseta más. Y otra. Y otra.</p>
+    );
+  }
+  const shown = Array.from({ length: count }, (_, line) => line).slice(-VISIBLE_LINES);
+  return (
+    <div
+      className="flex h-[6em] flex-col items-center justify-end gap-1 overflow-hidden text-[clamp(1.1rem,2.4vw,1.9rem)]"
+      style={{ maskImage: "linear-gradient(to bottom, transparent, #000 45%)" }}
+    >
+      {shown.map((line) => (
+        <p
+          key={line}
+          className={`${lineClass} opacity-80 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2`}
+          // The line arrives as fast as the beat that called it.
+          style={{ animationDuration: `${Math.max(70, FIRST_BEAT_MS * BEAT_FACTOR ** line * 0.5)}ms` }}
+        >
+          {line === 0 ? "Una camiseta más." : "Y otra."}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 /* --- The deck --------------------------------------------------------- */
 
 export const SLIDES: Slide[] = [
@@ -80,7 +170,7 @@ export const SLIDES: Slide[] = [
     id: "portada",
     tone: "dark",
     label: "XFOLD",
-    Content: () => (
+    Content: ({ onAdvance }) => (
       <div className="flex w-full flex-col items-center gap-8 text-center">
         <XFoldLoader
           size={132}
@@ -98,9 +188,7 @@ export const SLIDES: Slide[] = [
           className="w-[min(320px,62vw)]"
           draggable={false}
         />
-        <p className="max-w-[22ch] text-[clamp(1.1rem,2.4vw,1.9rem)] leading-tight text-balance opacity-80">
-          Nadie debería doblar camisetas para vivir.
-        </p>
+        <Cadence onAdvance={onAdvance} />
       </div>
     ),
   },

@@ -117,7 +117,7 @@ export function PitchDeck() {
         className="flex flex-1 items-center justify-center px-6 py-16 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 motion-safe:slide-in-from-bottom-4 sm:px-12 lg:px-20"
       >
         <div className="w-full max-w-5xl">
-          <slide.Content />
+          <slide.Content onAdvance={() => go(index + 1)} />
         </div>
       </section>
 
