@@ -7,10 +7,10 @@ import { ArrowUpRight } from "lucide-react";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "./ui/table";
 import { AppShell } from "@/components/AppShell";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
-import { FoldMark } from "@/components/FoldMark";
 import { GraphsView, conditionFilterLabel } from "@/components/GraphsView";
 import { NewExperimentDialog } from "@/components/NewExperimentDialog";
 import { RunStatusBadges } from "@/components/RunStatusBadges";
+import { XFoldLoader } from "@/components/XFoldLoader";
 import { useDashboard } from "@/lib/dashboard-context";
 import { formatIso, formatSeconds, clothTypeLabel } from "@/lib/format";
 import { filterChartRuns, GRAPH_GROUPS, GRAPH_MEASURES, uniqueValues, type ChartMetric, type GraphGroup } from "@/lib/run-charts";
@@ -32,7 +32,7 @@ const FIELD = `mt-1 block ${CONTROL}`;
 
 /** Single list of every run (individual or batch member). Opening one lands in the control view. */
 export function HistoryView() {
-  const { history, snapshot } = useDashboard();
+  const { history, snapshot, ready } = useDashboard();
   const router = useRouter();
   const [lifecycle, setLifecycle] = useState<"all" | RunLifecycle>("all");
   const [query, setQuery] = useState("");
@@ -63,6 +63,62 @@ export function HistoryView() {
   const graphRows = useMemo(
     () => filterChartRuns(history, { lifecycle, query, clothType, clothCondition, batchId: "all" }),
     [history, lifecycle, query, clothType, clothCondition],
+  );
+
+  const listBody = !ready ? (
+    <div
+      className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 border border-divider bg-surface px-6 py-10"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <XFoldLoader size={72} showLabel label="Loading runs…" decorative={false} />
+    </div>
+  ) : view === "graphs" ? (
+    <GraphsView
+      runs={history}
+      lifecycle={lifecycle}
+      query={query}
+      clothType={clothType}
+      clothCondition={clothCondition}
+      metric={metric}
+      group={group}
+    />
+  ) : rows.length === 0 ? (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center border border-divider bg-surface px-8 py-16 text-center">
+      <p className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+        {history.length
+          ? "No rows match this filter"
+          : snapshot.connection === "disconnected"
+            ? "Bridge offline"
+            : "No runs"}
+      </p>
+      <p className="mt-3 max-w-md text-base text-muted-foreground sm:text-lg">
+        {history.length
+          ? "Try clearing search or status."
+          : snapshot.connection === "disconnected"
+            ? "Connect the simulator — the list stays empty until real runs exist."
+            : "Launch the first from “New experiment”."}
+      </p>
+    </div>
+  ) : (
+    <div className="min-h-0 flex-1 overflow-auto border border-divider bg-surface">
+      <Table className="w-full min-w-[720px] border-collapse text-left text-sm">
+        <TableHeader>
+          <TableRow className="border-b border-divider text-[13px] text-muted-foreground">
+            <TableHead className="px-4 py-3 font-semibold">Run</TableHead>
+            <TableHead className="px-4 py-3 font-semibold">Status</TableHead>
+            <TableHead className="px-4 py-3 font-semibold">Batch</TableHead>
+            <TableHead className="px-4 py-3 font-semibold">Seed</TableHead>
+            <TableHead className="px-4 py-3 text-right font-semibold">cycle t (sim)</TableHead>
+            <TableHead className="px-4 py-3 font-semibold">Started</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((run) => <RunRow key={run.id} run={run} onOpen={() => router.push(`/historial/${run.id}`)} />)}
+        </TableBody>
+      </Table>
+    </div>
   );
 
   return (
@@ -187,51 +243,13 @@ export function HistoryView() {
           </>
         ) : null}
         <span className="ml-auto self-center font-mono text-[11px] tabular text-muted-foreground">
-          {view === "graphs" ? graphRows.length : rows.length} / {history.length}
+          {ready
+            ? `${view === "graphs" ? graphRows.length : rows.length} / ${history.length}`
+            : "…"}
         </span>
       </div>
 
-      {view === "graphs" ? (
-        <GraphsView
-          runs={history}
-          lifecycle={lifecycle}
-          query={query}
-          clothType={clothType}
-          clothCondition={clothCondition}
-          metric={metric}
-          group={group}
-        />
-      ) : rows.length === 0 ? (
-        <div className="min-h-0 flex-1 border border-divider bg-surface px-6 py-10">
-          <FoldMark size={32} className="mb-4 opacity-40" />
-          <h2 className="text-lg font-semibold">No runs</h2>
-          <p className="mt-2 max-w-lg text-sm text-muted-foreground">
-            {history.length
-              ? "No rows match this filter."
-              : snapshot.connection === "disconnected"
-                ? "Bridge offline. Connect the simulator — the list stays empty until real runs exist."
-                : "No runs recorded yet. Launch the first from “New experiment”."}
-          </p>
-        </div>
-      ) : (
-        <div className="min-h-0 flex-1 overflow-auto border border-divider bg-surface">
-          <Table className="w-full min-w-[720px] border-collapse text-left text-sm">
-            <TableHeader>
-              <TableRow className="border-b border-divider text-[13px] text-muted-foreground">
-                <TableHead className="px-4 py-3 font-semibold">Run</TableHead>
-                <TableHead className="px-4 py-3 font-semibold">Status</TableHead>
-                <TableHead className="px-4 py-3 font-semibold">Batch</TableHead>
-                <TableHead className="px-4 py-3 font-semibold">Seed</TableHead>
-                <TableHead className="px-4 py-3 text-right font-semibold">cycle t (sim)</TableHead>
-                <TableHead className="px-4 py-3 font-semibold">Started</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((run) => <RunRow key={run.id} run={run} onOpen={() => router.push(`/historial/${run.id}`)} />)}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      {listBody}
     </AppShell>
   );
 }

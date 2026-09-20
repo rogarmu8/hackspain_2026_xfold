@@ -44,6 +44,8 @@ const OFFLINE_SNAPSHOT: ControlSnapshot = {
 
 type DashboardContextValue = {
   source: DataSource;
+  /** False until the first bridge probe finishes (live or offline). */
+  ready: boolean;
   bridgeUrl: string;
   snapshot: ControlSnapshot;
   pendingCommand: PendingCommand | null;
@@ -73,6 +75,7 @@ const DashboardContext = createContext<DashboardContextValue | null>(null);
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const [source, setSource] = useState<DataSource>("offline");
+  const [ready, setReady] = useState(false);
   const [bridge, setBridge] = useState<BridgeClient | null>(null);
   const [, startTransition] = useTransition();
   const [version, setVersion] = useState(0);
@@ -89,42 +92,46 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     let client: BridgeClient | null = null;
 
     async function connect() {
-      const url = bridgeBaseUrl();
-      const ok = await probeBridge(url);
-      if (cancelled) return;
-      if (!ok) {
-        setSource("offline");
-        setBridge(null);
+      try {
+        const url = bridgeBaseUrl();
+        const ok = await probeBridge(url);
+        if (cancelled) return;
+        if (!ok) {
+          setSource("offline");
+          setBridge(null);
+          bump();
+          return;
+        }
+        client = new BridgeClient(url);
+        const started = await client.start();
+        if (cancelled) {
+          client.stop();
+          return;
+        }
+        if (!started) {
+          setSource("offline");
+          setBridge(null);
+          bump();
+          return;
+        }
+        setBridge(client);
+        setSource("live");
+        client.subscribe(() => {
+          setPendingCommand(
+            client!.pendingCommandId && client!.pendingKind
+              ? {
+                  kind: client!.pendingKind,
+                  scopeLabel: client!.pendingKind,
+                  requestedAtIso: new Date().toISOString(),
+                }
+              : null,
+          );
+          bump();
+        });
         bump();
-        return;
+      } finally {
+        if (!cancelled) setReady(true);
       }
-      client = new BridgeClient(url);
-      const started = await client.start();
-      if (cancelled) {
-        client.stop();
-        return;
-      }
-      if (!started) {
-        setSource("offline");
-        setBridge(null);
-        bump();
-        return;
-      }
-      setBridge(client);
-      setSource("live");
-      client.subscribe(() => {
-        setPendingCommand(
-          client!.pendingCommandId && client!.pendingKind
-            ? {
-                kind: client!.pendingKind,
-                scopeLabel: client!.pendingKind,
-                requestedAtIso: new Date().toISOString(),
-              }
-            : null,
-        );
-        bump();
-      });
-      bump();
     }
 
     void connect();
@@ -221,6 +228,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       source,
+      ready,
       bridgeUrl: bridgeBaseUrl(),
       snapshot,
       pendingCommand,
@@ -235,6 +243,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }),
     [
       source,
+      ready,
       snapshot,
       pendingCommand,
       experiments,
