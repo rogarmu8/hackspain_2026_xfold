@@ -3,7 +3,7 @@ import { PitchDeck } from "@/components/PitchDeck";
 
 export const metadata: Metadata = {
   title: "Pitch",
-  description: "XFOLD en cinco diapositivas: la estación manual de plegado, automatizada de punta a punta.",
+  description: "XFOLD en cuatro diapositivas: la estación manual de plegado, automatizada de punta a punta.",
 };
 
 /** The demo-day deck (Spanish copy). Space / → next, ← back, F for fullscreen. */

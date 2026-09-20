@@ -52,16 +52,6 @@ function Stack({ children }: { children: ReactNode }) {
   return <div className="flex flex-col items-start gap-6 sm:gap-8">{children}</div>;
 }
 
-/** The orange rule that carries a number. */
-function Stat({ value, caption }: { value: string; caption: string }) {
-  return (
-    <div className="border-t-2 border-[var(--primary)] pt-3">
-      <p className="tabular text-[clamp(1.75rem,3.6vw,3rem)] leading-none font-semibold">{value}</p>
-      <p className="mt-2 max-w-[18ch] text-sm leading-snug opacity-65">{caption}</p>
-    </div>
-  );
-}
-
 /** The line, drawn as the stations the garment actually passes through. */
 function Stations({ items }: { items: string[] }) {
   return (
@@ -219,25 +209,6 @@ export const SLIDES: Slide[] = [
           <Headline>La estación entera, automatizada.</Headline>
         </Stack>
         <Stations items={["Entrada", "Girador", "Prensa", "Control", "Plegado", "Embolsado"]} />
-      </div>
-    ),
-  },
-  {
-    id: "resultados",
-    tone: "light",
-    label: "Resultados",
-    Content: () => (
-      <div className="flex w-full flex-col gap-10">
-        <Stack>
-          <Eyebrow>Medido, no prometido</Eyebrow>
-          <Headline>Física real, dos motores.</Headline>
-        </Stack>
-        <div className="grid w-full gap-6 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
-          <Stat value="30" caption="Prendas: rotas, manchadas, torcidas" />
-          <Stat value="29 / 29" caption="Mismos eventos en MuJoCo y en Isaac Sim" />
-          <Stat value="31 × 33 cm" caption="Paquete doblado, ±2 mm entre motores" />
-          <Stat value="1×" caption="Tiempo real: ciclo de 47 s" />
-        </div>
       </div>
     ),
   },
