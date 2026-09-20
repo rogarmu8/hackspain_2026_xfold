@@ -246,11 +246,15 @@ def _outline_crew(
 
 
 def _outline_tank() -> np.ndarray:
-    """Sleeveless muscle tank: thin straps, deep armholes, same torso thirds."""
-    hw = 0.5 * BODY_W
+    """Sleeveless muscle tank: thin straps, deep armholes, torso past the pins.
+
+    Body is wider than the folder's side hinges (±0.16 m) so the sheet sits on
+    the flaps and the deck, not down between the rails. Straps stay narrow so
+    it still reads as sleeveless next to a tee.
+    """
+    hw = 0.38  # 0.76 m torso; FlipFold pins leave a 0.32 m pack
     hl = 0.5 * BODY_L
-    # Straps ~5 cm, sitting well inside the 0.60 m body (the T's sleeves
-    # stick out to ±0.46 m; this panel must read as "no sleeves" at a glance).
+    # Straps ~5 cm, well inside the torso (tee sleeves reach ±0.46 m).
     strap_i, strap_o = 0.09, 0.145
     neck_cy = hl - 0.03
     neck_rx, neck_ry = 0.10, 0.13
@@ -270,7 +274,7 @@ def _outline_tank() -> np.ndarray:
     armhole = _bezier(
         strap[-1],
         (-strap_o - 0.02, hl - 0.12),
-        (-hw + 0.10, hl - 0.22),
+        (-hw + 0.12, hl - 0.22),
         (-hw, hl - 0.36),
         12,
     )
