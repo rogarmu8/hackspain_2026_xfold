@@ -3,8 +3,10 @@ import { Video } from "@remotion/media";
 import {
   AbsoluteFill,
   Easing,
+  Freeze,
   Img,
   interpolate,
+  Loop,
   staticFile,
   useCurrentFrame,
   useVideoConfig,
@@ -33,7 +35,7 @@ import {
   useFoldIn,
   useHemIn,
 } from "./motion";
-import { colors, fonts } from "./theme";
+import { colors, fonts, FPS } from "./theme";
 
 const useCount = (to: number, start: number, dur: number) => {
   const frame = useCurrentFrame();
@@ -58,9 +60,86 @@ const titleStyle: React.CSSProperties = {
   color: colors.ink,
 };
 
+type HookBeat = { text: string; enter: number; hold: number; travel: number };
+
+const HOOK_BEATS: HookBeat[] = (() => {
+  const first: HookBeat = {
+    text: "Una camiseta más.",
+    enter: 12,
+    hold: 26,
+    travel: 10,
+  };
+  const otras: HookBeat[] = Array.from({ length: 12 }, (_, i) => ({
+    text: "y otra",
+    enter: Math.max(2, Math.round(11 * Math.pow(0.66, i))),
+    hold: Math.max(1, Math.round(20 * Math.pow(0.58, i))),
+    travel: Math.max(2, Math.round(10 * Math.pow(0.66, i))),
+  }));
+  return [first, ...otras];
+})();
+
+const HOOK_STARTS = (() => {
+  const starts = [20];
+  for (let i = 0; i < HOOK_BEATS.length - 1; i++) {
+    const beat = HOOK_BEATS[i];
+    starts.push(starts[i] + beat.enter + beat.hold + beat.travel);
+  }
+  return starts;
+})();
+
+const lastBeat = HOOK_BEATS[HOOK_BEATS.length - 1];
+/** Cut while the last "y otra" is still sliding out — no hold at the end. */
+export const HOOK_FRAMES =
+  HOOK_STARTS[HOOK_STARTS.length - 1] +
+  lastBeat.enter +
+  lastBeat.hold +
+  Math.max(1, Math.round(lastBeat.travel / 2));
+
+const hookLineStyle = (frame: number, beat: HookBeat, start: number) => {
+  const inEnd = start + beat.enter;
+  const holdEnd = inEnd + beat.hold;
+  const outEnd = holdEnd + beat.travel;
+  const hidden = frame < start || frame >= outEnd;
+  const incoming = !hidden && frame < inEnd;
+  const outgoing = frame >= holdEnd && frame < outEnd;
+  const t = incoming
+    ? interpolate(frame, [start, inEnd], [0, 1], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+        easing: beat.enter <= 3 ? Easing.linear : snap,
+      })
+    : outgoing
+      ? interpolate(frame, [holdEnd, outEnd], [0, 1], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+          easing: Easing.in(Easing.cubic),
+        })
+      : 1;
+  const x = hidden
+    ? frame < start
+      ? -220
+      : 220
+    : incoming
+      ? interpolate(t, [0, 1], [-220, 0])
+      : outgoing
+        ? interpolate(t, [0, 1], [0, 240])
+        : 0;
+  const opacity = hidden
+    ? 0
+    : incoming
+      ? interpolate(t, [0, 1], [0, 1])
+      : outgoing
+        ? interpolate(t, [0, 0.7], [1, 0], {
+            extrapolateRight: "clamp",
+            easing: Easing.out(Easing.quad),
+          })
+        : 1;
+  return { transform: `translateX(${x}px)`, opacity };
+};
+
 export const HookScene: React.FC = () => {
   const logo = useFoldIn(0, 18);
-  const line = useBeltIn(1, 18, 14, -72);
+  const frame = useCurrentFrame();
   return (
     <AbsoluteFill
       style={{
@@ -75,7 +154,7 @@ export const HookScene: React.FC = () => {
           flexDirection: "column",
           alignItems: "center",
           gap: 28,
-          width: 640,
+          width: 720,
         }}
       >
         <div style={logo}>
@@ -86,18 +165,38 @@ export const HookScene: React.FC = () => {
         </div>
         <div
           style={{
-            ...kickerStyle,
-            color: colors.cream,
-            fontSize: 42,
-            letterSpacing: "0.04em",
-            textTransform: "none",
-            fontFamily: fonts.sans,
-            fontWeight: 600,
-            textAlign: "center",
-            ...line,
+            position: "relative",
+            width: "100%",
+            height: 56,
+            overflow: "hidden",
+            WebkitMaskImage:
+              "linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent)",
+            maskImage:
+              "linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent)",
           }}
         >
-          Una camiseta más.
+          {HOOK_BEATS.map((beat, i) => (
+            <div
+              key={`${beat.text}-${i}`}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: 0,
+                ...kickerStyle,
+                color: colors.cream,
+                fontSize: 42,
+                letterSpacing: "0.04em",
+                textTransform: "none",
+                fontFamily: fonts.sans,
+                fontWeight: 600,
+                textAlign: "center",
+                ...hookLineStyle(frame, beat, HOOK_STARTS[i]),
+              }}
+            >
+              {beat.text}
+            </div>
+          ))}
         </div>
         <BeltRail padTop={8} />
       </div>
@@ -180,6 +279,8 @@ type FootageSceneProps = {
   title: string;
   subtitle?: string;
   playbackRate?: number;
+  /** Play this many frames, then hold the last one. Do not loop. */
+  playFrames?: number;
 };
 
 export const FootageScene: React.FC<FootageSceneProps> = ({
@@ -188,9 +289,11 @@ export const FootageScene: React.FC<FootageSceneProps> = ({
   title,
   subtitle,
   playbackRate = 1,
+  playFrames = 75,
 }) => {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
+  const freezeAt = Math.max(0, playFrames - 1);
   const zoom = interpolate(frame, [0, durationInFrames], [1.02, 1.12], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
@@ -211,20 +314,23 @@ export const FootageScene: React.FC<FootageSceneProps> = ({
     easing: snap,
   });
 
+  const footage = (
+    <Video
+      src={staticFile(src)}
+      muted
+      playbackRate={playbackRate}
+      style={{
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        transform: `scale(${zoom})`,
+      }}
+    />
+  );
+
   return (
     <AbsoluteFill style={{ backgroundColor: colors.ink }}>
-      <Video
-        src={staticFile(src)}
-        muted
-        loop
-        playbackRate={playbackRate}
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          transform: `scale(${zoom})`,
-        }}
-      />
+      {frame < playFrames ? footage : <Freeze frame={freezeAt}>{footage}</Freeze>}
       <AbsoluteFill
         style={{
           background:
@@ -736,6 +842,236 @@ export const TeamScene: React.FC = () => {
             </div>
           );
         })}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+export const TalkScene: React.FC<{
+  src: string;
+  kicker?: string;
+  name?: string;
+  trimBefore?: number;
+  trimAfter?: number;
+  playbackRate?: number;
+  lowerThird?: boolean;
+  broll?: string;
+  brollFrom?: number;
+  brollTo?: number;
+  brollLoop?: boolean;
+}> = ({
+  src,
+  kicker,
+  name,
+  trimBefore,
+  trimAfter,
+  playbackRate = 1,
+  lowerThird = true,
+  broll,
+  brollFrom,
+  brollTo,
+  brollLoop,
+}) => {
+  const bar = useFoldIn(3, 10);
+  const line = useBeltIn(1, 8, 10, -40);
+  const frame = useCurrentFrame();
+  const { durationInFrames } = useVideoConfig();
+  const fadeLen = 14;
+  const fade = interpolate(
+    frame,
+    [0, fadeLen, Math.max(fadeLen, durationInFrames - fadeLen), durationInFrames],
+    [0, 1, 1, 0],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
+  );
+  const talkTrim = {
+    trimBefore: trimBefore === undefined ? undefined : Math.round(trimBefore * FPS),
+    trimAfter: trimAfter === undefined ? undefined : Math.round(trimAfter * FPS),
+  };
+  const talkVideo = (
+    <Video
+      src={staticFile(src)}
+      {...talkTrim}
+      playbackRate={playbackRate}
+      objectFit="cover"
+      style={{
+        width: "100%",
+        height: "100%",
+      }}
+    />
+  );
+  const brollStart = brollFrom === undefined ? undefined : Math.round(brollFrom * FPS);
+  const brollEnd = brollTo === undefined ? undefined : Math.round(brollTo * FPS);
+  const brollSpan =
+    brollStart !== undefined && brollEnd !== undefined
+      ? Math.max(1, brollEnd - brollStart)
+      : undefined;
+  const brollVideo = broll ? (
+    <Video
+      src={staticFile(broll)}
+      muted
+      loop={Boolean(brollLoop && brollSpan === undefined)}
+      trimBefore={brollStart}
+      trimAfter={brollEnd}
+      objectFit="contain"
+      style={{
+        width: "100%",
+        height: "100%",
+      }}
+    />
+  ) : null;
+  return (
+    <AbsoluteFill style={{ backgroundColor: colors.ink, opacity: fade }}>
+      {brollVideo ? (
+        brollLoop && brollSpan !== undefined ? (
+          <Loop durationInFrames={brollSpan}>{brollVideo}</Loop>
+        ) : (
+          brollVideo
+        )
+      ) : (
+        talkVideo
+      )}
+      <AbsoluteFill
+        style={{
+          background: lowerThird
+            ? "linear-gradient(180deg, rgba(42,23,15,0) 62%, rgba(42,23,15,0.82) 100%)"
+            : undefined,
+        }}
+      />
+      {broll ? (
+        <div
+          style={{
+            position: "absolute",
+            right: 56,
+            bottom: 168,
+            width: 380,
+            height: 214,
+            overflow: "hidden",
+            border: `3px solid ${colors.cream}`,
+          }}
+        >
+          {talkVideo}
+        </div>
+      ) : null}
+      {lowerThird && name ? (
+        <div
+          style={{
+            position: "absolute",
+            left: 72,
+            right: 72,
+            bottom: 56,
+            ...bar,
+          }}
+        >
+          {kicker ? (
+            <div style={{ ...kickerStyle, marginBottom: 12 }}>{kicker}</div>
+          ) : null}
+          <div
+            style={{
+              ...titleStyle,
+              color: colors.cream,
+              fontSize: 52,
+              lineHeight: 1.05,
+              ...line,
+            }}
+          >
+            {name}
+          </div>
+          <BeltRail padTop={18} />
+        </div>
+      ) : null}
+    </AbsoluteFill>
+  );
+};
+
+export const DemoScene: React.FC<{
+  src: string;
+  kicker?: string;
+  title?: string;
+  playbackRate?: number;
+}> = ({ src, kicker, title, playbackRate = 1 }) => {
+  const copy = useFoldIn(8, 14);
+  return (
+    <AbsoluteFill style={{ backgroundColor: colors.ink }}>
+      <Video
+        src={staticFile(src)}
+        muted
+        playbackRate={playbackRate}
+        objectFit="contain"
+        style={{
+          width: "100%",
+          height: "100%",
+        }}
+      />
+      {kicker || title ? (
+        <div
+          style={{
+            position: "absolute",
+            left: 72,
+            bottom: 40,
+            ...copy,
+          }}
+        >
+          {kicker ? <div style={{ ...kickerStyle, marginBottom: 8 }}>{kicker}</div> : null}
+          {title ? (
+            <div style={{ ...titleStyle, color: colors.cream, fontSize: 36 }}>{title}</div>
+          ) : null}
+        </div>
+      ) : null}
+    </AbsoluteFill>
+  );
+};
+
+/** Reserved 90 s hole for the product demo clip. */
+export const PRODUCT_SECONDS = 90;
+export const PRODUCT_FRAMES = PRODUCT_SECONDS * FPS;
+
+export const ProductSlot: React.FC = () => {
+  const copy = useFoldIn(8, 16);
+  const line = useBeltIn(2, 14, 14, -48);
+  return (
+    <AbsoluteFill
+      style={{
+        backgroundColor: colors.cream,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          width: "100%",
+          padding: "0 90px",
+          gap: 72,
+        }}
+      >
+        <FoldLoader size={420} startMs={350} />
+        <div style={{ maxWidth: 860, ...copy }}>
+          <div style={{ ...kickerStyle, marginBottom: 18 }}>La línea</div>
+          <div
+            style={{
+              ...titleStyle,
+              fontSize: 64,
+              lineHeight: 1.08,
+              marginBottom: 18,
+            }}
+          >
+            Aquí entra el producto.
+          </div>
+          <div
+            style={{
+              fontFamily: fonts.sans,
+              fontSize: 28,
+              color: colors.ink,
+              opacity: 0.7,
+              ...line,
+            }}
+          >
+            Hueco de 1:30 para el vídeo de la máquina.
+          </div>
+          <BeltRail padTop={22} />
+        </div>
       </div>
     </AbsoluteFill>
   );

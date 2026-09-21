@@ -61,6 +61,8 @@ build/
 data/
 *.mp4
 !src/video/public/videoexpbolsas.mp4
+!src/video/public/talk-*.mp4
+!src/video/public/demo-*.mp4
 
 # Generated garment include (written at compile from shirt.toml / --garment)
 src/sim/models/_garment_active.xml
